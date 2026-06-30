@@ -2,7 +2,14 @@
 
 #include "System/Raid/LBRaidGameState.h"
 
+#include "Engine/Engine.h"
 #include "Net/UnrealNetwork.h"
+
+static FString LBRaidStateToString(ELBRaidState State)
+{
+    const UEnum* EnumPtr = StaticEnum<ELBRaidState>();
+    return EnumPtr ? EnumPtr->GetNameStringByValue(static_cast<int64>(State)) : TEXT("Unknown");
+}
 
 ALBRaidGameState::ALBRaidGameState()
 {
@@ -98,14 +105,55 @@ void ALBRaidGameState::SetRaidResult_ServerOnly(const FLBRaidResultData& NewResu
 void ALBRaidGameState::OnRep_RaidState()
 {
     OnRaidStateChanged.Broadcast(RaidState);
+
+    const FString Message = FString::Printf(
+        TEXT("[RaidGS] RaidState = %s"),
+        *LBRaidStateToString(RaidState)
+    );
+
+    UE_LOG(LogTemp, Warning, TEXT("%s"), *Message);
+
+    if (GEngine && GetNetMode() != NM_DedicatedServer)
+    {
+        GEngine->AddOnScreenDebugMessage(-1, 4.f, FColor::Green, Message);
+    }
 }
 
 void ALBRaidGameState::OnRep_BossHP()
 {
     OnBossHPChanged.Broadcast(BossCurrentHP, BossMaxHP);
+
+    const FString Message = FString::Printf(
+        TEXT("[RaidGS] BossHP = %.0f / %.0f"),
+        BossCurrentHP,
+        BossMaxHP
+    );
+
+    UE_LOG(LogTemp, Warning, TEXT("%s"), *Message);
+
+    if (GEngine && GetNetMode() != NM_DedicatedServer)
+    {
+        GEngine->AddOnScreenDebugMessage(-1, 3.f, FColor::Yellow, Message);
+    }
 }
 
 void ALBRaidGameState::OnRep_RaidResult()
 {
     OnRaidResultChanged.Broadcast(RaidResult);
+
+    const FString Message = FString::Printf(
+        TEXT("[RaidGS] Result Victory=%d ClearTime=%.2f Rank=%s Deaths=%d BossHPOnFail=%.0f"),
+        RaidResult.bVictory ? 1 : 0,
+        RaidResult.ClearTimeSec,
+        *RaidResult.RankID.ToString(),
+        RaidResult.PlayerDeaths,
+        RaidResult.BossRemainingHPOnFail
+    );
+
+    UE_LOG(LogTemp, Warning, TEXT("%s"), *Message);
+
+    if (GEngine && GetNetMode() != NM_DedicatedServer)
+    {
+        GEngine->AddOnScreenDebugMessage(-1, 8.f, FColor::Cyan, Message);
+    }
 }
