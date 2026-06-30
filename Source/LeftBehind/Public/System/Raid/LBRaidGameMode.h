@@ -22,48 +22,52 @@ public:
 
     virtual void BeginPlay() override;
 
-    UFUNCTION(BlueprintCallable, Category="LB|Raid")
+    UFUNCTION(BlueprintCallable, Category = "LB|Raid")
     void StartCountdown();
 
-    UFUNCTION(BlueprintCallable, Category="LB|Raid")
+    UFUNCTION(BlueprintCallable, Category = "LB|Raid")
     void NotifyBossHPChanged(float CurrentHP, float MaxHP);
 
-    UFUNCTION(BlueprintCallable, Category="LB|Raid")
+    UFUNCTION(BlueprintCallable, Category = "LB|Raid")
     void NotifyBossDied();
 
-    UFUNCTION(BlueprintCallable, Category="LB|Raid")
+    UFUNCTION(BlueprintCallable, Category = "LB|Raid")
     void NotifyPlayerDied(AController* DeadController);
 
-    UFUNCTION(Exec)
-    void DebugDamageBoss(float DamageAmount = 999999.f);
-
 protected:
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="LB|Raid")
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Raid")
     bool bAutoStartOnBeginPlay = true;
 
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="LB|Raid|Data")
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Raid|Data")
     TObjectPtr<UDataTable> BossStatsTable;
 
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="LB|Raid|Data")
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Raid|Data")
     FName BossRowName = "Boss_Proto_Test";
 
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="LB|Raid|Data")
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Raid|Data")
     TObjectPtr<UDataTable> RankDataTable;
 
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="LB|Raid|Spawn")
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Raid|Spawn")
     FName BossSpawnTag = "BossSpawn";
 
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="LB|Raid|Time")
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Raid|Time")
     float CountdownSec = 5.f;
 
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="LB|Raid|Time")
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Raid|Time")
     float DefaultTimeLimitSec = 300.f;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Raid|Debug")
+    bool bDebugAutoKillBoss = true;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Raid|Debug")
+    float DebugAutoKillDelaySec = 3.f;
 
     UPROPERTY()
     TObjectPtr<ALBRaidBossBase> SpawnedBoss;
 
     FTimerHandle CountdownTimerHandle;
     FTimerHandle TimeLimitTimerHandle;
+    FTimerHandle DebugAutoKillTimerHandle;
 
     bool bRaidEnded = false;
 
@@ -72,6 +76,9 @@ protected:
     void StartBattle();
     bool SpawnBossFromData();
     void HandleTimeLimitReached();
+
+    void DebugKillBoss_ServerOnly();
+
     void EndRaid(bool bVictory, ELBRaidEndReason EndReason);
 
     int32 GetTotalPlayerDeaths() const;

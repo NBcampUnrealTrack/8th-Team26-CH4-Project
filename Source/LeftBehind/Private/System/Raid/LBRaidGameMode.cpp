@@ -1,4 +1,4 @@
-﻿// LBRaidGameMode.cpp
+﻿//LBRaidGameMode.cpp
 
 #include "System/Raid/LBRaidGameMode.h"
 
@@ -7,10 +7,42 @@
 #include "System/Raid/LBPlayerState.h"
 
 #include "Engine/DataTable.h"
+#include "Engine/Engine.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "HAL/FileManager.h"
+
+namespace
+{
+    void LBRaidDebug(UWorld* World, const FString& Message, const FColor Color = FColor::Yellow, const float Duration = 5.f)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("%s"), *Message);
+
+        if (GEngine && World && World->GetNetMode() != NM_DedicatedServer)
+        {
+            GEngine->AddOnScreenDebugMessage(-1, Duration, Color, Message);
+        }
+    }
+
+    FString LBRaidEndReasonToString(const ELBRaidEndReason EndReason)
+    {
+        const UEnum* EnumPtr = StaticEnum<ELBRaidEndReason>();
+        return EnumPtr ? EnumPtr->GetNameStringByValue(static_cast<int64>(EndReason)) : TEXT("Unknown");
+    }
+
+    FString LBRaidEscapeCsvField(const FString& Field)
+    {
+        if (!Field.Contains(TEXT(",")) && !Field.Contains(TEXT("\"")) && !Field.Contains(TEXT("\n")) && !Field.Contains(TEXT("\r")))
+        {
+            return Field;
+        }
+
+        FString EscapedField = Field;
+        EscapedField.ReplaceInline(TEXT("\""), TEXT("\"\""));
+        return FString::Printf(TEXT("\"%s\""), *EscapedField);
+    }
+}
 
 ALBRaidGameMode::ALBRaidGameMode()
 {
@@ -22,15 +54,34 @@ void ALBRaidGameMode::BeginPlay()
 {
     Super::BeginPlay();
 
+    LBRaidDebug(
+        GetWorld(),
+        FString::Printf(
+            TEXT("[RaidGM] BeginPlay. GameMode=%s NetMode=%d"),
+            *GetName(),
+            static_cast<int32>(GetNetMode())
+        ),
+        FColor::White
+    );
+
     if (ALBRaidGameState* RGS = GetLBRaidGameState())
     {
         RGS->TimeLimitSec = DefaultTimeLimitSec;
         RGS->SetRaidState_ServerOnly(ELBRaidState::Waiting);
     }
+    else
+    {
+        LBRaidDebug(GetWorld(), TEXT("[RaidGM] ERROR: RaidGameState is null."), FColor::Red, 10.f);
+        return;
+    }
 
     if (bAutoStartOnBeginPlay)
     {
         StartCountdown();
+    }
+    else
+    {
+        LBRaidDebug(GetWorld(), TEXT("[RaidGM] bAutoStartOnBeginPlay is false. Countdown will not start."), FColor::Orange, 10.f);
     }
 }
 
@@ -49,6 +100,7 @@ void ALBRaidGameMode::StartCountdown()
     ALBRaidGameState* RGS = GetLBRaidGameState();
     if (!RGS)
     {
+        LBRaidDebug(GetWorld(), TEXT("[RaidGM] ERROR: Cannot start countdown. RaidGameState is null."), FColor::Red, 10.f);
         return;
     }
 
@@ -66,7 +118,11 @@ void ALBRaidGameMode::StartCountdown()
         false
     );
 
-    UE_LOG(LogTemp, Log, TEXT("[Raid] Countdown started."));
+    LBRaidDebug(
+        GetWorld(),
+        FString::Printf(TEXT("[RaidGM] Countdown started. %.1f sec"), CountdownSec),
+        FColor::Green
+    );
 }
 
 void ALBRaidGameMode::StartBattle()
@@ -79,12 +135,15 @@ void ALBRaidGameMode::StartBattle()
     ALBRaidGameState* RGS = GetLBRaidGameState();
     if (!RGS)
     {
+        LBRaidDebug(GetWorld(), TEXT("[RaidGM] ERROR: Cannot start battle. RaidGameState is null."), FColor::Red, 10.f);
         return;
     }
 
+    LBRaidDebug(GetWorld(), TEXT("[RaidGM] StartBattle called."), FColor::Green);
+
     if (!SpawnBossFromData())
     {
-        UE_LOG(LogTemp, Error, TEXT("[Raid] Boss spawn failed. Battle not started."));
+        LBRaidDebug(GetWorld(), TEXT("[RaidGM] ERROR: Boss spawn failed. Battle not started."), FColor::Red, 10.f);
         return;
     }
 
@@ -100,14 +159,37 @@ void ALBRaidGameMode::StartBattle()
         false
     );
 
-    UE_LOG(LogTemp, Log, TEXT("[Raid] Battle started."));
+    if (bDebugAutoKillBoss)
+    {
+        GetWorldTimerManager().ClearTimer(DebugAutoKillTimerHandle);
+        GetWorldTimerManager().SetTimer(
+            DebugAutoKillTimerHandle,
+            this,
+            &ALBRaidGameMode::DebugKillBoss_ServerOnly,
+            DebugAutoKillDelaySec,
+            false
+        );
+
+        LBRaidDebug(
+            GetWorld(),
+            FString::Printf(TEXT("[RaidGM] DebugAutoKillBoss enabled. Boss will die in %.1f sec."), DebugAutoKillDelaySec),
+            FColor::Orange,
+            6.f
+        );
+    }
+
+    LBRaidDebug(
+        GetWorld(),
+        FString::Printf(TEXT("[RaidGM] Battle started. TimeLimit=%.1f"), RGS->TimeLimitSec),
+        FColor::Green
+    );
 }
 
 bool ALBRaidGameMode::SpawnBossFromData()
 {
     if (!BossStatsTable)
     {
-        UE_LOG(LogTemp, Error, TEXT("[Raid] BossStatsTable is null."));
+        LBRaidDebug(GetWorld(), TEXT("[RaidGM] ERROR: BossStatsTable is null."), FColor::Red, 10.f);
         return false;
     }
 
@@ -116,14 +198,24 @@ bool ALBRaidGameMode::SpawnBossFromData()
 
     if (!BossRow)
     {
-        UE_LOG(LogTemp, Error, TEXT("[Raid] Boss row not found: %s"), *BossRowName.ToString());
+        LBRaidDebug(
+            GetWorld(),
+            FString::Printf(TEXT("[RaidGM] ERROR: Boss row not found. BossRowName=%s"), *BossRowName.ToString()),
+            FColor::Red,
+            10.f
+        );
         return false;
     }
 
     UClass* LoadedBossClass = BossRow->BossClass.LoadSynchronous();
     if (!LoadedBossClass)
     {
-        UE_LOG(LogTemp, Error, TEXT("[Raid] BossClass load failed."));
+        LBRaidDebug(
+            GetWorld(),
+            FString::Printf(TEXT("[RaidGM] ERROR: BossClass load failed. Row=%s"), *BossRowName.ToString()),
+            FColor::Red,
+            10.f
+        );
         return false;
     }
 
@@ -138,7 +230,13 @@ bool ALBRaidGameMode::SpawnBossFromData()
     else
     {
         SpawnTransform = FTransform(FRotator::ZeroRotator, FVector::ZeroVector);
-        UE_LOG(LogTemp, Warning, TEXT("[Raid] BossSpawn tag not found. Spawn at world origin."));
+
+        LBRaidDebug(
+            GetWorld(),
+            FString::Printf(TEXT("[RaidGM] WARNING: BossSpawn tag not found. Tag=%s. Spawn at origin."), *BossSpawnTag.ToString()),
+            FColor::Orange,
+            10.f
+        );
     }
 
     FActorSpawnParameters Params;
@@ -147,6 +245,7 @@ bool ALBRaidGameMode::SpawnBossFromData()
     SpawnedBoss = GetWorld()->SpawnActor<ALBRaidBossBase>(LoadedBossClass, SpawnTransform, Params);
     if (!SpawnedBoss)
     {
+        LBRaidDebug(GetWorld(), TEXT("[RaidGM] ERROR: SpawnActor returned null."), FColor::Red, 10.f);
         return false;
     }
 
@@ -159,6 +258,18 @@ bool ALBRaidGameMode::SpawnBossFromData()
         RGS->TimeLimitSec = BossRow->TimeLimitSec;
         RGS->SetBossHP_ServerOnly(BossRow->MaxHP, BossRow->MaxHP);
     }
+
+    LBRaidDebug(
+        GetWorld(),
+        FString::Printf(
+            TEXT("[RaidGM] Boss spawned. Actor=%s HP=%.0f DEF=%.0f"),
+            *SpawnedBoss->GetName(),
+            BossRow->MaxHP,
+            BossRow->DEF
+        ),
+        FColor::Green,
+        8.f
+    );
 
     return true;
 }
@@ -178,6 +289,7 @@ void ALBRaidGameMode::NotifyBossDied()
         return;
     }
 
+    LBRaidDebug(GetWorld(), TEXT("[RaidGM] Boss died. Victory."), FColor::Cyan, 8.f);
     EndRaid(true, ELBRaidEndReason::BossKilled);
 }
 
@@ -217,6 +329,7 @@ void ALBRaidGameMode::NotifyPlayerDied(AController* DeadController)
 
     if (bAllDead)
     {
+        LBRaidDebug(GetWorld(), TEXT("[RaidGM] All players dead. Defeat."), FColor::Red, 8.f);
         EndRaid(false, ELBRaidEndReason::AllDead);
     }
 }
@@ -228,7 +341,25 @@ void ALBRaidGameMode::HandleTimeLimitReached()
         return;
     }
 
+    LBRaidDebug(GetWorld(), TEXT("[RaidGM] Time limit reached. Defeat."), FColor::Red, 8.f);
     EndRaid(false, ELBRaidEndReason::TimeOut);
+}
+
+void ALBRaidGameMode::DebugKillBoss_ServerOnly()
+{
+    if (!HasAuthority())
+    {
+        return;
+    }
+
+    if (!SpawnedBoss)
+    {
+        LBRaidDebug(GetWorld(), TEXT("[RaidGM] DebugKillBoss failed. SpawnedBoss is null."), FColor::Red, 8.f);
+        return;
+    }
+
+    LBRaidDebug(GetWorld(), TEXT("[RaidGM] DebugKillBoss executed."), FColor::Orange, 6.f);
+    SpawnedBoss->ApplyRaidDamage_ServerOnly(SpawnedBoss->GetCurrentHP());
 }
 
 void ALBRaidGameMode::EndRaid(bool bVictory, ELBRaidEndReason EndReason)
@@ -242,6 +373,7 @@ void ALBRaidGameMode::EndRaid(bool bVictory, ELBRaidEndReason EndReason)
 
     GetWorldTimerManager().ClearTimer(CountdownTimerHandle);
     GetWorldTimerManager().ClearTimer(TimeLimitTimerHandle);
+    GetWorldTimerManager().ClearTimer(DebugAutoKillTimerHandle);
 
     ALBRaidGameState* RGS = GetLBRaidGameState();
     if (!RGS)
@@ -266,21 +398,34 @@ void ALBRaidGameMode::EndRaid(bool bVictory, ELBRaidEndReason EndReason)
     RGS->SetRaidState_ServerOnly(ELBRaidState::Result);
 
     WriteRaidLog(Result);
+
+    LBRaidDebug(
+        GetWorld(),
+        FString::Printf(
+            TEXT("[RaidGM] EndRaid. Victory=%d ClearTime=%.2f Rank=%s Deaths=%d BossHPOnFail=%.0f"),
+            Result.bVictory ? 1 : 0,
+            Result.ClearTimeSec,
+            *Result.RankID.ToString(),
+            Result.PlayerDeaths,
+            Result.BossRemainingHPOnFail
+        ),
+        bVictory ? FColor::Cyan : FColor::Red,
+        10.f
+    );
 }
 
 int32 ALBRaidGameMode::GetTotalPlayerDeaths() const
 {
+    int32 TotalDeaths = 0;
+
     if (!GameState)
     {
-        return 0;
+        return TotalDeaths;
     }
-
-    int32 TotalDeaths = 0;
 
     for (APlayerState* PS : GameState->PlayerArray)
     {
-        const ALBPlayerState* LBPS = Cast<ALBPlayerState>(PS);
-        if (LBPS)
+        if (const ALBPlayerState* LBPS = Cast<ALBPlayerState>(PS))
         {
             TotalDeaths += LBPS->GetDeathCount();
         }
@@ -298,78 +443,63 @@ FName ALBRaidGameMode::CalculateRank(float ClearTimeSec) const
 {
     if (!RankDataTable)
     {
+        LBRaidDebug(GetWorld(), TEXT("[RaidGM] WARNING: RankDataTable is null. RankID will be None."), FColor::Orange, 8.f);
         return NAME_None;
     }
 
-    TArray<FLBRankDataRow*> Rows;
-    RankDataTable->GetAllRows<FLBRankDataRow>(TEXT("CalculateRank"), Rows);
+    TArray<FLBRankDataRow*> RankRows;
+    RankDataTable->GetAllRows<FLBRankDataRow>(TEXT("CalculateRank"), RankRows);
 
-    FName BestRank = NAME_None;
-    float BestThreshold = TNumericLimits<float>::Max();
-
-    for (const FLBRankDataRow* Row : Rows)
+    const FLBRankDataRow* BestMatchedRow = nullptr;
+    for (const FLBRankDataRow* RankRow : RankRows)
     {
-        if (!Row)
+        if (!RankRow || RankRow->RankID.IsNone() || ClearTimeSec > RankRow->ClearTimeSec)
         {
             continue;
         }
 
-        if (ClearTimeSec <= Row->ClearTimeSec && Row->ClearTimeSec < BestThreshold)
+        if (!BestMatchedRow || RankRow->ClearTimeSec < BestMatchedRow->ClearTimeSec)
         {
-            BestThreshold = Row->ClearTimeSec;
-            BestRank = Row->RankID;
+            BestMatchedRow = RankRow;
         }
     }
 
-    return BestRank;
+    return BestMatchedRow ? BestMatchedRow->RankID : NAME_None;
 }
 
 void ALBRaidGameMode::WriteRaidLog(const FLBRaidResultData& ResultData) const
 {
-    const FString Dir = FPaths::ProjectSavedDir() / TEXT("RaidLogs");
-    IFileManager::Get().MakeDirectory(*Dir, true);
+    const FString LogDirectory = FPaths::ProjectSavedDir() / TEXT("RaidLogs");
+    IFileManager::Get().MakeDirectory(*LogDirectory, true);
 
-    const FString FilePath = Dir / TEXT("RaidResult.csv");
+    const FString LogFilePath = LogDirectory / TEXT("RaidResults.csv");
+    const bool bShouldWriteHeader = !FPaths::FileExists(LogFilePath);
 
-    if (!FPaths::FileExists(FilePath))
+    FString LogText;
+    if (bShouldWriteHeader)
     {
-        const FString Header =
-            TEXT("Victory,EndReason,ClearTimeSec,RankID,PlayerDeaths,BossRemainingHPOnFail\n");
-
-        FFileHelper::SaveStringToFile(
-            Header,
-            *FilePath,
-            FFileHelper::EEncodingOptions::AutoDetect,
-            &IFileManager::Get(),
-            EFileWrite::FILEWRITE_Append
-        );
+        LogText += TEXT("Timestamp,Victory,EndReason,ClearTimeSec,RankID,PlayerDeaths,BossRemainingHPOnFail\n");
     }
 
-    const FString Line = FString::Printf(
-        TEXT("%d,%d,%.2f,%s,%d,%.2f\n"),
+    const FString Timestamp = FDateTime::Now().ToString(TEXT("%Y-%m-%d %H:%M:%S"));
+    LogText += FString::Printf(
+        TEXT("%s,%d,%s,%.2f,%s,%d,%.0f\n"),
+        *LBRaidEscapeCsvField(Timestamp),
         ResultData.bVictory ? 1 : 0,
-        static_cast<int32>(ResultData.EndReason),
+        *LBRaidEscapeCsvField(LBRaidEndReasonToString(ResultData.EndReason)),
         ResultData.ClearTimeSec,
-        *ResultData.RankID.ToString(),
+        *LBRaidEscapeCsvField(ResultData.RankID.ToString()),
         ResultData.PlayerDeaths,
         ResultData.BossRemainingHPOnFail
     );
 
-    FFileHelper::SaveStringToFile(
-        Line,
-        *FilePath,
-        FFileHelper::EEncodingOptions::AutoDetect,
-        &IFileManager::Get(),
-        EFileWrite::FILEWRITE_Append
-    );
-}
-
-void ALBRaidGameMode::DebugDamageBoss(float DamageAmount)
-{
-    if (!HasAuthority() || !SpawnedBoss)
+    if (!FFileHelper::SaveStringToFile(LogText, *LogFilePath, FFileHelper::EEncodingOptions::AutoDetect, &IFileManager::Get(), FILEWRITE_Append))
     {
-        return;
+        LBRaidDebug(
+            GetWorld(),
+            FString::Printf(TEXT("[RaidGM] WARNING: Failed to write raid log. Path=%s"), *LogFilePath),
+            FColor::Orange,
+            8.f
+        );
     }
-
-    SpawnedBoss->ApplyRaidDamage_ServerOnly(DamageAmount);
 }
