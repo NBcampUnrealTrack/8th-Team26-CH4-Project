@@ -1,4 +1,4 @@
-﻿//LBRaidTypes.h
+﻿// LBRaidTypes.h
 
 #pragma once
 
