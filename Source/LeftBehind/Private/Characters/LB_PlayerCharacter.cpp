@@ -3,9 +3,11 @@
 
 #include "LeftBehind/Public/Characters/LB_PlayerCharacter.h"
 #include "Camera/CameraComponent.h"
+#include "AbilitySystemComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "Player/LB_PlayerState.h"
 
 
 // Sets default values
@@ -39,22 +41,24 @@ ALB_PlayerCharacter::ALB_PlayerCharacter()
 	FollowCamera->bUsePawnControlRotation = false;
 }
 
-// Called when the game starts or when spawned
-void ALB_PlayerCharacter::BeginPlay()
+UAbilitySystemComponent* ALB_PlayerCharacter::GetAbilitySystemComponent() const
 {
-	Super::BeginPlay();
+	ALB_PlayerState* LBPlayerState = Cast<ALB_PlayerState>(GetPlayerState());
+	if (!IsValid(LBPlayerState)) return nullptr;
 	
+	return LBPlayerState->GetAbilitySystemComponent();
 }
 
-// Called every frame
-void ALB_PlayerCharacter::Tick(float DeltaTime)
+void ALB_PlayerCharacter::PossessedBy(AController* NewController)
 {
-	Super::Tick(DeltaTime);
+	Super::PossessedBy(NewController);
+	
+	if (!IsValid(GetAbilitySystemComponent())) return;
+	
+	GetAbilitySystemComponent()->InitAbilityActorInfo(GetPlayerState(), this);
+		
 }
 
-// Called to bind functionality to input
-void ALB_PlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
-{
-	Super::SetupPlayerInputComponent(PlayerInputComponent);
-}
+
+
 

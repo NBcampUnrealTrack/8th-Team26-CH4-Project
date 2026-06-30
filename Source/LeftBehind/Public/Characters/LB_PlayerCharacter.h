@@ -3,30 +3,26 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/Character.h"
+#include "Characters/LB_BaseCharacter.h"
 #include "Camera/CameraComponent.h"
+#include "AbilitySystemInterface.h"   
 #include "LB_PlayerCharacter.generated.h"
 class USpringArmComponent;
-class UCaemeraComponent;
+class UCameraComponent;
+class UAbilitySystemComponent;
 UCLASS()
-class LEFTBEHIND_API ALB_PlayerCharacter : public ACharacter
+class LEFTBEHIND_API ALB_PlayerCharacter : public ALB_BaseCharacter
 {
 	GENERATED_BODY()
 
 public:
 	// Sets default values for this character's properties
 	ALB_PlayerCharacter();
+	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
+	virtual void PossessedBy(AController* NewController) override;
 
-protected:
-	// Called when the game starts or when spawned
-	virtual void BeginPlay() override;
 
 public:
-	// Called every frame
-	virtual void Tick(float DeltaTime) override;
-
-	// Called to bind functionality to input
-	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 	
 	UPROPERTY(VisibleAnywhere, Category = "Camera")
 	TObjectPtr<USpringArmComponent> CameraBoom;

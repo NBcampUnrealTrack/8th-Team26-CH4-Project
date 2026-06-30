@@ -12,22 +12,10 @@ ALB_BaseCharacter::ALB_BaseCharacter()
 	GetMesh()->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
 }
 
-// Called when the game starts or when spawned
-void ALB_BaseCharacter::BeginPlay()
+UAbilitySystemComponent* ALB_BaseCharacter::GetAbilitySystemComponent() const
 {
-	Super::BeginPlay();
-	
+	return nullptr;
 }
 
-// Called every frame
-void ALB_BaseCharacter::Tick(float DeltaTime)
-{
-	Super::Tick(DeltaTime);
-}
 
-// Called to bind functionality to input
-void ALB_BaseCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
-{
-	Super::SetupPlayerInputComponent(PlayerInputComponent);
-}
 
