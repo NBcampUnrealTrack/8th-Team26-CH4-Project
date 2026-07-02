@@ -7,6 +7,7 @@ namespace LBTags
 {
 	namespace LBAbilities
 	{
+		UE_DECLARE_GAMEPLAY_TAG_EXTERN(Primary);
 		UE_DECLARE_GAMEPLAY_TAG_EXTERN(ActivateOnGiven);
 	}
 	
