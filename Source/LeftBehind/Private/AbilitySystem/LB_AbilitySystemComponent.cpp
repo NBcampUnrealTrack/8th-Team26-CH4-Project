@@ -2,14 +2,8 @@
 
 
 #include "AbilitySystem/LB_AbilitySystemComponent.h"
+
 #include "GameplayTags/LBTags.h"
-#include "AbilitySystem/LB_AbilitySystemComponent.h"
-#include "AbilitySystem/LB_AttributeSet.h"
-
-
-// Sets default values for this component's properties
-
-
 
 void ULB_AbilitySystemComponent::OnGiveAbility(FGameplayAbilitySpec& AbilitySpec)
 {
@@ -22,6 +16,11 @@ void ULB_AbilitySystemComponent::OnGiveAbility(FGameplayAbilitySpec& AbilitySpec
 void ULB_AbilitySystemComponent::OnRep_ActivateAbilities()
 {
 	Super::OnRep_ActivateAbilities();
+
+	for (const FGameplayAbilitySpec& AbilitySpec : GetActivatableAbilities())
+	{
+		HandleAutoActivatedAbility(AbilitySpec);
+	}
 }
 
 void ULB_AbilitySystemComponent::HandleAutoActivatedAbility(const FGameplayAbilitySpec& AbilitySpec)

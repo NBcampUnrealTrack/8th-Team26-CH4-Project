@@ -11,9 +11,6 @@ void ULB_GameplayAbility::ActivateAbility(const FGameplayAbilitySpecHandle Handl
 	
 	if (bDrawDebug)
 	{
-		if (IsValid(GEngine))
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 3.f, FColor::Cyan, FString::Printf(TEXT("%s Activated"),*GetName()));
-		}
+		UE_LOG(LogTemp, Log, TEXT("[LB Ability] %s Activated"), *GetName());
 	}
 }
