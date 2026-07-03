@@ -8,6 +8,7 @@
 #include "LB_BaseCharacter.generated.h"
 
 
+struct FOnAttributeChangeData;
 class UGameplayAbility;
 class UGameplayEffect;
 class UAttributeSet;
@@ -22,15 +23,26 @@ class LEFTBEHIND_API ALB_BaseCharacter : public ACharacter, public IAbilitySyste
 public:
 	// Sets default values for this character's properties
 	ALB_BaseCharacter();
+	
+	virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 	virtual UAttributeSet* GetAttributeSet() const;
 	
 	UPROPERTY(BlueprintAssignable)
 	FASCInitialized OnAscInitialized;
 	
+	bool IsAlive() const { return bAlive; }
+	
+	UPROPERTY(EditAnywhere, Category = "Crash|AI")
+	float SearchRange{1000.f};
+	
 protected:
 	void GiveStartupAbilities();
 	void InitializeAttribute() const;
+	
+	void OnHealthChanged(const FOnAttributeChangeData& AttributeChangeData);
+	virtual void HandleDeath();
+	virtual void HandleRespon();
 	
 private:
 	
@@ -40,6 +52,7 @@ private:
 	UPROPERTY(EditDefaultsOnly, Category = "LeftBehind|Effects")
 	TSubclassOf<UGameplayEffect> InitializeAttributesEffect;
 
-
+	UPROPERTY(BlueprintReadOnly, meta = (AllowPrivateAccess = "true"), Replicated)
+	bool bAlive = true;
 	
 };

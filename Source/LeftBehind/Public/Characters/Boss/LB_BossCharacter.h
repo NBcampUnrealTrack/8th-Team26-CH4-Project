@@ -3,22 +3,35 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "LB_BaseCharacter.h"
-#include "LB_EnemyCharacter.generated.h"
+#include "GameplayTagContainer.h"
+#include "Characters/LB_BaseCharacter.h"
+#include "LB_BossCharacter.generated.h"
+
 
 class ULB_AbilitySystemComponent;
-class UAttributeSet;
+//페이지 교체 시의 정보, 처음 페이즈는 생략할 것
+USTRUCT()
+struct FPhaseInfo
+{
+	GENERATED_BODY()
+	
+	FGameplayTag PhaseTag;
+	float HealthThreshold;
+	
+};
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FPhaseChange,FGameplayTag,PhaseTag);
 
 UCLASS()
-class LEFTBEHIND_API ALB_EnemyCharacter : public ALB_BaseCharacter
+class LEFTBEHIND_API ALB_BossCharacter : public ALB_BaseCharacter
 {
 	GENERATED_BODY()
 
 public:
 	// Sets default values for this character's properties
-	ALB_EnemyCharacter();
-	
+	ALB_BossCharacter();
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+	FPhaseChange PhaseChange;
 
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 	
@@ -31,7 +44,10 @@ protected:
 	virtual void BeginPlay() override;
 	virtual UAttributeSet* GetAttributeSet() const override;
 	virtual void HandleDeath() override;
-
+	
+	virtual void HandlePaseChanged(const FOnAttributeChangeData& AttributeChangeData);
+	
+	virtual int32 CalculatePhase(const FOnAttributeChangeData& AttributeChangeData);
 
 	
 private:
@@ -45,6 +61,11 @@ private:
 	UPROPERTY()
 	TObjectPtr<UAttributeSet> Attributeset;
 	
+	UPROPERTY(EditAnywhere, Category = "Boss|Phase", meta=(AllowPrivateAccess=true))
+	TArray<FPhaseInfo> PhaseInfos;
+	
+	UPROPERTY()
+	int32 CurrentPhaseIndex = 0;
+	
 
-public:
 };
