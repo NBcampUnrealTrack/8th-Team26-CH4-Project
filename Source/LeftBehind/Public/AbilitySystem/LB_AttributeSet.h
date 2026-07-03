@@ -31,6 +31,10 @@ public:
 	
 	virtual void PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue) override;
 	virtual void PostGameplayEffectExecute(const struct FGameplayEffectModCallbackData& Data) override;
+
+	// 시작 스탯을 정리할 때 사용한다. Max 값이 정해진 뒤 현재 HP/마나를 최대치로 채운다.
+	UFUNCTION(BlueprintCallable, Category = "LB|Attributes")
+	void FillCurrentAttributesToMax();
 	
 	UPROPERTY(ReplicatedUsing = OnRep_AttributesInitalized)
 	bool bAttributeInitialized = false;

@@ -2,7 +2,7 @@
 
 #include "GameState/LB_RaidGameState.h"
 
-#include "Engine/Engine.h"
+#include "DrawDebugHelpers.h"
 #include "Net/UnrealNetwork.h"
 
 static FString LBRaidStateToString(ELBRaidState State)
@@ -96,8 +96,18 @@ void ALB_RaidGameState::SetBossHP_ServerOnly(float CurrentHP, float MaxHP)
     }
 
     // UI 계산이 안전하도록 HP는 0 이상, MaxHP는 최소 1로 보정한다.
-    BossCurrentHP = FMath::Max(0.f, CurrentHP);
-    BossMaxHP = FMath::Max(1.f, MaxHP);
+    const float NewBossCurrentHP = FMath::Max(0.f, CurrentHP);
+    const float NewBossMaxHP = FMath::Max(1.f, MaxHP);
+
+    if (bHasBroadcastBossHP
+        && FMath::IsNearlyEqual(BossCurrentHP, NewBossCurrentHP)
+        && FMath::IsNearlyEqual(BossMaxHP, NewBossMaxHP))
+    {
+        return;
+    }
+
+    BossCurrentHP = NewBossCurrentHP;
+    BossMaxHP = NewBossMaxHP;
 
     // 서버 화면/로그도 클라이언트와 같은 알림 흐름을 사용한다.
     OnRep_BossHP();
@@ -118,6 +128,23 @@ void ALB_RaidGameState::SetRaidResult_ServerOnly(const FLBRaidResultData& NewRes
     ForceNetUpdate();
 }
 
+void ALB_RaidGameState::MulticastRaidDebugMessage_Implementation(const FString& Message, FColor Color, float Duration)
+{
+    (void)Color;
+    (void)Duration;
+    // 테스트 메시지는 화면을 가리지 않도록 Output Log에만 남긴다.
+    UE_LOG(LogTemp, Warning, TEXT("%s"), *Message);
+}
+
+void ALB_RaidGameState::MulticastRaidDebugSphere_Implementation(FVector Location, float Radius, FColor Color, float Duration)
+{
+    // ServerOnly Ability에서 그린 공격 판정은 원래 서버에만 보이므로 Multicast로 모든 클라이언트 월드에 다시 그린다.
+    if (UWorld* World = GetWorld())
+    {
+        DrawDebugSphere(World, Location, Radius, 16, Color, false, Duration);
+    }
+}
+
 void ALB_RaidGameState::OnRep_RaidState()
 {
     // UI가 상태 전환을 감지할 수 있도록 델리게이트를 먼저 방송한다.
@@ -130,14 +157,21 @@ void ALB_RaidGameState::OnRep_RaidState()
 
     UE_LOG(LogTemp, Warning, TEXT("%s"), *Message);
 
-    if (GEngine && GetNetMode() != NM_DedicatedServer)
-    {
-        GEngine->AddOnScreenDebugMessage(-1, 4.f, FColor::Green, Message);
-    }
 }
 
 void ALB_RaidGameState::OnRep_BossHP()
 {
+    if (bHasBroadcastBossHP
+        && FMath::IsNearlyEqual(LastBroadcastBossCurrentHP, BossCurrentHP)
+        && FMath::IsNearlyEqual(LastBroadcastBossMaxHP, BossMaxHP))
+    {
+        return;
+    }
+
+    bHasBroadcastBossHP = true;
+    LastBroadcastBossCurrentHP = BossCurrentHP;
+    LastBroadcastBossMaxHP = BossMaxHP;
+
     // HP 바/보스 상태 UI가 이 이벤트를 구독한다.
     OnBossHPChanged.Broadcast(BossCurrentHP, BossMaxHP);
 
@@ -149,10 +183,6 @@ void ALB_RaidGameState::OnRep_BossHP()
 
     UE_LOG(LogTemp, Warning, TEXT("%s"), *Message);
 
-    if (GEngine && GetNetMode() != NM_DedicatedServer)
-    {
-        GEngine->AddOnScreenDebugMessage(-1, 3.f, FColor::Yellow, Message);
-    }
 }
 
 void ALB_RaidGameState::OnRep_RaidResult()
@@ -171,8 +201,4 @@ void ALB_RaidGameState::OnRep_RaidResult()
 
     UE_LOG(LogTemp, Warning, TEXT("%s"), *Message);
 
-    if (GEngine && GetNetMode() != NM_DedicatedServer)
-    {
-        GEngine->AddOnScreenDebugMessage(-1, 8.f, FColor::Cyan, Message);
-    }
 }

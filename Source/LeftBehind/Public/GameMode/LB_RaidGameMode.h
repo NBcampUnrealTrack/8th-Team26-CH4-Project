@@ -74,14 +74,6 @@ protected:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Raid|Time")
     float DefaultTimeLimitSec = 300.f;
 
-    // 테스트용으로 전투 시작 후 보스를 자동 처치할지 여부.
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Raid|Debug")
-    bool bDebugAutoKillBoss = true;
-
-    // 자동 처치 테스트가 켜져 있을 때 보스를 처치하기까지의 지연 시간.
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Raid|Debug")
-    float DebugAutoKillDelaySec = 3.f;
-
     // 현재 레이드에서 스폰된 보스 액터 참조.
     UPROPERTY()
     TObjectPtr<ALBRaidBossBase> SpawnedBoss;
@@ -90,8 +82,6 @@ protected:
     FTimerHandle CountdownTimerHandle;
     // 전투 제한 시간이 끝났을 때 패배 처리를 호출하는 타이머.
     FTimerHandle TimeLimitTimerHandle;
-    // 테스트 자동 처치 타이머.
-    FTimerHandle DebugAutoKillTimerHandle;
 
     // EndRaid가 중복 호출되는 것을 막는 플래그.
     bool bRaidEnded = false;
@@ -105,9 +95,6 @@ protected:
     bool SpawnBossFromData();
     // 제한 시간이 끝났을 때 레이드를 패배로 종료한다.
     void HandleTimeLimitReached();
-
-    // 디버그 옵션용: 서버에서 현재 보스에게 남은 HP만큼 데미지를 준다.
-    void DebugKillBoss_ServerOnly();
 
     // 승패 결과를 확정하고 타이머 정리, GameState 갱신, 로그 기록을 수행한다.
     void EndRaid(bool bVictory, ELBRaidEndReason EndReason);

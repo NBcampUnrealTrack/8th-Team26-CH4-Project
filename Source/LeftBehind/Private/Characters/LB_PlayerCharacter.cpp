@@ -47,6 +47,11 @@ ALB_PlayerCharacter::ALB_PlayerCharacter()
 UAbilitySystemComponent* ALB_PlayerCharacter::GetAbilitySystemComponent() const
 {
 	ALB_PlayerState* LBPlayerState = Cast<ALB_PlayerState>(GetPlayerState());
+	if (!IsValid(LBPlayerState) && IsValid(GetController()))
+	{
+		// Pawn의 PlayerState 복제가 아직 늦게 들어온 순간에는 Controller가 먼저 알고 있을 수 있다.
+		LBPlayerState = GetController()->GetPlayerState<ALB_PlayerState>();
+	}
 	if (!IsValid(LBPlayerState)) return nullptr;
 	
 	return LBPlayerState->GetAbilitySystemComponent();
@@ -55,6 +60,11 @@ UAbilitySystemComponent* ALB_PlayerCharacter::GetAbilitySystemComponent() const
 UAttributeSet* ALB_PlayerCharacter::GetAttributeSet() const
 {
 	const ALB_PlayerState* LBPlayerState = Cast<ALB_PlayerState>(GetPlayerState());
+	if (!IsValid(LBPlayerState) && IsValid(GetController()))
+	{
+		// AttributeSet도 ASC와 같은 PlayerState에서 가져와 플레이어 스탯 원본을 하나로 유지한다.
+		LBPlayerState = GetController()->GetPlayerState<ALB_PlayerState>();
+	}
 	if (!IsValid(LBPlayerState)) return nullptr;
 
 	return LBPlayerState->GetLBAttributeSet();
