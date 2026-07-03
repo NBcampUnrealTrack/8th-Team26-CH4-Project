@@ -10,6 +10,8 @@
 class USpringArmComponent;
 class UCameraComponent;
 class UAbilitySystemComponent;
+class UAttributeSet;
+
 UCLASS()
 class LEFTBEHIND_API ALB_PlayerCharacter : public ALB_BaseCharacter
 {
@@ -19,7 +21,16 @@ public:
 	// Sets default values for this character's properties
 	ALB_PlayerCharacter();
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
+	virtual UAttributeSet* GetAttributeSet() const override;
 	virtual void PossessedBy(AController* NewController) override;
+	virtual void OnRep_PlayerState() override;
+
+protected:
+	virtual void HandleDeath() override;
+
+private:
+	void InitializeAbilityActorInfo();
+	void BindHealthChangedDelegate();
 
 
 public:

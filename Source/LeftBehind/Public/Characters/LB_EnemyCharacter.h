@@ -17,14 +17,27 @@ class LEFTBEHIND_API ALB_EnemyCharacter : public ALB_BaseCharacter
 public:
 	// Sets default values for this character's properties
 	ALB_EnemyCharacter();
+	
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Replicated)
+	bool bIsBeingLaunched{false};
+	
+	void StopMovementUntilLanded();
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 	virtual UAttributeSet* GetAttributeSet() const override;
+	virtual void HandleDeath() override;
+
+
 	
 private:
+	
+	UFUNCTION()
+	void EnableMovementOnLanded(const FHitResult& Hit);
 	
 	UPROPERTY()
 	TObjectPtr<ULB_AbilitySystemComponent> AbilitySystemComponent;

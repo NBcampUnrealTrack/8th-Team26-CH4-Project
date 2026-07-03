@@ -24,6 +24,10 @@ struct FLBBossStatsRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	float MaxHP = 10000.f;
 
+	// 보스의 최대 마나. 아직 스킬 소비가 없어도 디버그/UI 확장을 위해 GAS Attribute에 넣어 둔다.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	float MaxMana = 100.f;
+
 	// 보스 방어력 값. 현재 기본 데미지 계산에는 직접 쓰이지 않지만 난이도 데이터로 보관한다.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	float DEF = 50.f;
