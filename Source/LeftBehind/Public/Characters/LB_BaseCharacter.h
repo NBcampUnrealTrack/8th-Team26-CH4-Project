@@ -12,6 +12,7 @@ struct FOnAttributeChangeData;
 class UGameplayAbility;
 class UGameplayEffect;
 class UAttributeSet;
+class UAnimMontage;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FASCInitialized, UAbilitySystemComponent*, ASC, UAttributeSet*, AS);
 
@@ -27,6 +28,10 @@ public:
 	virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 	virtual UAttributeSet* GetAttributeSet() const;
+
+	// 서버가 호출하면 모든 클라이언트가 같은 몽타주를 재생한다. 공격 판정은 서버, 모션은 모두에게 보이는 연출이다.
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastPlayCosmeticMontage(UAnimMontage* Montage, float PlayRate = 1.f);
 	
 	UPROPERTY(BlueprintAssignable)
 	FASCInitialized OnAscInitialized;

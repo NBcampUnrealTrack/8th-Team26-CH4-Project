@@ -48,9 +48,9 @@ public:
 	UPROPERTY(BlueprintAssignable, Category="LB|Boss")
 	FOnLBBossDiedSignature OnBossDied;
 
-	// 데이터 테이블에서 읽은 MaxHP/DEF로 보스 스탯을 서버에서 초기화한다.
+	// 데이터 테이블에서 읽은 MaxHP/MaxMana/DEF로 보스 스탯을 서버에서 초기화한다.
 	UFUNCTION(BlueprintCallable, Category="LB|Boss")
-	void InitializeBossStats_ServerOnly(float InMaxHP, float InDEF);
+	void InitializeBossStats_ServerOnly(float InMaxHP, float InMaxMana, float InDEF);
 
 	// 서버 권한으로 데미지를 적용하고 HP가 0 이하가 되면 사망 처리한다.
 	UFUNCTION(BlueprintCallable, Category="LB|Boss")
@@ -63,6 +63,14 @@ public:
 	// 최대 HP를 읽는다.
 	UFUNCTION(BlueprintPure, Category="LB|Boss")
 	float GetMaxHP() const { return MaxHP; }
+
+	// 현재 마나를 읽는다. 보스 마나는 GAS AttributeSet 값을 원본으로 사용한다.
+	UFUNCTION(BlueprintPure, Category="LB|Boss")
+	float GetCurrentMana() const;
+
+	// 최대 마나를 읽는다. 보스 스킬/디버그 UI가 같은 값을 참조하게 한다.
+	UFUNCTION(BlueprintPure, Category="LB|Boss")
+	float GetMaxMana() const;
 
 	// 방어력 값을 읽는다.
 	UFUNCTION(BlueprintPure, Category="LB|Boss")
@@ -96,6 +104,9 @@ protected:
 	// 이미 사망 처리된 보스에 데미지/사망 이벤트가 중복 적용되지 않도록 막는다.
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="LB|Boss")
 	bool bIsDead = false;
+
+	// 데이터 테이블 스탯을 넣는 중에는 중간 HP 값을 UI/GameState로 보내지 않는다.
+	bool bInitializingStats = false;
 
 	// CurrentHP가 복제될 때 HP 변경 델리게이트를 방송한다.
 	UFUNCTION()

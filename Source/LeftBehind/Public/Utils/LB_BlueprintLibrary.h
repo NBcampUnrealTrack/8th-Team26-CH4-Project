@@ -59,6 +59,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "LB|GAS")
 	static bool ApplyDamageEffect_ServerOnly(AActor* Source, AActor* Target, const TSubclassOf<UGameplayEffect>& DamageEffect, UPARAM(ref) FGameplayEventData& Payload, const FGameplayTag& DataTag, float Damage, const FGameplayTag& EventTagOverride, UObject* OptionalParticleSystem = nullptr);
 
+	UFUNCTION(BlueprintPure, Category = "LB|Combat")
+	static bool IsPlayerControlledCombatActor(const AActor* Actor);
+
+	UFUNCTION(BlueprintPure, Category = "LB|Combat")
+	static bool CanActorDamageTarget(const AActor* Source, const AActor* Target);
+
+	UFUNCTION(BlueprintCallable, Category = "LB|Combat")
+	static TArray<AActor*> FindDamageableActorsInHitBox(AActor* AvatarActor, float HitBoxRadius, float HitBoxForwardOffset = 0.f, float HitBoxElevationOffset = 0.f, bool bDrawDebugs = false);
 	
 	UFUNCTION(BlueprintCallable, Category = "Crash|Abilities")
 	static TArray<AActor*> HitBoxOverlapTest(AActor* AvatarActor, float HitBoxRadius, float HitBoxForwardOffset = 0.f, float HitBoxElevationOffset = 0.f, bool bDrawDebugs = false);

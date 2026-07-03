@@ -2,7 +2,7 @@
 
 namespace LBTags
 {
-	UE_DEFINE_GAMEPLAY_TAG_COMMENT(None, "CCTags.None", "None")
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(None, "LBTags.None", "None")
 	namespace LBAbilities
 	{
 
@@ -11,7 +11,7 @@ namespace LBTags
 		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Primary, "LBTags.LBAbilities.Primary", "Tag for the Primary Ability");
 		namespace Enemy
 		{
-			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Attack, "CCTags.CCAbilities.Enemy.Attack", "Enemy Attack Tag")
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Attack, "LBTags.LBAbilities.Enemy.Attack", "Enemy Attack Tag")
 		}
 
 		

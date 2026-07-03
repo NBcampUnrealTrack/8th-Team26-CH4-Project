@@ -89,6 +89,14 @@ public:
     // 서버에서 최종 결과 데이터를 확정한다.
     void SetRaidResult_ServerOnly(const FLBRaidResultData& NewResult);
 
+    // 서버에서 발생한 디버그 메시지를 모든 PIE 클라이언트 화면에 표시한다.
+    UFUNCTION(NetMulticast, Unreliable)
+    void MulticastRaidDebugMessage(const FString& Message, FColor Color, float Duration);
+
+    // ServerOnly Ability의 공격 판정 디버그 구체를 모든 클라이언트에도 보이게 한다.
+    UFUNCTION(NetMulticast, Unreliable)
+    void MulticastRaidDebugSphere(FVector Location, float Radius, FColor Color, float Duration);
+
 protected:
     // RaidState 복제 후 상태 변경 이벤트와 디버그 로그를 실행한다.
     UFUNCTION()
@@ -101,4 +109,10 @@ protected:
     // RaidResult 복제 후 결과 이벤트와 디버그 로그를 실행한다.
     UFUNCTION()
     void OnRep_RaidResult();
+
+private:
+    // 같은 보스 HP 값이 여러 경로에서 한 번에 들어와도 UI/로그를 중복 실행하지 않기 위한 마지막 알림 값이다.
+    bool bHasBroadcastBossHP = false;
+    float LastBroadcastBossCurrentHP = -1.f;
+    float LastBroadcastBossMaxHP = -1.f;
 };
