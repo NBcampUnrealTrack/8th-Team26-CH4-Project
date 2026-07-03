@@ -3,11 +3,16 @@
 
 #include "Characters/LB_PlayerController.h"
 #include "Characters/LB_PlayerController.h"
+
+#include "AbilitySystemBlueprintLibrary.h"
 #include "GameFramework/Character.h"          
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "EnhancedInputSubsystems.h"
 #include "EnhancedInputComponent.h"
+#include "AbilitySystemComponent.h"
+#include "AbilitySystemInterface.h"
+#include "GameplayTags/LBTags.h"
 
 
 void ALB_PlayerController::SetupInputComponent()
@@ -30,7 +35,7 @@ void ALB_PlayerController::SetupInputComponent()
 		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ThisClass::Move);
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &ThisClass::Look);
 		
-		EnhancedInputComponent->BindAction(PrimaryAction, ETriggerEvent::Started, this, &ThisClass::Primary);
+		EnhancedInputComponent->BindAction(PrimaryAction, ETriggerEvent::Triggered, this, &ThisClass::Primary);
 	}
 }
 
@@ -76,4 +81,13 @@ void ALB_PlayerController::Look(const FInputActionValue& Value)
 
 void ALB_PlayerController::Primary()
 {
+	ActivateAbility(LBTags::LBAbilities::Primary);
+}
+
+void ALB_PlayerController::ActivateAbility(const FGameplayTag& AbilityTag) const
+{
+	
+	UAbilitySystemComponent* ASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(GetPawn());
+	if (!IsValid(ASC)) return;
+	ASC->TryActivateAbilitiesByTag(AbilityTag.GetSingleTagContainer());
 }
