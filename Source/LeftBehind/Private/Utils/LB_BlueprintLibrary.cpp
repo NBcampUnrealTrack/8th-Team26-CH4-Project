@@ -2,13 +2,13 @@
 
 
 #include "Utils/LB_BlueprintLibrary.h"
+
+#include "AbilitySystemComponent.h"
 #include "AbilitySystemBlueprintLibrary.h"
-#include "InterchangeTranslatorBase.h"
-#include "ToolContextInterfaces.h"
 #include "AbilitySystem/LB_AttributeSet.h"
-#include "Chaos/Deformable/ChaosDeformableSolverProxy.h"
 #include "Characters/LB_BaseCharacter.h"
 #include "Characters/LB_EnemyCharacter.h"
+#include "DrawDebugHelpers.h"
 #include "Engine/OverlapResult.h"
 #include "GameplayTags/LBTags.h"
 #include "Kismet/GameplayStatics.h"
@@ -83,42 +83,108 @@ void ULB_BlueprintLibrary::SendDamageEventToPlayer(AActor* Target, const TSubcla
 	FGameplayEventData& Payload, const FGameplayTag& DataTag, float Damage, const FGameplayTag& EventTagOverride,
 	UObject* OptionalParticleSystem)
 {
-	/*ALB_BaseCharacter* PlayerCharacter = Cast<ALB_BaseCharacter>(Target);
-	if (!IsValid(PlayerCharacter)) return;
-	if (!PlayerCharacter->IsAlive()) return;
+	FGameplayTag ResolvedEventTag = EventTagOverride;
 
-	FGameplayTag EventTag;
-	if (!EventTagOverride.MatchesTagExact(LBTags::None))
+	if (!ResolvedEventTag.IsValid() || ResolvedEventTag.MatchesTagExact(LBTags::None))
 	{
-		EventTag = EventTagOverride;
+		if (const ALB_BaseCharacter* PlayerCharacter = Cast<ALB_BaseCharacter>(Target))
+		{
+			const ULB_AttributeSet* AttributeSet = Cast<ULB_AttributeSet>(PlayerCharacter->GetAttributeSet());
+			if (IsValid(AttributeSet))
+			{
+				const bool bLethal = AttributeSet->GetHealth() - FMath::Abs(Damage) <= 0.f;
+				ResolvedEventTag = bLethal ? LBTags::Events::Player::Death : LBTags::Events::Player::HitReact;
+			}
+		}
 	}
-	else
-	{
-		ULB_AttributeSet* AttributeSet = Cast<ULB_AttributeSet>(PlayerCharacter->GetAttributeSet());
-		if (!IsValid(AttributeSet)) return;
 
-		const bool bLethal = AttributeSet->GetHealth() - Damage <= 0.f;
-		EventTag = bLethal ? LBTags::Events::Player::Death : LBTags::Events::Player::HitReact;
-	}
-	
-	Payload.OptionalObject = OptionalParticleSystem;
-	UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(PlayerCharacter, EventTag, Payload);
-
-	UAbilitySystemComponent* TargetASC = PlayerCharacter->GetAbilitySystemComponent();
-	if (!IsValid(TargetASC)) return;
-
-	FGameplayEffectContextHandle ContextHandle = TargetASC->MakeEffectContext();
-	FGameplayEffectSpecHandle SpecHandle = TargetASC->MakeOutgoingSpec(DamageEffect, 1.f, ContextHandle);
-
-	UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(SpecHandle, DataTag, -Damage);
-
-	TargetASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());*/
+	AActor* SourceActor = const_cast<AActor*>(Payload.Instigator.Get());
+	ApplyDamageEffect_ServerOnly(SourceActor, Target, DamageEffect, Payload, DataTag, Damage, ResolvedEventTag, OptionalParticleSystem);
 }
 
 void ULB_BlueprintLibrary::SendDamageEventToPlayers(TArray<AActor*> Targets,
 	const TSubclassOf<UGameplayEffect>& DamageEffect, FGameplayEventData& Payload, const FGameplayTag& DataTag,
 	float Damage, const FGameplayTag& EventTagOverride, UObject* OptionalParticleSystem)
 {
+	for (AActor* Target : Targets)
+	{
+		SendDamageEventToPlayer(Target, DamageEffect, Payload, DataTag, Damage, EventTagOverride, OptionalParticleSystem);
+	}
+}
+
+bool ULB_BlueprintLibrary::ApplyDamageEffect_ServerOnly(AActor* Source, AActor* Target,
+	const TSubclassOf<UGameplayEffect>& DamageEffect, FGameplayEventData& Payload, const FGameplayTag& DataTag,
+	float Damage, const FGameplayTag& EventTagOverride, UObject* OptionalParticleSystem)
+{
+	if (!IsValid(Target) || !DamageEffect)
+	{
+		return false;
+	}
+
+	// 체력의 원본은 서버다. 클라이언트에서 호출되면 이 함수는 아무 값도 바꾸지 않는다.
+	if (!Target->HasAuthority())
+	{
+		return false;
+	}
+
+	const float SafeDamage = FMath::Abs(Damage);
+	if (SafeDamage <= 0.f)
+	{
+		return false;
+	}
+
+	if (const ALB_BaseCharacter* TargetCharacter = Cast<ALB_BaseCharacter>(Target); IsValid(TargetCharacter) && !TargetCharacter->IsAlive())
+	{
+		return false;
+	}
+
+	UAbilitySystemComponent* TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Target);
+	UAbilitySystemComponent* SourceASC = IsValid(Source) ? UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Source) : nullptr;
+	if (!IsValid(TargetASC))
+	{
+		return false;
+	}
+
+	if (!IsValid(SourceASC))
+	{
+		SourceASC = TargetASC;
+	}
+
+	FGameplayEffectContextHandle ContextHandle = SourceASC->MakeEffectContext();
+	if (IsValid(Source))
+	{
+		ContextHandle.AddSourceObject(Source);
+		ContextHandle.AddInstigator(Source, Source);
+	}
+
+	FGameplayEffectSpecHandle SpecHandle = SourceASC->MakeOutgoingSpec(DamageEffect, 1.f, ContextHandle);
+	if (!SpecHandle.IsValid())
+	{
+		return false;
+	}
+
+	const FGameplayTag MagnitudeTag =
+		(DataTag.IsValid() && !DataTag.MatchesTagExact(LBTags::None))
+		? DataTag
+		: LBTags::SetByCaller::Damage;
+
+	// GameplayEffect 안의 SetByCaller 값은 보통 "더하기"로 계산된다. 그래서 피해는 음수로 넣어 Health를 줄인다.
+	UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(SpecHandle, MagnitudeTag, -SafeDamage);
+
+	if (EventTagOverride.IsValid() && !EventTagOverride.MatchesTagExact(LBTags::None))
+	{
+		Payload.OptionalObject = OptionalParticleSystem;
+		Payload.Target = Target;
+		if (IsValid(Source))
+		{
+			Payload.Instigator = Source;
+		}
+
+		UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(Target, EventTagOverride, Payload);
+	}
+
+	SourceASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), TargetASC);
+	return true;
 }
 
 TArray<AActor*> ULB_BlueprintLibrary::HitBoxOverlapTest(AActor* AvatarActor, float HitBoxRadius,

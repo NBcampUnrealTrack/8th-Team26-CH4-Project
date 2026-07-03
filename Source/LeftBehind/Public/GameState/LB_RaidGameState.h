@@ -5,7 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/GameStateBase.h"
 #include "System/Raid/LBRaidTypes.h"
-#include "LBRaidGameState.generated.h"
+#include "LB_RaidGameState.generated.h"
 
 // 레이드 상태가 Waiting/Countdown/Battle/Result로 바뀔 때 UI가 반응할 수 있게 한다.
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLBRaidStateChanged, ELBRaidState, NewState);
@@ -16,12 +16,12 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLBRaidResultChanged, const FLBRai
 
 // 모든 클라이언트가 읽어야 하는 레이드 진행 상태를 복제하는 GameState.
 UCLASS()
-class LEFTBEHIND_API ALBRaidGameState : public AGameStateBase
+class LEFTBEHIND_API ALB_RaidGameState : public AGameStateBase
 {
     GENERATED_BODY()
 
 public:
-    ALBRaidGameState();
+    ALB_RaidGameState();
 
     // 레이드 상태, 시간, 보스 HP, 결과 데이터를 복제 대상으로 등록한다.
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;

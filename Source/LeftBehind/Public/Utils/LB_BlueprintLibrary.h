@@ -3,8 +3,12 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Abilities/GameplayAbilityTypes.h"
+#include "GameplayTagContainer.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "LB_BlueprintLibrary.generated.h"
+
+class UGameplayEffect;
 
 /**
  * 
@@ -51,6 +55,9 @@ public:
 
 	UFUNCTION(BlueprintCallable)
 	static void SendDamageEventToPlayers(TArray<AActor*> Targets, const TSubclassOf<UGameplayEffect>& DamageEffect, UPARAM(ref) FGameplayEventData& Payload, const FGameplayTag& DataTag, float Damage, const FGameplayTag& EventTagOverride, UObject* OptionalParticleSystem = nullptr);
+
+	UFUNCTION(BlueprintCallable, Category = "LB|GAS")
+	static bool ApplyDamageEffect_ServerOnly(AActor* Source, AActor* Target, const TSubclassOf<UGameplayEffect>& DamageEffect, UPARAM(ref) FGameplayEventData& Payload, const FGameplayTag& DataTag, float Damage, const FGameplayTag& EventTagOverride, UObject* OptionalParticleSystem = nullptr);
 
 	
 	UFUNCTION(BlueprintCallable, Category = "Crash|Abilities")

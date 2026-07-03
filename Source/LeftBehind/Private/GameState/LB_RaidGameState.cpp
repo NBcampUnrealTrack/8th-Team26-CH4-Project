@@ -1,6 +1,6 @@
 ﻿//LBRaidGameState.cpp
 
-#include "System/Raid/LBRaidGameState.h"
+#include "GameState/LB_RaidGameState.h"
 
 #include "Engine/Engine.h"
 #include "Net/UnrealNetwork.h"
@@ -12,26 +12,26 @@ static FString LBRaidStateToString(ELBRaidState State)
     return EnumPtr ? EnumPtr->GetNameStringByValue(static_cast<int64>(State)) : TEXT("Unknown");
 }
 
-ALBRaidGameState::ALBRaidGameState()
+ALB_RaidGameState::ALB_RaidGameState()
 {
     // GameState의 레이드 진행 정보는 모든 클라이언트가 공유해야 한다.
     bReplicates = true;
 }
 
-void ALBRaidGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+void ALB_RaidGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
     Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
-    DOREPLIFETIME(ALBRaidGameState, RaidState);
-    DOREPLIFETIME(ALBRaidGameState, CountdownEndServerTime);
-    DOREPLIFETIME(ALBRaidGameState, BattleStartServerTime);
-    DOREPLIFETIME(ALBRaidGameState, TimeLimitSec);
-    DOREPLIFETIME(ALBRaidGameState, BossCurrentHP);
-    DOREPLIFETIME(ALBRaidGameState, BossMaxHP);
-    DOREPLIFETIME(ALBRaidGameState, RaidResult);
+    DOREPLIFETIME(ALB_RaidGameState, RaidState);
+    DOREPLIFETIME(ALB_RaidGameState, CountdownEndServerTime);
+    DOREPLIFETIME(ALB_RaidGameState, BattleStartServerTime);
+    DOREPLIFETIME(ALB_RaidGameState, TimeLimitSec);
+    DOREPLIFETIME(ALB_RaidGameState, BossCurrentHP);
+    DOREPLIFETIME(ALB_RaidGameState, BossMaxHP);
+    DOREPLIFETIME(ALB_RaidGameState, RaidResult);
 }
 
-float ALBRaidGameState::GetCountdownRemaining() const
+float ALB_RaidGameState::GetCountdownRemaining() const
 {
     // 카운트다운 상태가 아니면 UI가 잔여 시간을 표시하지 않도록 0을 반환한다.
     if (RaidState != ELBRaidState::Countdown)
@@ -43,7 +43,7 @@ float ALBRaidGameState::GetCountdownRemaining() const
     return FMath::Max(0.f, CountdownEndServerTime - GetServerWorldTimeSeconds());
 }
 
-float ALBRaidGameState::GetBattleElapsed() const
+float ALB_RaidGameState::GetBattleElapsed() const
 {
     // 아직 전투가 시작되지 않았다면 경과 시간이 없다.
     if (BattleStartServerTime <= 0.f)
@@ -55,7 +55,7 @@ float ALBRaidGameState::GetBattleElapsed() const
     return FMath::Max(0.f, GetServerWorldTimeSeconds() - BattleStartServerTime);
 }
 
-float ALBRaidGameState::GetBattleRemaining() const
+float ALB_RaidGameState::GetBattleRemaining() const
 {
     // 전투 중일 때만 남은 시간을 표시한다.
     if (RaidState != ELBRaidState::Battle)
@@ -67,13 +67,13 @@ float ALBRaidGameState::GetBattleRemaining() const
     return FMath::Max(0.f, TimeLimitSec - GetBattleElapsed());
 }
 
-float ALBRaidGameState::GetBossHPRatio() const
+float ALB_RaidGameState::GetBossHPRatio() const
 {
     // BossMaxHP 기본값은 1이지만, 혹시 모를 0 나눗셈을 한 번 더 방어한다.
     return BossMaxHP > 0.f ? BossCurrentHP / BossMaxHP : 0.f;
 }
 
-void ALBRaidGameState::SetRaidState_ServerOnly(ELBRaidState NewState)
+void ALB_RaidGameState::SetRaidState_ServerOnly(ELBRaidState NewState)
 {
     // 레이드 상태 전환은 서버가 결정한다.
     if (!HasAuthority())
@@ -87,7 +87,7 @@ void ALBRaidGameState::SetRaidState_ServerOnly(ELBRaidState NewState)
     ForceNetUpdate();
 }
 
-void ALBRaidGameState::SetBossHP_ServerOnly(float CurrentHP, float MaxHP)
+void ALB_RaidGameState::SetBossHP_ServerOnly(float CurrentHP, float MaxHP)
 {
     // GameMode가 BossBase 이벤트를 받아 서버에서만 복제용 HP 값을 갱신한다.
     if (!HasAuthority())
@@ -104,7 +104,7 @@ void ALBRaidGameState::SetBossHP_ServerOnly(float CurrentHP, float MaxHP)
     ForceNetUpdate();
 }
 
-void ALBRaidGameState::SetRaidResult_ServerOnly(const FLBRaidResultData& NewResult)
+void ALB_RaidGameState::SetRaidResult_ServerOnly(const FLBRaidResultData& NewResult)
 {
     // 승패와 보상 기준 결과는 서버에서 확정한다.
     if (!HasAuthority())
@@ -118,7 +118,7 @@ void ALBRaidGameState::SetRaidResult_ServerOnly(const FLBRaidResultData& NewResu
     ForceNetUpdate();
 }
 
-void ALBRaidGameState::OnRep_RaidState()
+void ALB_RaidGameState::OnRep_RaidState()
 {
     // UI가 상태 전환을 감지할 수 있도록 델리게이트를 먼저 방송한다.
     OnRaidStateChanged.Broadcast(RaidState);
@@ -136,7 +136,7 @@ void ALBRaidGameState::OnRep_RaidState()
     }
 }
 
-void ALBRaidGameState::OnRep_BossHP()
+void ALB_RaidGameState::OnRep_BossHP()
 {
     // HP 바/보스 상태 UI가 이 이벤트를 구독한다.
     OnBossHPChanged.Broadcast(BossCurrentHP, BossMaxHP);
@@ -155,7 +155,7 @@ void ALBRaidGameState::OnRep_BossHP()
     }
 }
 
-void ALBRaidGameState::OnRep_RaidResult()
+void ALB_RaidGameState::OnRep_RaidResult()
 {
     // 결과 화면, 보상 안내, 로그 표시 등이 이 이벤트를 통해 최종 데이터를 받는다.
     OnRaidResultChanged.Broadcast(RaidResult);

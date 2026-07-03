@@ -17,10 +17,21 @@ namespace LBTags
 		
 
 	}
+
+	namespace SetByCaller
+	{
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Damage, "LBTags.SetByCaller.Damage", "Runtime damage magnitude for GameplayEffects")
+	}
 	
 	
 	namespace Events
 	{
+		namespace Player
+		{
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(HitReact, "LBTags.Events.Player.HitReact", "Player hit reaction event");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Death, "LBTags.Events.Player.Death", "Player death event");
+		}
+
 		namespace Enemy
 		{
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(HitReact,"LBTags.Events.Enemy.HitReact","Hit");

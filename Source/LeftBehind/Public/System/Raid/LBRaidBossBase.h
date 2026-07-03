@@ -4,8 +4,15 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "AbilitySystemInterface.h"
 #include "GameFramework/Character.h"
 #include "LBRaidBossBase.generated.h"
+
+struct FOnAttributeChangeData;
+class UAbilitySystemComponent;
+class UAttributeSet;
+class ULB_AbilitySystemComponent;
+class ULB_AttributeSet;
 
 // 보스 HP가 바뀔 때 GameMode/GameState/UI에 현재 HP와 최대 HP를 전달한다.
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnLBBossHPChangedSignature, float, CurrentHP, float, MaxHP);
@@ -14,15 +21,24 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnLBBossDiedSignature);
 
 // 레이드 보스 공통 베이스 클래스. HP/방어력/사망 상태를 서버 권한으로 관리하고 복제한다.
 UCLASS()
-class LEFTBEHIND_API ALBRaidBossBase : public ACharacter
+class LEFTBEHIND_API ALBRaidBossBase : public ACharacter, public IAbilitySystemInterface
 {
 	GENERATED_BODY()
 
 public:
 	ALBRaidBossBase();
 
+	virtual void BeginPlay() override;
 	// CurrentHP, MaxHP, DEF, bIsDead를 클라이언트에 복제 대상으로 등록한다.
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
+
+	// 보스의 AttributeSet을 읽는다. UI나 블루프린트가 GAS 수치를 직접 볼 때 사용한다.
+	UFUNCTION(BlueprintPure, Category="LB|Boss|GAS")
+	UAttributeSet* GetAttributeSet() const;
+
+	UFUNCTION(BlueprintPure, Category="LB|Boss|GAS")
+	ULB_AttributeSet* GetLBAttributeSet() const;
 
 	// HP 변경을 외부 로직과 UI에 알리는 블루프린트 바인딩 이벤트.
 	UPROPERTY(BlueprintAssignable, Category="LB|Boss")
@@ -57,6 +73,14 @@ public:
 	bool IsDead() const { return bIsDead; }
 
 protected:
+	// 레이드 보스도 ASC를 가진다. 데미지/버프/디버프는 이 통로를 통해 서버에서 계산된다.
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="LB|Boss|GAS")
+	TObjectPtr<ULB_AbilitySystemComponent> AbilitySystemComponent;
+
+	// Health/MaxHealth를 보관하는 GAS AttributeSet이다.
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="LB|Boss|GAS")
+	TObjectPtr<ULB_AttributeSet> AttributeSet;
+
 	// 현재 체력. RepNotify로 HP 변경 이벤트를 클라이언트에서 발생시킨다.
 	UPROPERTY(ReplicatedUsing=OnRep_CurrentHP, BlueprintReadOnly, Category="LB|Boss")
 	float CurrentHP = 10000.f;
@@ -77,6 +101,9 @@ protected:
 	UFUNCTION()
 	void OnRep_CurrentHP();
 
+	void BindGASAttributeDelegates();
+	void HandleHealthAttributeChanged(const FOnAttributeChangeData& AttributeChangeData);
+	void HandleMaxHealthAttributeChanged(const FOnAttributeChangeData& AttributeChangeData);
 	// 서버에서 보스 사망 상태를 확정하고 사망 이벤트를 한 번만 방송한다.
 	void Die_ServerOnly();
 };
