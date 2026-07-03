@@ -51,6 +51,7 @@ void ALB_EnemyCharacter::BeginPlay()
 	ULB_AttributeSet* Lb_AttributeSet = Cast<ULB_AttributeSet>(GetAttributeSet());
 	if (!IsValid(Lb_AttributeSet)) return;
 	
+	GetAbilitySystemComponent()->GetGameplayAttributeValueChangeDelegate(Lb_AttributeSet->GetHealthAttribute()).RemoveAll(this);
 	GetAbilitySystemComponent()->GetGameplayAttributeValueChangeDelegate(Lb_AttributeSet->GetHealthAttribute()).AddUObject(this,&ThisClass::OnHealthChanged);
 	
 }
@@ -87,7 +88,7 @@ void ALB_EnemyCharacter::StopMovementUntilLanded()
 }
 
 
-UAbilitySystemComponent* ALB_EnemyCharacter:: GetAbilitySystemComponent() const
+UAbilitySystemComponent* ALB_EnemyCharacter::GetAbilitySystemComponent() const
 {
 	return AbilitySystemComponent;
 }

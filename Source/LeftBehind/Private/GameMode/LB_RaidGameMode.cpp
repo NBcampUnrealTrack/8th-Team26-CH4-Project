@@ -1,10 +1,10 @@
 ﻿//LBRaidGameMode.cpp
 
-#include "System/Raid/LBRaidGameMode.h"
+#include "GameMode/LB_RaidGameMode.h"
 
-#include "System/Raid/LBRaidGameState.h"
+#include "GameState/LB_RaidGameState.h"
 #include "System/Raid/LBRaidBossBase.h"
-#include "System/Raid/LBPlayerState.h"
+#include "Player/LB_PlayerState.h"
 
 #include "Components/CapsuleComponent.h"
 #include "Engine/DataTable.h"
@@ -48,14 +48,14 @@ namespace
     }
 }
 
-ALBRaidGameMode::ALBRaidGameMode()
+ALB_RaidGameMode::ALB_RaidGameMode()
 {
     // 레이드 모드에서는 전용 GameState/PlayerState를 사용해 상태 복제와 사망 집계를 처리한다.
-    GameStateClass = ALBRaidGameState::StaticClass();
-    PlayerStateClass = ALBPlayerState::StaticClass();
+    GameStateClass = ALB_RaidGameState::StaticClass();
+    PlayerStateClass = ALB_PlayerState::StaticClass();
 }
 
-void ALBRaidGameMode::BeginPlay()
+void ALB_RaidGameMode::BeginPlay()
 {
     Super::BeginPlay();
 
@@ -70,7 +70,7 @@ void ALBRaidGameMode::BeginPlay()
         FColor::White
     );
 
-    if (ALBRaidGameState* RGS = GetLBRaidGameState())
+    if (ALB_RaidGameState* RGS = GetLBRaidGameState())
     {
         // 보스 데이터가 로드되기 전까지는 기본 제한 시간을 먼저 넣어 둔다.
         RGS->TimeLimitSec = DefaultTimeLimitSec;
@@ -94,13 +94,13 @@ void ALBRaidGameMode::BeginPlay()
     }
 }
 
-ALBRaidGameState* ALBRaidGameMode::GetLBRaidGameState() const
+ALB_RaidGameState* ALB_RaidGameMode::GetLBRaidGameState() const
 {
     // 캐스팅 로직을 한 곳에 모아 GameMode 내부 호출을 단순하게 만든다.
-    return GetGameState<ALBRaidGameState>();
+    return GetGameState<ALB_RaidGameState>();
 }
 
-void ALBRaidGameMode::StartCountdown()
+void ALB_RaidGameMode::StartCountdown()
 {
     // 이미 결과가 확정된 뒤에는 타이머를 새로 시작하지 않는다.
     if (bRaidEnded)
@@ -108,7 +108,7 @@ void ALBRaidGameMode::StartCountdown()
         return;
     }
 
-    ALBRaidGameState* RGS = GetLBRaidGameState();
+    ALB_RaidGameState* RGS = GetLBRaidGameState();
     if (!RGS)
     {
         LBRaidDebug(GetWorld(), TEXT("[RaidGM] ERROR: Cannot start countdown. RaidGameState is null."), FColor::Red, 10.f);
@@ -126,7 +126,7 @@ void ALBRaidGameMode::StartCountdown()
     GetWorldTimerManager().SetTimer(
         CountdownTimerHandle,
         this,
-        &ALBRaidGameMode::StartBattle,
+        &ALB_RaidGameMode::StartBattle,
         CountdownSec,
         false
     );
@@ -138,7 +138,7 @@ void ALBRaidGameMode::StartCountdown()
     );
 }
 
-void ALBRaidGameMode::StartBattle()
+void ALB_RaidGameMode::StartBattle()
 {
     // 레이드가 이미 끝났다면 카운트다운 타이머가 늦게 호출되어도 무시한다.
     if (bRaidEnded)
@@ -146,7 +146,7 @@ void ALBRaidGameMode::StartBattle()
         return;
     }
 
-    ALBRaidGameState* RGS = GetLBRaidGameState();
+    ALB_RaidGameState* RGS = GetLBRaidGameState();
     if (!RGS)
     {
         LBRaidDebug(GetWorld(), TEXT("[RaidGM] ERROR: Cannot start battle. RaidGameState is null."), FColor::Red, 10.f);
@@ -171,7 +171,7 @@ void ALBRaidGameMode::StartBattle()
     GetWorldTimerManager().SetTimer(
         TimeLimitTimerHandle,
         this,
-        &ALBRaidGameMode::HandleTimeLimitReached,
+        &ALB_RaidGameMode::HandleTimeLimitReached,
         RGS->TimeLimitSec,
         false
     );
@@ -183,7 +183,7 @@ void ALBRaidGameMode::StartBattle()
         GetWorldTimerManager().SetTimer(
             DebugAutoKillTimerHandle,
             this,
-            &ALBRaidGameMode::DebugKillBoss_ServerOnly,
+            &ALB_RaidGameMode::DebugKillBoss_ServerOnly,
             DebugAutoKillDelaySec,
             false
         );
@@ -203,7 +203,7 @@ void ALBRaidGameMode::StartBattle()
     );
 }
 
-bool ALBRaidGameMode::SpawnBossFromData()
+bool ALB_RaidGameMode::SpawnBossFromData()
 {
     // 보스 스폰에는 데이터 테이블이 필수다.
     if (!BossStatsTable)
@@ -316,12 +316,12 @@ bool ALBRaidGameMode::SpawnBossFromData()
     }
 
     // 보스의 HP/사망 이벤트를 GameMode에 연결해 GameState 갱신과 승리 처리를 이어 준다.
-    SpawnedBoss->OnBossHPChanged.AddDynamic(this, &ALBRaidGameMode::NotifyBossHPChanged);
-    SpawnedBoss->OnBossDied.AddDynamic(this, &ALBRaidGameMode::NotifyBossDied);
+    SpawnedBoss->OnBossHPChanged.AddDynamic(this, &ALB_RaidGameMode::NotifyBossHPChanged);
+    SpawnedBoss->OnBossDied.AddDynamic(this, &ALB_RaidGameMode::NotifyBossDied);
     // 데이터 테이블의 수치로 보스 체력을 초기화한다.
     SpawnedBoss->InitializeBossStats_ServerOnly(BossRow->MaxHP, BossRow->DEF);
 
-    if (ALBRaidGameState* RGS = GetLBRaidGameState())
+    if (ALB_RaidGameState* RGS = GetLBRaidGameState())
     {
         // 보스별 제한 시간과 초기 HP를 클라이언트 UI가 읽을 수 있도록 GameState에 복제한다.
         RGS->TimeLimitSec = BossRow->TimeLimitSec;
@@ -342,16 +342,16 @@ bool ALBRaidGameMode::SpawnBossFromData()
     return true;
 }
 
-void ALBRaidGameMode::NotifyBossHPChanged(float CurrentHP, float MaxHP)
+void ALB_RaidGameMode::NotifyBossHPChanged(float CurrentHP, float MaxHP)
 {
     // BossBase의 내부 HP 변경을 GameState의 복제용 HP 값으로 옮긴다.
-    if (ALBRaidGameState* RGS = GetLBRaidGameState())
+    if (ALB_RaidGameState* RGS = GetLBRaidGameState())
     {
         RGS->SetBossHP_ServerOnly(CurrentHP, MaxHP);
     }
 }
 
-void ALBRaidGameMode::NotifyBossDied()
+void ALB_RaidGameMode::NotifyBossDied()
 {
     // 이미 다른 조건으로 종료되었다면 보스 사망 이벤트를 무시한다.
     if (bRaidEnded)
@@ -363,7 +363,7 @@ void ALBRaidGameMode::NotifyBossDied()
     EndRaid(true, ELBRaidEndReason::BossKilled);
 }
 
-void ALBRaidGameMode::NotifyPlayerDied(AController* DeadController)
+void ALB_RaidGameMode::NotifyPlayerDied(AController* DeadController)
 {
     // 종료 후 이벤트나 잘못된 컨트롤러 입력은 집계하지 않는다.
     if (bRaidEnded || !DeadController)
@@ -372,7 +372,7 @@ void ALBRaidGameMode::NotifyPlayerDied(AController* DeadController)
     }
 
     // 사망한 플레이어의 레이드 전용 PlayerState를 찾아 사망 상태와 카운트를 갱신한다.
-    ALBPlayerState* LBPS = DeadController->GetPlayerState<ALBPlayerState>();
+    ALB_PlayerState* LBPS = DeadController->GetPlayerState<ALB_PlayerState>();
     if (!LBPS)
     {
         return;
@@ -392,7 +392,7 @@ void ALBRaidGameMode::NotifyPlayerDied(AController* DeadController)
     {
         for (APlayerState* PS : GameState->PlayerArray)
         {
-            const ALBPlayerState* OtherPS = Cast<ALBPlayerState>(PS);
+            const ALB_PlayerState* OtherPS = Cast<ALB_PlayerState>(PS);
             if (OtherPS && !OtherPS->IsDead())
             {
                 bAllDead = false;
@@ -408,7 +408,7 @@ void ALBRaidGameMode::NotifyPlayerDied(AController* DeadController)
     }
 }
 
-void ALBRaidGameMode::HandleTimeLimitReached()
+void ALB_RaidGameMode::HandleTimeLimitReached()
 {
     // 보스 처치나 전멸로 이미 끝난 뒤라면 시간 초과 처리는 하지 않는다.
     if (bRaidEnded)
@@ -420,7 +420,7 @@ void ALBRaidGameMode::HandleTimeLimitReached()
     EndRaid(false, ELBRaidEndReason::TimeOut);
 }
 
-void ALBRaidGameMode::DebugKillBoss_ServerOnly()
+void ALB_RaidGameMode::DebugKillBoss_ServerOnly()
 {
     // 디버그 처치도 실제 데미지 적용처럼 서버에서만 실행한다.
     if (!HasAuthority())
@@ -439,7 +439,7 @@ void ALBRaidGameMode::DebugKillBoss_ServerOnly()
     SpawnedBoss->ApplyRaidDamage_ServerOnly(SpawnedBoss->GetCurrentHP());
 }
 
-void ALBRaidGameMode::EndRaid(bool bVictory, ELBRaidEndReason EndReason)
+void ALB_RaidGameMode::EndRaid(bool bVictory, ELBRaidEndReason EndReason)
 {
     // 보스 사망, 전멸, 시간 초과가 동시에 들어와도 결과는 한 번만 확정한다.
     if (bRaidEnded)
@@ -454,7 +454,7 @@ void ALBRaidGameMode::EndRaid(bool bVictory, ELBRaidEndReason EndReason)
     GetWorldTimerManager().ClearTimer(TimeLimitTimerHandle);
     GetWorldTimerManager().ClearTimer(DebugAutoKillTimerHandle);
 
-    ALBRaidGameState* RGS = GetLBRaidGameState();
+    ALB_RaidGameState* RGS = GetLBRaidGameState();
     if (!RGS)
     {
         return;
@@ -497,7 +497,7 @@ void ALBRaidGameMode::EndRaid(bool bVictory, ELBRaidEndReason EndReason)
     );
 }
 
-int32 ALBRaidGameMode::GetTotalPlayerDeaths() const
+int32 ALB_RaidGameMode::GetTotalPlayerDeaths() const
 {
     int32 TotalDeaths = 0;
 
@@ -510,7 +510,7 @@ int32 ALBRaidGameMode::GetTotalPlayerDeaths() const
     // 레이드 전용 PlayerState만 골라 사망 횟수를 합산한다.
     for (APlayerState* PS : GameState->PlayerArray)
     {
-        if (const ALBPlayerState* LBPS = Cast<ALBPlayerState>(PS))
+        if (const ALB_PlayerState* LBPS = Cast<ALB_PlayerState>(PS))
         {
             TotalDeaths += LBPS->GetDeathCount();
         }
@@ -519,13 +519,13 @@ int32 ALBRaidGameMode::GetTotalPlayerDeaths() const
     return TotalDeaths;
 }
 
-float ALBRaidGameMode::GetBossRemainingHP() const
+float ALB_RaidGameMode::GetBossRemainingHP() const
 {
     // 보스 스폰 실패 후 종료될 수 있으므로 null이면 0으로 처리한다.
     return SpawnedBoss ? SpawnedBoss->GetCurrentHP() : 0.f;
 }
 
-FName ALBRaidGameMode::CalculateRank(float ClearTimeSec) const
+FName ALB_RaidGameMode::CalculateRank(float ClearTimeSec) const
 {
     // 랭크 테이블이 없으면 클리어는 성공하더라도 랭크 없이 기록한다.
     if (!RankDataTable)
@@ -557,7 +557,7 @@ FName ALBRaidGameMode::CalculateRank(float ClearTimeSec) const
     return BestMatchedRow ? BestMatchedRow->RankID : NAME_None;
 }
 
-void ALBRaidGameMode::WriteRaidLog(const FLBRaidResultData& ResultData) const
+void ALB_RaidGameMode::WriteRaidLog(const FLBRaidResultData& ResultData) const
 {
     // 프로젝트 Saved 폴더 아래에 레이드 결과 CSV를 누적한다.
     const FString LogDirectory = FPaths::ProjectSavedDir() / TEXT("RaidLogs");

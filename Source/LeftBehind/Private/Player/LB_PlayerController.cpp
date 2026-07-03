@@ -1,17 +1,13 @@
 ﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 
-#include "Characters/LB_PlayerController.h"
-#include "Characters/LB_PlayerController.h"
+#include "Player/LB_PlayerController.h"
 
 #include "AbilitySystemBlueprintLibrary.h"
-#include "GameFramework/Character.h"          
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
-#include "EnhancedInputSubsystems.h"
-#include "EnhancedInputComponent.h"
 #include "AbilitySystemComponent.h"
-#include "AbilitySystemInterface.h"
+#include "GameFramework/Character.h"
 #include "GameplayTags/LBTags.h"
 
 
@@ -19,23 +15,40 @@ void ALB_PlayerController::SetupInputComponent()
 {
 	Super::SetupInputComponent();
 	
-	UEnhancedInputLocalPlayerSubsystem* InputSubsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer());
+	ULocalPlayer* LocalPlayer = GetLocalPlayer();
+	if (!IsValid(LocalPlayer)) return;
+
+	UEnhancedInputLocalPlayerSubsystem* InputSubsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(LocalPlayer);
 	if (!IsValid(InputSubsystem)) return;
-	if (IsValid(InputSubsystem))
+
+	for (UInputMappingContext* Context : InputMappingContexts)
 	{
-		for (UInputMappingContext* Context : InputMappingContexts)
+		if (IsValid(Context))
 		{
 			InputSubsystem->AddMappingContext(Context, 0);
 		}
-		UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(InputComponent);
-	
-		if (!IsValid(EnhancedInputComponent)) return;
+	}
+
+	UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(InputComponent);
+	if (!IsValid(EnhancedInputComponent)) return;
+
+	if (IsValid(JumpAction))
+	{
 		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &ThisClass::Jump);
 		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ThisClass::StopJumping);
+	}
+	if (IsValid(MoveAction))
+	{
 		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ThisClass::Move);
+	}
+	if (IsValid(LookAction))
+	{
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &ThisClass::Look);
-		
-		EnhancedInputComponent->BindAction(PrimaryAction, ETriggerEvent::Triggered, this, &ThisClass::Primary);
+	}
+	if (IsValid(PrimaryAction))
+	{
+		// Started는 버튼을 누른 첫 순간만 호출된다. 공격 능력이 프레임마다 반복 발동되는 것을 막는다.
+		EnhancedInputComponent->BindAction(PrimaryAction, ETriggerEvent::Started, this, &ThisClass::Primary);
 	}
 }
 
@@ -86,8 +99,9 @@ void ALB_PlayerController::Primary()
 
 void ALB_PlayerController::ActivateAbility(const FGameplayTag& AbilityTag) const
 {
-	
 	UAbilitySystemComponent* ASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(GetPawn());
 	if (!IsValid(ASC)) return;
+
+	// 클라이언트가 입력을 보내면 ASC가 예측 활성화를 시도하고, 서버가 최종 권한으로 확정한다.
 	ASC->TryActivateAbilitiesByTag(AbilityTag.GetSingleTagContainer());
 }

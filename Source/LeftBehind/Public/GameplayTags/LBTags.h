@@ -18,9 +18,20 @@ namespace LBTags
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Attack);
 		}
 	}
+
+	namespace SetByCaller
+	{
+		UE_DECLARE_GAMEPLAY_TAG_EXTERN(Damage);
+	}
 	
 	namespace Events
 	{
+		namespace Player
+		{
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(HitReact);
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Death);
+		}
+
 		namespace Enemy
 		{
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(HitReact);

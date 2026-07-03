@@ -6,21 +6,21 @@
 #include "GameFramework/GameModeBase.h"
 #include "System/Raid/LBRaidTypes.h"
 #include "System/Raid/LBRaidDataRows.h"
-#include "LBRaidGameMode.generated.h"
+#include "LB_RaidGameMode.generated.h"
 
-class ALBRaidGameState;
+class ALB_RaidGameState;
 class ALBRaidBossBase;
 class UDataTable;
 
 // 레이드 전체 진행을 서버에서 제어하는 GameMode.
 // 카운트다운, 보스 스폰, 승패 판정, 랭크 계산, 결과 로그 기록을 담당한다.
 UCLASS()
-class LEFTBEHIND_API ALBRaidGameMode : public AGameModeBase
+class LEFTBEHIND_API ALB_RaidGameMode : public AGameModeBase
 {
     GENERATED_BODY()
 
 public:
-    ALBRaidGameMode();
+    ALB_RaidGameMode();
 
     // 레이드 GameState를 초기화하고 설정에 따라 자동 카운트다운을 시작한다.
     virtual void BeginPlay() override;
@@ -97,7 +97,7 @@ protected:
     bool bRaidEnded = false;
 
     // 현재 월드의 레이드 전용 GameState를 가져온다.
-    ALBRaidGameState* GetLBRaidGameState() const;
+    ALB_RaidGameState* GetLBRaidGameState() const;
 
     // 카운트다운 종료 후 보스를 스폰하고 Battle 상태로 전환한다.
     void StartBattle();

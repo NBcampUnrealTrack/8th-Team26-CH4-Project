@@ -7,6 +7,7 @@
 #include "InputActionValue.h"
 #include "InputMappingContext.h"
 #include "InputAction.h"
+#include "GameplayTagContainer.h"
 #include "LB_PlayerController.generated.h"
 
 /**
