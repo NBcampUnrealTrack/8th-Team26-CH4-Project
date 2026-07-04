@@ -1,14 +1,16 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 
-#include "Controller/Enemy/LB_EnemyBaseController.h"
+#include "Controller/LB_BossController.h"
+
+#include "BehaviorTree/BehaviorTree.h"
+#include "Characters/Boss/LB_BossCharacter.h"
 #include "Controller/Component/LB_AttackPatternComponent.h"
 #include "Controller/Component/LB_ThreatComponent.h"
-#include "GameplayTags/LBTags.h"
 
 
 // Sets default values
-ALB_EnemyBaseController::ALB_EnemyBaseController()
+ALB_BossController::ALB_BossController()
 {
 	
 	PrimaryActorTick.bCanEverTick = false;
@@ -17,14 +19,18 @@ ALB_EnemyBaseController::ALB_EnemyBaseController()
 	
 	ThreatComponent = CreateDefaultSubobject<ULB_ThreatComponent>(TEXT("ThreatComponent"));
 	
-	
-	
-	
 }
 
-void ALB_EnemyBaseController::BeginPlay()
+void ALB_BossController::OnPossess(APawn* InPawn)
 {
-	Super::BeginPlay();
+	Super::OnPossess(InPawn);
+	ALB_BossCharacter* Boss = Cast<ALB_BossCharacter>(InPawn);
+	if (!Boss) return;
+	
+	if (IsValid(BehaviorTree))
+	{
+		RunBehaviorTree(BehaviorTree);
+	}
 	
 	
 }

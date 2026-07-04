@@ -69,6 +69,17 @@ void ULB_AttributeSet::PostGameplayEffectExecute(const struct FGameplayEffectMod
 		bAttributeInitialized = true;
 		OnAttributesInitialized.Broadcast();
 	}
+	
+	if (Data.EvaluatedData.Attribute == GetHealthAttribute())
+	{
+		const FGameplayEffectContextHandle Context = Data.EffectSpec.GetContext();
+		AActor* Instigator = Context.GetInstigator();
+		AActor* Causer = Context.GetEffectCauser();
+		float Damage = Data.EvaluatedData.Magnitude;
+		
+		ActorDamaged.Broadcast(Instigator,Causer,Damage);
+		
+	}
 }
 
 void ULB_AttributeSet::OnRep_AttributesInitalized()

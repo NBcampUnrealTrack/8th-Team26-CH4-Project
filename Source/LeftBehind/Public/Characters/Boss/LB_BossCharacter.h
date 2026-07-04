@@ -7,6 +7,8 @@
 #include "Characters/LB_BaseCharacter.h"
 #include "LB_BossCharacter.generated.h"
 
+class ULB_AttackPatternComponent;
+class ULB_ThreatComponent;
 class UAttributeSet;
 class ULB_AbilitySystemComponent;
 
@@ -32,6 +34,7 @@ class LEFTBEHIND_API ALB_BossCharacter : public ALB_BaseCharacter
 
 public:
 	ALB_BossCharacter();
+	
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
@@ -41,6 +44,8 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Replicated)
 	bool bIsBeingLaunched{false};
+	
+
 
 	void StopMovementUntilLanded();
 
@@ -55,11 +60,11 @@ protected:
 private:
 	UFUNCTION()
 	void EnableMovementOnLanded(const FHitResult& Hit);
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GAS", meta=(AllowPrivateAccess=true))
+	
+	UPROPERTY()
 	TObjectPtr<ULB_AbilitySystemComponent> AbilitySystemComponent;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GAS", meta=(AllowPrivateAccess=true))
+	
+	UPROPERTY()
 	TObjectPtr<UAttributeSet> Attributeset;
 
 	UPROPERTY(EditAnywhere, Category="Boss|Phase", meta=(AllowPrivateAccess=true))

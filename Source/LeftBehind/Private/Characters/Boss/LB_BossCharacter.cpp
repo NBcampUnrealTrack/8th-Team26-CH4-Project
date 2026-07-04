@@ -18,6 +18,7 @@ ALB_BossCharacter::ALB_BossCharacter()
 	AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Mixed);
 
 	Attributeset = CreateDefaultSubobject<ULB_AttributeSet>(TEXT("AttributeSet"));
+
 }
 
 void ALB_BossCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
