@@ -6,12 +6,20 @@
 #include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystem/LB_AbilitySystemComponent.h"
 #include "AbilitySystem/LB_AttributeSet.h"
+#include "Components/CapsuleComponent.h"
 #include "GameplayTags/LBTags.h"
 #include "Net/UnrealNetwork.h"
 
 ALB_BossCharacter::ALB_BossCharacter()
 {
 	PrimaryActorTick.bCanEverTick = false;
+
+	if (UCapsuleComponent* Capsule = GetCapsuleComponent())
+	{
+		// 충돌 판정은 그대로 쓰고, 플레이 화면에서는 캡슐 디버그 선만 숨긴다.
+		Capsule->SetHiddenInGame(true);
+		Capsule->SetVisibility(false);
+	}
 
 	AbilitySystemComponent = CreateDefaultSubobject<ULB_AbilitySystemComponent>(TEXT("AbilitySystemComponent"));
 	AbilitySystemComponent->SetIsReplicated(true);
@@ -104,15 +112,7 @@ void ALB_BossCharacter::HandlePaseChanged(const FOnAttributeChangeData& Attribut
 
 	CurrentPhaseIndex = NewPhaseIndex;
 
-	if (GEngine)
-	{
-		GEngine->AddOnScreenDebugMessage(
-			-1,
-			5.0f,
-			FColor::Red,
-			FString::Printf(TEXT("%d Phase Activate"), CurrentPhaseIndex + 1)
-		);
-	}
+	UE_LOG(LogTemp, Warning, TEXT("[LB Boss] Phase %d activated"), CurrentPhaseIndex + 1);
 
 	if (PhaseInfos.IsValidIndex(CurrentPhaseIndex))
 	{

@@ -8,7 +8,6 @@
 
 #include "Components/CapsuleComponent.h"
 #include "Engine/DataTable.h"
-#include "Engine/Engine.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -18,12 +17,16 @@ namespace
 {
     void LBRaidDebug(UWorld* World, const FString& Message, const FColor Color = FColor::Yellow, const float Duration = 5.f)
     {
-        // 서버 로그와 클라이언트 화면 디버그 메시지를 한 곳에서 같이 처리한다.
+        // 테스트 메시지는 게임 화면을 가리지 않도록 Output Log에만 남긴다.
         UE_LOG(LogTemp, Warning, TEXT("%s"), *Message);
 
-        if (GEngine && World && World->GetNetMode() != NM_DedicatedServer)
+        if (World && World->GetAuthGameMode())
         {
-            GEngine->AddOnScreenDebugMessage(-1, Duration, Color, Message);
+            if (ALB_RaidGameState* RaidGameState = World->GetGameState<ALB_RaidGameState>())
+            {
+                RaidGameState->MulticastRaidDebugMessage(Message, Color, Duration);
+                return;
+            }
         }
     }
 
@@ -176,26 +179,6 @@ void ALB_RaidGameMode::StartBattle()
         false
     );
 
-    if (bDebugAutoKillBoss)
-    {
-        // 테스트 편의를 위해 일정 시간 후 보스를 자동 처치할 수 있다.
-        GetWorldTimerManager().ClearTimer(DebugAutoKillTimerHandle);
-        GetWorldTimerManager().SetTimer(
-            DebugAutoKillTimerHandle,
-            this,
-            &ALB_RaidGameMode::DebugKillBoss_ServerOnly,
-            DebugAutoKillDelaySec,
-            false
-        );
-
-        LBRaidDebug(
-            GetWorld(),
-            FString::Printf(TEXT("[RaidGM] DebugAutoKillBoss enabled. Boss will die in %.1f sec."), DebugAutoKillDelaySec),
-            FColor::Orange,
-            6.f
-        );
-    }
-
     LBRaidDebug(
         GetWorld(),
         FString::Printf(TEXT("[RaidGM] Battle started. TimeLimit=%.1f"), RGS->TimeLimitSec),
@@ -318,25 +301,31 @@ bool ALB_RaidGameMode::SpawnBossFromData()
     // 보스의 HP/사망 이벤트를 GameMode에 연결해 GameState 갱신과 승리 처리를 이어 준다.
     SpawnedBoss->OnBossHPChanged.AddDynamic(this, &ALB_RaidGameMode::NotifyBossHPChanged);
     SpawnedBoss->OnBossDied.AddDynamic(this, &ALB_RaidGameMode::NotifyBossDied);
-    // 데이터 테이블의 수치로 보스 체력을 초기화한다.
-    SpawnedBoss->InitializeBossStats_ServerOnly(BossRow->MaxHP, BossRow->DEF);
+    // 데이터 테이블의 수치로 보스 HP/마나를 최대치까지 채운다.
+    SpawnedBoss->InitializeBossStats_ServerOnly(BossRow->MaxHP, BossRow->MaxMana, BossRow->DEF);
 
     if (ALB_RaidGameState* RGS = GetLBRaidGameState())
     {
         // 보스별 제한 시간과 초기 HP를 클라이언트 UI가 읽을 수 있도록 GameState에 복제한다.
         RGS->TimeLimitSec = BossRow->TimeLimitSec;
-        RGS->SetBossHP_ServerOnly(BossRow->MaxHP, BossRow->MaxHP);
+        RGS->SetBossHP_ServerOnly(SpawnedBoss->GetCurrentHP(), SpawnedBoss->GetMaxHP());
     }
 
-    UE_LOG(
-        LogTemp,
-        Warning,
-        TEXT("[RaidGM] Boss spawned. Actor=%s Location=%s Scale=%s HP=%.0f DEF=%.0f"),
-        *SpawnedBoss->GetName(),
-        *SpawnedBoss->GetActorLocation().ToString(),
-        *SpawnedBoss->GetActorScale3D().ToString(),
-        BossRow->MaxHP,
-        BossRow->DEF
+    LBRaidDebug(
+        GetWorld(),
+        FString::Printf(
+            TEXT("[RaidGM] Boss spawned. Actor=%s HP=%.0f/%.0f Mana=%.0f/%.0f DEF=%.0f Location=%s Scale=%s"),
+            *SpawnedBoss->GetName(),
+            SpawnedBoss->GetCurrentHP(),
+            SpawnedBoss->GetMaxHP(),
+            SpawnedBoss->GetCurrentMana(),
+            SpawnedBoss->GetMaxMana(),
+            SpawnedBoss->GetDEF(),
+            *SpawnedBoss->GetActorLocation().ToString(),
+            *SpawnedBoss->GetActorScale3D().ToString()
+        ),
+        FColor::Cyan,
+        8.f
     );
 
     return true;
@@ -420,25 +409,6 @@ void ALB_RaidGameMode::HandleTimeLimitReached()
     EndRaid(false, ELBRaidEndReason::TimeOut);
 }
 
-void ALB_RaidGameMode::DebugKillBoss_ServerOnly()
-{
-    // 디버그 처치도 실제 데미지 적용처럼 서버에서만 실행한다.
-    if (!HasAuthority())
-    {
-        return;
-    }
-
-    if (!SpawnedBoss)
-    {
-        LBRaidDebug(GetWorld(), TEXT("[RaidGM] DebugKillBoss failed. SpawnedBoss is null."), FColor::Red, 8.f);
-        return;
-    }
-
-    LBRaidDebug(GetWorld(), TEXT("[RaidGM] DebugKillBoss executed."), FColor::Orange, 6.f);
-    // 남은 HP만큼 데미지를 넣어 일반 사망 처리 경로를 그대로 타게 한다.
-    SpawnedBoss->ApplyRaidDamage_ServerOnly(SpawnedBoss->GetCurrentHP());
-}
-
 void ALB_RaidGameMode::EndRaid(bool bVictory, ELBRaidEndReason EndReason)
 {
     // 보스 사망, 전멸, 시간 초과가 동시에 들어와도 결과는 한 번만 확정한다.
@@ -452,7 +422,6 @@ void ALB_RaidGameMode::EndRaid(bool bVictory, ELBRaidEndReason EndReason)
     // 종료 이후 남아 있는 타이머가 추가 상태 변경을 만들지 않도록 모두 정리한다.
     GetWorldTimerManager().ClearTimer(CountdownTimerHandle);
     GetWorldTimerManager().ClearTimer(TimeLimitTimerHandle);
-    GetWorldTimerManager().ClearTimer(DebugAutoKillTimerHandle);
 
     ALB_RaidGameState* RGS = GetLBRaidGameState();
     if (!RGS)
