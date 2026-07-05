@@ -111,6 +111,11 @@ void ALB_PlayerState::AddDeathCount_ServerOnly()
 	ForceNetUpdate();
 }
 
+void ALB_PlayerState::ServerRPCSetPlayerName_Implementation(const FString& InName)
+{
+	SetPlayerName(InName);
+}
+
 void ALB_PlayerState::OnRep_RoleID()
 {
 	// RoleID를 직접 읽지 않는 UI도 이벤트만 구독하면 변경을 알 수 있다.

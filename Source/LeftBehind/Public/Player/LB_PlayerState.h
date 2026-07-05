@@ -72,6 +72,9 @@ public:
     UFUNCTION(BlueprintPure, Category="LB|PlayerState")
     FName GetRoleID() const { return RoleID; }
 
+    UFUNCTION(Server, BlueprintCallable, Reliable)
+    void ServerRPCSetPlayerName(const FString& InName);
+
     // 누적 사망 횟수를 읽는다.
     UFUNCTION(BlueprintPure, Category="LB|PlayerState")
     int32 GetDeathCount() const { return DeathCount; }
@@ -92,7 +95,7 @@ protected:
     // 레이드 역할 식별자. 클라이언트에는 OnRep_RoleID를 통해 변경 이벤트가 전달된다.
     UPROPERTY(ReplicatedUsing=OnRep_RoleID, BlueprintReadOnly, Category="LB|Raid")
     FName RoleID = "Role_DPS";
-
+    
     // 레이드 중 누적 사망 횟수. 결과 집계에서 전체 플레이어 사망 수 계산에 사용한다.
     UPROPERTY(ReplicatedUsing=OnRep_DeathCount, BlueprintReadOnly, Category="LB|Raid")
     int32 DeathCount = 0;
