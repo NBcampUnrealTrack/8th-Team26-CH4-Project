@@ -111,6 +111,12 @@ void ALB_PlayerState::AddDeathCount_ServerOnly()
 	ForceNetUpdate();
 }
 
+
+FText ALB_PlayerState::GetPlayerNameText() const
+{
+	return FText::FromString(GetPlayerName());
+}
+
 void ALB_PlayerState::ServerRPCSetPlayerName_Implementation(const FString& InName)
 {
 	SetPlayerName(InName);

@@ -14,7 +14,7 @@
 #include "GameplayTags/LBTags.h"
 #include "TimerManager.h"
 #include "UI/LB_AttributeWidget.h"
-#include "UI/LB_RaidResultWidget.h"
+#include "UI/Popup/LB_RaidResultWidget.h"
 #include "UObject/ConstructorHelpers.h"
 
 ALB_PlayerController::ALB_PlayerController()
@@ -397,7 +397,6 @@ void ALB_PlayerController::ShowRaidVictoryWidget(const FLBRaidResultData& Result
 	if (IsValid(RaidVictoryWidget))
 	{
 		// 결과 데이터는 서버에서 확정되어 GameState로 복제된 값만 사용한다.
-		RaidVictoryWidget->SetRaidResult(ResultData);
 		RaidVictoryWidget->SetVisibility(ESlateVisibility::HitTestInvisible);
 	}
 }

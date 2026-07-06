@@ -14,10 +14,10 @@ class LEFTBEHIND_API ULB_AttributeWidget : public UUserWidget
 	GENERATED_BODY()
 public:
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Crash|Attributes")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LB|Attributes")
 	FGameplayAttribute Attribute;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Crash|Attributes")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LB|Attributes")
 	FGameplayAttribute MaxAttribute;
 
 	void OnAttributeChange(const TTuple<FGameplayAttribute, FGameplayAttribute>& Pair, ULB_AttributeSet* AttributeSet);

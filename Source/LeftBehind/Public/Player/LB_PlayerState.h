@@ -72,6 +72,10 @@ public:
     UFUNCTION(BlueprintPure, Category="LB|PlayerState")
     FName GetRoleID() const { return RoleID; }
 
+    // 현재 플레이어 이름을 반환한다.
+    UFUNCTION(BlueprintPure, Category="LB|PlayerState")
+    FText GetPlayerNameText() const;
+    
     UFUNCTION(Server, BlueprintCallable, Reliable)
     void ServerRPCSetPlayerName(const FString& InName);
 
