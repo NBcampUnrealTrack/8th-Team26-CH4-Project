@@ -14,8 +14,42 @@ ULB_AttackPatternComponent::ULB_AttackPatternComponent()
 
 }
 
-void ULB_AttackPatternComponent::SelectAttackPattern()
+//가능한 능력을 선택한다.
+FGameplayAbilitySpecHandle ULB_AttackPatternComponent::SelectAttackPattern()
 {
+
+	CandidateSkillList.Empty();
+	
+	if (!CacahedASC.IsValid()) return FGameplayAbilitySpecHandle(); // invalid handle 반환
+
+		
+
+	
+	FGameplayTag SearchTag = FGameplayTag::RequestGameplayTag(TEXT("LBTags.Abilities"));
+	
+	
+	for (FGameplayAbilitySpec& Spec : CacahedASC->GetActivatableAbilities())
+	{
+		if (!Spec.Ability->AbilityTags.HasTag(SearchTag)) continue;
+		if (!Spec.Ability->CanActivateAbility(Spec.Handle, CacahedASC->AbilityActorInfo.Get())) continue;
+		
+		
+		
+		CandidateSkillList.Add(Spec.Handle);
+
+	}
+	
+	if (CandidateSkillList.IsEmpty()) return FGameplayAbilitySpecHandle();
+	
+	return CandidateSkillList[0];
+	
+}
+
+void ULB_AttackPatternComponent::BeginPlay()
+{
+	Super::BeginPlay();
+	
+	
 	ALB_BossController* BossController=  Cast<ALB_BossController>(GetOwner());
 	if (!BossController) return;
 	
@@ -23,19 +57,6 @@ void ULB_AttackPatternComponent::SelectAttackPattern()
 	if (!BossCharacter) return;
 	
 	CacahedASC = Cast<ULB_AbilitySystemComponent>(BossCharacter->GetAbilitySystemComponent());
-	if (!CacahedASC) return;
-	
-	TArray<FGameplayAbilitySpec*> SkillList;
-	FGameplayTag SearchTag = FGameplayTag::RequestGameplayTag(TEXT("LBTags.Abilities"));
-	
-	for (FGameplayAbilitySpec& Spec : CacahedASC->GetActivatableAbilities())
-	{
-		if (!Spec.Ability->AbilityTags.HasTag(SearchTag)) continue;
-		if ()
-
-	}
-	
-	
 	
 }	
 

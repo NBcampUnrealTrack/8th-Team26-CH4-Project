@@ -4,17 +4,15 @@
 #include "Controller/Component/LB_ThreatComponent.h"
 
 #include "AbilitySystem/LB_AttributeSet.h"
-#include "Characters/LB_BaseCharacter.h"
 
 
 // Sets default values for this component's properties
 ULB_ThreatComponent::ULB_ThreatComponent()
 {
-	// Set this component to be initialized when the game starts, and to be ticked every frame.  You can turn these features
-	// off to improve performance if you don't need them.
-	PrimaryComponentTick.bCanEverTick = true;
 
-	// ...
+	PrimaryComponentTick.bCanEverTick = false;
+
+
 }
 
 void ULB_ThreatComponent::BeginPlay()
@@ -31,35 +29,61 @@ void ULB_ThreatComponent::BeginPlay()
 	
 }
 
-ALB_BaseCharacter* ULB_ThreatComponent::SelectMostThreatCharacter()
+void ULB_ThreatComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-	Target = UpdateThreatMap();
+	Super::EndPlay(EndPlayReason);
 	
-	if (ALB_BaseCharacter* ALB_Target = Cast<ALB_BaseCharacter>(Target))
-		return ALB_Target;
+	ALB_BaseCharacter* Boss = Cast<ALB_BaseCharacter>(GetOwner());
+	if (!IsValid(Boss)) return;
 	
-	return nullptr;
+	ULB_AttributeSet* BossAttributeSet = Cast<ULB_AttributeSet>(Boss->GetAttributeSet()) ;
+	if (!IsValid(BossAttributeSet)) return;
+	
+	BossAttributeSet->ActorDamaged.RemoveDynamic(this,&ULB_ThreatComponent::UpdateDamageMap);
+}
+
+AActor* ULB_ThreatComponent::SelectMostThreatCharacter()
+{
+	ALB_BaseCharacter* CurrentTarget = Cast<ALB_BaseCharacter>(Target);
+	if (!Target) return nullptr;
+	
+	float CurrentTargetThreat = ThreatMap.FindRef(CurrentTarget);
+	
+	ALB_BaseCharacter* NewTarget = nullptr;
+	float NewTargetThreat = 0;
+	
+	for (const TPair<ALB_BaseCharacter*, float>& Pair : ThreatMap)
+	{
+		if (NewTargetThreat < Pair.Value)
+		{
+			NewTarget = Pair.Key;
+			NewTargetThreat = Pair.Value;
+		}
+	}
+	
+	if (NewTarget == nullptr || NewTarget == Target) return Target;
+	if (CurrentTargetThreat* Margin >= NewTargetThreat) return Target;
+	
+	
+	Target = NewTarget;
+	OnThreatTargetChanged.Broadcast(Target);
+	
+	
+	return Target;
 	
 	
 }
 
-AActor* ULB_ThreatComponent::UpdateThreatMap()
+void ULB_ThreatComponent::UpdateThreatMap( AActor* Instigator,  AActor* Causer, float Damage)
 {
-	AActor* MostThreater = nullptr;
-	float StrongestDamage = 0;
-	
-	for (const TPair<AActor*, float>& Pair : DamageMap)
+	//지금은 데미지 지표만 넣어놓고, 추후 힐량 등등의 요소 추가
+	float Threat = Damage;
+	if (ALB_BaseCharacter* ALB_Instigator = Cast<ALB_BaseCharacter>(Instigator))
 	{
-		if (StrongestDamage < Pair.Value)
-		{
-			MostThreater = Pair.Key;
-			StrongestDamage = Pair.Value;
-		}
+		ThreatMap.FindOrAdd(ALB_Instigator)+=Threat;	
 	}
 	
-	if (MostThreater == nullptr || MostThreater == Target) return nullptr;
-	
-	return MostThreater;
+
 	
 	
 	
@@ -73,7 +97,7 @@ void ULB_ThreatComponent::UpdateDamageMap( AActor* Instigator,  AActor* Causer, 
 	}
 	
 	
-	UpdateThreatMap();
+	UpdateThreatMap( Instigator, Causer, Damage);
 	
 }
 

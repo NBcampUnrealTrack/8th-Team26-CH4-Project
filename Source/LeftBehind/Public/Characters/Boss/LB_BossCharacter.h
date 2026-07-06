@@ -3,10 +3,13 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "ActiveGameplayEffectHandle.h"
 #include "GameplayTagContainer.h"
 #include "Characters/LB_BaseCharacter.h"
+#include "GameplayTags/LBTags.h"
 #include "LB_BossCharacter.generated.h"
 
+struct FGameplayAbilitySpecHandle;
 class ULB_AttackPatternComponent;
 class ULB_ThreatComponent;
 class UAttributeSet;
@@ -23,6 +26,10 @@ struct FPhaseInfo
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Boss|Phase")
 	float HealthThreshold = 0.f;
+	
+	UPROPERTY(EditAnywhere,BlueprintReadOnly, Category = "Boss|Phase")
+	TArray<TSubclassOf<UGameplayAbility>> PhaseSkill;
+	
 };
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FPhaseChange, FGameplayTag, PhaseTag);
@@ -34,28 +41,53 @@ class LEFTBEHIND_API ALB_BossCharacter : public ALB_BaseCharacter
 
 public:
 	ALB_BossCharacter();
-	
+	virtual void BeginPlay() override;
+	virtual UAttributeSet* GetAttributeSet() const override;
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 
-	UPROPERTY(BlueprintAssignable, Category="Boss|Phase")
-	FPhaseChange PhaseChange;
+
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Replicated)
 	bool bIsBeingLaunched{false};
 	
+	
+	// ----- Phase -----
+	UPROPERTY(BlueprintAssignable, Category="Boss|Phase")
+	FPhaseChange PhaseChange;
+	
+	UPROPERTY(EditDefaultsOnly, Category = "Boss|Phase")
+	TSubclassOf<UGameplayEffect> PhaseTagGrantEffectClass;
 
-
+	
 	void StopMovementUntilLanded();
+	
+	// ---- Attack ----
+	ULB_ThreatComponent* GetThreatComponent() {return ThreatComponent;}
+	ULB_AttackPatternComponent* GetAttackComponent() { return AttackPatternComponent;}
+	
+	//Player에게 접근하기 위한 거리
+	UPROPERTY(EditAnywhere,BlueprintReadOnly, Category = "BOSS|AI")
+	float MeleeDistance;
+	
+	UPROPERTY(EditAnywhere,BlueprintReadOnly, Category = "BOSS|AI")
+	float RangedDistance;
 
 protected:
-	virtual void BeginPlay() override;
-	virtual UAttributeSet* GetAttributeSet() const override;
+
 	virtual void HandleDeath() override;
 
+	TObjectPtr<ULB_ThreatComponent> ThreatComponent;
+	
+	TObjectPtr<ULB_AttackPatternComponent> AttackPatternComponent;
+	
+	
+	// ----- Phase -----
 	virtual void HandlePaseChanged(const FOnAttributeChangeData& AttributeChangeData);
 	virtual int32 CalculatePhase(const FOnAttributeChangeData& AttributeChangeData);
+	
+	void ApplyPhaseAbilities(int32 PhaseIndex);
 
 private:
 	UFUNCTION()
@@ -66,10 +98,18 @@ private:
 	
 	UPROPERTY()
 	TObjectPtr<UAttributeSet> Attributeset;
+	
+	// ---- Phase ----
 
 	UPROPERTY(EditAnywhere, Category="Boss|Phase", meta=(AllowPrivateAccess=true))
 	TArray<FPhaseInfo> PhaseInfos;
 
 	UPROPERTY()
 	int32 CurrentPhaseIndex = INDEX_NONE;
+	
+	UPROPERTY()
+	FActiveGameplayEffectHandle CurrentPhaseTagHandle;
+	
+	UPROPERTY()
+	TArray<FGameplayAbilitySpecHandle> CurrentPhaseAbilityHandles;
 };

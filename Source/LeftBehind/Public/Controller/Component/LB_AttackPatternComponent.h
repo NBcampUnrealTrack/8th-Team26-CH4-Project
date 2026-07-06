@@ -7,6 +7,7 @@
 #include "LB_AttackPatternComponent.generated.h"
 
 
+struct FGameplayAbilitySpecHandle;
 class ULB_AbilitySystemComponent;
 
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
@@ -18,10 +19,14 @@ public:
 	// Sets default values for this component's properties
 	ULB_AttackPatternComponent();
 	
-	void SelectAttackPattern();
+	FGameplayAbilitySpecHandle SelectAttackPattern();
+	
+	virtual void BeginPlay() override;
 private:
 	
-	ULB_AbilitySystemComponent* CacahedASC;
+	TWeakObjectPtr<ULB_AbilitySystemComponent> CacahedASC;
+	
+	TArray<FGameplayAbilitySpecHandle> CandidateSkillList;
 	
 	
 	
