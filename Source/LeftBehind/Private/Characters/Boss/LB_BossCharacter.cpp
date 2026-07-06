@@ -75,7 +75,8 @@ void ALB_BossCharacter::BeginPlay()
 
 	ULB_AttributeSet* LBAttributeSet = Cast<ULB_AttributeSet>(GetAttributeSet());
 	if (!IsValid(LBAttributeSet)) return;
-
+	LBAttributeSet->FillCurrentAttributesToMax();
+	
 	ASC->GetGameplayAttributeValueChangeDelegate(LBAttributeSet->GetHealthAttribute()).RemoveAll(this);
 	ASC->GetGameplayAttributeValueChangeDelegate(LBAttributeSet->GetHealthAttribute()).AddUObject(this, &ThisClass::OnHealthChanged);
 	// 보스 HP가 줄어들 때 페이즈 변경 조건도 함께 검사한다.

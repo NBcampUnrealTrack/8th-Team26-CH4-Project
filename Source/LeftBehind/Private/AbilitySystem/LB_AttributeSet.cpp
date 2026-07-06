@@ -97,10 +97,12 @@ void ULB_AttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbac
 	//ActorDamage는 데미지 입력시에 확인 용도
 	if (Data.EvaluatedData.Attribute == GetHealthAttribute())
 	{
+		UE_LOG(LogTemp, Warning, TEXT("HP Decreased"));
 		const FGameplayEffectContextHandle Context = Data.EffectSpec.GetContext();
-		AActor* Instigator = Context.GetInstigator();
+		AActor* Instigator = Context.GetOriginalInstigator();
 		AActor* Causer = Context.GetEffectCauser();
 		float Damage = Data.EvaluatedData.Magnitude;
+		
 		
 		ActorDamaged.Broadcast(Instigator,Causer,Damage);
 		

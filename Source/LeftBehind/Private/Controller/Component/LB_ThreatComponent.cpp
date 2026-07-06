@@ -10,6 +10,7 @@
 ULB_ThreatComponent::ULB_ThreatComponent()
 {
 
+	Margin = 1.0f;
 	PrimaryComponentTick.bCanEverTick = false;
 
 
@@ -24,6 +25,8 @@ void ULB_ThreatComponent::BeginPlay()
 	
 	ULB_AttributeSet* BossAttributeSet = Cast<ULB_AttributeSet>(Boss->GetAttributeSet()) ;
 	if (!IsValid(BossAttributeSet)) return;
+	
+	
 	
 	BossAttributeSet->ActorDamaged.AddDynamic(this,&ULB_ThreatComponent::UpdateDamageMap);
 	
@@ -44,10 +47,14 @@ void ULB_ThreatComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 AActor* ULB_ThreatComponent::SelectMostThreatCharacter()
 {
-	ALB_BaseCharacter* CurrentTarget = Cast<ALB_BaseCharacter>(Target);
-	if (!Target) return nullptr;
 	
-	float CurrentTargetThreat = ThreatMap.FindRef(CurrentTarget);
+	float CurrentTargetThreat =0;
+	if (Target != nullptr)
+	{
+		ALB_BaseCharacter* CurrentTarget = Cast<ALB_BaseCharacter>(Target);
+		CurrentTargetThreat = ThreatMap.FindRef(CurrentTarget);
+	}
+
 	
 	ALB_BaseCharacter* NewTarget = nullptr;
 	float NewTargetThreat = 0;
@@ -58,12 +65,18 @@ AActor* ULB_ThreatComponent::SelectMostThreatCharacter()
 		{
 			NewTarget = Pair.Key;
 			NewTargetThreat = Pair.Value;
+			/*UE_LOG(LogTemp, Warning, TEXT("New Target : %s, ThreatMap Num: %d"), *GetNameSafe(NewTarget), ThreatMap.Num());*/
+			
+			
 		}
+		
 	}
+	
 	
 	if (NewTarget == nullptr || NewTarget == Target) return Target;
 	if (CurrentTargetThreat* Margin >= NewTargetThreat) return Target;
 	
+
 	
 	Target = NewTarget;
 	OnThreatTargetChanged.Broadcast(Target);
@@ -80,6 +93,7 @@ void ULB_ThreatComponent::UpdateThreatMap( AActor* Instigator,  AActor* Causer, 
 	float Threat = Damage;
 	if (ALB_BaseCharacter* ALB_Instigator = Cast<ALB_BaseCharacter>(Instigator))
 	{
+		/*UE_LOG(LogTemp, Warning, TEXT("Instigator : %s"), *GetNameSafe(Instigator));*/
 		ThreatMap.FindOrAdd(ALB_Instigator)+=Threat;	
 	}
 	
@@ -91,8 +105,11 @@ void ULB_ThreatComponent::UpdateThreatMap( AActor* Instigator,  AActor* Causer, 
 
 void ULB_ThreatComponent::UpdateDamageMap( AActor* Instigator,  AActor* Causer, float Damage)
 {
+	if (Instigator == GetOwner()) return;
 	if (ALB_BaseCharacter* ALB_Instigator = Cast<ALB_BaseCharacter>(Instigator))
 	{
+
+		/*UE_LOG(LogTemp, Warning, TEXT("UpdatedamageMap Activate"));*/
 		DamageMap.FindOrAdd(ALB_Instigator)+=Damage;	
 	}
 	
