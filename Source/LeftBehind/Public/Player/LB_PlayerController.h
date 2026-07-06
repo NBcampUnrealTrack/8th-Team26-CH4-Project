@@ -53,6 +53,12 @@ private:
 	UPROPERTY(EditDefaultsOnly, Category = "LB|Input|Abilities")
 	TObjectPtr<UInputAction> PrimaryAction;
 
+	// 꾹 눌러 연사할 때 몽타주가 매 프레임 끊기지 않도록 두는 최소 재발동 간격이다.
+	UPROPERTY(EditDefaultsOnly, Category = "LB|Input|Abilities", meta = (ClampMin = "0.01"))
+	float PrimaryActivationInterval = 0.3f;
+
+	float LastPrimaryActivationTime = -1.f;
+
 	// 화면 상단에 띄울 보스 HP 위젯이다. 기본값은 WBP_HealthBar이고, 필요하면 전용 WBP로 교체할 수 있다.
 	UPROPERTY(EditDefaultsOnly, Category = "LB|UI|Raid")
 	TSubclassOf<ULB_AttributeWidget> BossHPWidgetClass;

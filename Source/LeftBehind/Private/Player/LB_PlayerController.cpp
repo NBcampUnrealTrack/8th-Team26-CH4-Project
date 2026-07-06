@@ -14,7 +14,7 @@
 #include "GameplayTags/LBTags.h"
 #include "TimerManager.h"
 #include "UI/LB_AttributeWidget.h"
-#include "UI/LB_RaidResultWidget.h"
+#include "UI/Popup/LB_RaidResultWidget.h"
 #include "UObject/ConstructorHelpers.h"
 
 ALB_PlayerController::ALB_PlayerController()
@@ -55,7 +55,7 @@ void ALB_PlayerController::SetupInputComponent()
 	}
 	if (IsValid(PrimaryAction))
 	{
-		EnhancedInputComponent->BindAction(PrimaryAction, ETriggerEvent::Started, this, &ThisClass::Primary);
+		EnhancedInputComponent->BindAction(PrimaryAction, ETriggerEvent::Triggered, this, &ThisClass::Primary);
 	}
 }
 
@@ -140,6 +140,14 @@ void ALB_PlayerController::Look(const FInputActionValue& Value)
 
 void ALB_PlayerController::Primary()
 {
+	const UWorld* World = GetWorld();
+	const float CurrentTime = World ? World->GetTimeSeconds() : 0.f;
+	if (CurrentTime - LastPrimaryActivationTime < PrimaryActivationInterval)
+	{
+		return;
+	}
+	LastPrimaryActivationTime = CurrentTime;
+
 	RequestPrimaryAttack();
 }
 
@@ -397,7 +405,6 @@ void ALB_PlayerController::ShowRaidVictoryWidget(const FLBRaidResultData& Result
 	if (IsValid(RaidVictoryWidget))
 	{
 		// 결과 데이터는 서버에서 확정되어 GameState로 복제된 값만 사용한다.
-		RaidVictoryWidget->SetRaidResult(ResultData);
 		RaidVictoryWidget->SetVisibility(ESlateVisibility::HitTestInvisible);
 	}
 }
