@@ -16,7 +16,7 @@
 #include "GameState/LB_RaidGameState.h"
 #include "GameplayTags/LBTags.h"
 #include "Kismet/GameplayStatics.h"
-#include "System/Raid/LBRaidBossBase.h"
+#include "Characters/Boss/LB_BossCharacter.h"
 
 EHitDirection ULB_BlueprintLibrary::GetHitDirection(const FVector& TargetForward, const FVector& ToInstigator)
 {
@@ -149,7 +149,7 @@ bool ULB_BlueprintLibrary::ApplyDamageEffect_ServerOnly(AActor* Source, AActor* 
 		return false;
 	}
 
-	if (const ALBRaidBossBase* RaidBoss = Cast<ALBRaidBossBase>(Target); IsValid(RaidBoss) && RaidBoss->IsDead())
+	if (const ALB_BossCharacter* RaidBoss = Cast<ALB_BossCharacter>(Target); IsValid(RaidBoss) && RaidBoss->IsDead())
 	{
 		return false;
 	}
@@ -301,7 +301,7 @@ TArray<AActor*> ULB_BlueprintLibrary::FindDamageableActorsInHitBox(AActor* Avata
 			continue;
 		}
 
-		if (const ALBRaidBossBase* RaidBoss = Cast<ALBRaidBossBase>(HitActor); IsValid(RaidBoss) && RaidBoss->IsDead())
+		if (const ALB_BossCharacter* RaidBoss = Cast<ALB_BossCharacter>(HitActor); IsValid(RaidBoss) && RaidBoss->IsDead())
 		{
 			continue;
 		}

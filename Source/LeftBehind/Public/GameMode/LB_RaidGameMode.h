@@ -6,10 +6,11 @@
 #include "GameFramework/GameModeBase.h"
 #include "System/Raid/LBRaidTypes.h"
 #include "System/Raid/LBRaidDataRows.h"
+#include "Characters/Boss/LB_BossCharacter.h"
 #include "LB_RaidGameMode.generated.h"
 
 class ALB_RaidGameState;
-class ALBRaidBossBase;
+class ALB_BossCharacter;
 class UDataTable;
 
 // 레이드 전체 진행을 서버에서 제어하는 GameMode.
@@ -49,6 +50,8 @@ protected:
     // 보스 스탯과 보스 클래스 정보를 담은 데이터 테이블.
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Raid|Data")
     TObjectPtr<UDataTable> BossStatsTable;
+    
+
 
     // BossStatsTable에서 사용할 행 이름.
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Raid|Data")
@@ -76,7 +79,7 @@ protected:
 
     // 현재 레이드에서 스폰된 보스 액터 참조.
     UPROPERTY()
-    TObjectPtr<ALBRaidBossBase> SpawnedBoss;
+    TObjectPtr<ALB_BossCharacter> SpawnedBoss;
 
     // 카운트다운 종료 후 StartBattle을 호출하는 타이머.
     FTimerHandle CountdownTimerHandle;
