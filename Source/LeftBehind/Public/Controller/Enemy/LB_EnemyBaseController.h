@@ -3,8 +3,12 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Controller/Component/LB_AttackPatternComponent.h"
+#include "Controller/Component/LB_ThreatComponent.h"
 #include "Runtime/AIModule/Classes/AIController.h"
 #include "LB_EnemyBaseController.generated.h"
+
+class ULB_AbilitySystemComponent;
 
 UCLASS()
 class LEFTBEHIND_API ALB_EnemyBaseController : public AAIController
@@ -14,8 +18,18 @@ class LEFTBEHIND_API ALB_EnemyBaseController : public AAIController
 public:
 	// Sets default values for this actor's properties
 	ALB_EnemyBaseController();
+	
+	virtual void BeginPlay() override;
 
 private:
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly,Category = "BOSS|AI", meta=(AllowPrivateAccess = true))
+	TObjectPtr<ULB_ThreatComponent> ThreatComponent;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly,Category = "BOSS|AI", meta=(AllowPrivateAccess = true))
+	TObjectPtr<ULB_AttackPatternComponent> AttackPatternComponent;
+	
+	
 	
 	UPROPERTY(EditAnywhere,BlueprintReadOnly,Category = "BOSS|AI",meta=(AllowPrivateAccess=true))
 	TObjectPtr<UBlackboardComponent> BlackboardComponent;

@@ -15,6 +15,7 @@ GAMEPLAYATTRIBUTE_VALUE_SETTER(PropertyName) \
 GAMEPLAYATTRIBUTE_VALUE_INITTER(PropertyName)
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FAttributesInitialized);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FActorDamaged,AActor*, Instigator,AActor*, Causer, float, Damage);
 /**
  * 
  */
@@ -26,6 +27,9 @@ class LEFTBEHIND_API ULB_AttributeSet : public UAttributeSet
 public:
 	UPROPERTY(BlueprintAssignable)
 	FAttributesInitialized OnAttributesInitialized;
+	
+	UPROPERTY(BlueprintAssignable)
+	FActorDamaged ActorDamaged;
 	
 	virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;
 	

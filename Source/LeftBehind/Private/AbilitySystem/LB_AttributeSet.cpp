@@ -94,8 +94,24 @@ void ULB_AttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbac
 		SetMana(FMath::Clamp(GetMana(), 0.f, GetMaxMana()));
 	}
 
+	//ActorDamage는 데미지 입력시에 확인 용도
+	if (Data.EvaluatedData.Attribute == GetHealthAttribute())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("HP Decreased"));
+		const FGameplayEffectContextHandle Context = Data.EffectSpec.GetContext();
+		AActor* Instigator = Context.GetOriginalInstigator();
+		AActor* Causer = Context.GetEffectCauser();
+		float Damage = Data.EvaluatedData.Magnitude;
+		
+		
+		ActorDamaged.Broadcast(Instigator,Causer,Damage);
+		
+	}
+
+
 	// 초기화 완료 방송은 FillCurrentAttributesToMax()에서만 한다.
 	// GE가 MaxHealth만 먼저 적용한 중간 상태를 UI가 "초기화 완료"로 오해하지 않게 하기 위함이다.
+
 }
 
 void ULB_AttributeSet::OnRep_AttributesInitalized()

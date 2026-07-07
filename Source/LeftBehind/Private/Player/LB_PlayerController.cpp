@@ -55,7 +55,7 @@ void ALB_PlayerController::SetupInputComponent()
 	}
 	if (IsValid(PrimaryAction))
 	{
-		EnhancedInputComponent->BindAction(PrimaryAction, ETriggerEvent::Started, this, &ThisClass::Primary);
+		EnhancedInputComponent->BindAction(PrimaryAction, ETriggerEvent::Triggered, this, &ThisClass::Primary);
 	}
 }
 
@@ -140,6 +140,14 @@ void ALB_PlayerController::Look(const FInputActionValue& Value)
 
 void ALB_PlayerController::Primary()
 {
+	const UWorld* World = GetWorld();
+	const float CurrentTime = World ? World->GetTimeSeconds() : 0.f;
+	if (CurrentTime - LastPrimaryActivationTime < PrimaryActivationInterval)
+	{
+		return;
+	}
+	LastPrimaryActivationTime = CurrentTime;
+
 	RequestPrimaryAttack();
 }
 
