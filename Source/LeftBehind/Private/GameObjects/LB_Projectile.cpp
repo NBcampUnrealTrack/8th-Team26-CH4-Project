@@ -27,6 +27,9 @@ void ALB_Projectile::NotifyActorBeginOverlap(AActor* OtherActor)
 	
 	FGameplayEffectContextHandle ContextHandle = AbilitySystemComponent->MakeEffectContext();
 	FGameplayEffectSpecHandle SpecHandle = AbilitySystemComponent->MakeOutgoingSpec(DamageEffect, 1.f, ContextHandle);
+	
+	AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+	Destroy();
 }
 
 
