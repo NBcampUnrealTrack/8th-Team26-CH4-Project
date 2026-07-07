@@ -27,5 +27,5 @@ protected:
 	TObjectPtr<UProjectileMovementComponent> ProjectileMovement;
 	
 	UPROPERTY(EditAnywhere, Category = "LB|Heal")
-	TSubclassOf<UGameplayEffect> DamageEffect;
+	TSubclassOf<UGameplayEffect> HealEffect;
 };

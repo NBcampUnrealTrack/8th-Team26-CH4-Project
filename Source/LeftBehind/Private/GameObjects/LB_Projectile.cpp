@@ -20,13 +20,13 @@ void ALB_Projectile::NotifyActorBeginOverlap(AActor* OtherActor)
 	Super::NotifyActorBeginOverlap(OtherActor);
 	
 	ALB_PlayerCharacter* PlayerCharacter = Cast<ALB_PlayerCharacter>(OtherActor);
-	if (!IsValid(PlayerCharacter) && !PlayerCharacter->IsAlive()) return;
+	if (!IsValid(PlayerCharacter) || !PlayerCharacter->IsAlive()) return;
 	
 	UAbilitySystemComponent* AbilitySystemComponent = PlayerCharacter->GetAbilitySystemComponent();
 	if (!IsValid(AbilitySystemComponent) || !HasAuthority()) return;
 	
 	FGameplayEffectContextHandle ContextHandle = AbilitySystemComponent->MakeEffectContext();
-	FGameplayEffectSpecHandle SpecHandle = AbilitySystemComponent->MakeOutgoingSpec(DamageEffect, 1.f, ContextHandle);
+	FGameplayEffectSpecHandle SpecHandle = AbilitySystemComponent->MakeOutgoingSpec(HealEffect, 1.f, ContextHandle);
 	
 	AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
 	Destroy();
