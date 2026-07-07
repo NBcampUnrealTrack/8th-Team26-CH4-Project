@@ -6,7 +6,7 @@
 #include "../Base/LB_BaseRaidWidget.h"
 #include "LB_RaidHUDWidget.generated.h"
 
-// UI 상태 관리자
+// UI 상태 관리자 + 전체 조합 -> 최종 UI
 // RaidState 감지 후, 보여줄 UI 결정 (대기->카운트다운->배틀->결과)
 // 자식 위젯을 보여주고 숨기는 것만 담당할 것
 
@@ -39,10 +39,6 @@ protected:
 	// 결과 팝업
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<ULB_RaidResultWidget> ResultWidget;
-
-	// 결과 팝업 뒤 어두운 배경
-	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UOverlay> ResultOverlay;
 
 private:
 	

@@ -10,7 +10,7 @@
 void ULB_RaidHUDWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
-	ShowWaiting();
+	ShowCountdown();
 }
 
 void ULB_RaidHUDWidget::HandleRaidStateChanged(ELBRaidState NewState)
@@ -57,9 +57,9 @@ void ULB_RaidHUDWidget::ShowWaiting()
 		CountdownWidget->SetVisibility(ESlateVisibility::Hidden);
 	}
 
-	if (ResultOverlay)
+	if (ResultWidget)
 	{
-		ResultOverlay->SetVisibility(ESlateVisibility::Hidden);
+		ResultWidget->SetVisibility(ESlateVisibility::Hidden);
 	}
 }
 
@@ -75,9 +75,9 @@ void ULB_RaidHUDWidget::ShowCountdown()
 		CountdownWidget->SetVisibility(ESlateVisibility::Visible);
 	}
 
-	if (ResultOverlay)
+	if (ResultWidget)
 	{
-		ResultOverlay->SetVisibility(ESlateVisibility::Hidden);
+		ResultWidget->SetVisibility(ESlateVisibility::Hidden);
 	}
 }
 
@@ -93,9 +93,9 @@ void ULB_RaidHUDWidget::ShowBattle()
 		CountdownWidget->SetVisibility(ESlateVisibility::Hidden);
 	}
 
-	if (ResultOverlay)
+	if (ResultWidget)
 	{
-		ResultOverlay->SetVisibility(ESlateVisibility::Hidden);
+		ResultWidget->SetVisibility(ESlateVisibility::Hidden);
 	}
 }
 
@@ -111,8 +111,8 @@ void ULB_RaidHUDWidget::ShowResult()
 		CountdownWidget->SetVisibility(ESlateVisibility::Hidden);
 	}
 
-	if (ResultOverlay)
+	if (ResultWidget)
 	{
-		ResultOverlay->SetVisibility(ESlateVisibility::Visible);
+		ResultWidget->SetVisibility(ESlateVisibility::Visible);
 	}
 }
