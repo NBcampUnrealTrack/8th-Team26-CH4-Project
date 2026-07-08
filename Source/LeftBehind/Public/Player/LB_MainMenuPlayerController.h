@@ -28,5 +28,5 @@ private:
 	void ServerStartHunt();
 
 	UPROPERTY(EditDefaultsOnly, Category = "LB|MainMenu")
-	FString HuntMapURL = TEXT("/Game/LeftBehind/Maps/Blockout/Main?listen");
+	FString HuntMapURL = TEXT("/Game/LeftBehind/Maps/Main?listen");
 };
