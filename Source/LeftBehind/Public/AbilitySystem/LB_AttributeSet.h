@@ -15,7 +15,8 @@ GAMEPLAYATTRIBUTE_VALUE_SETTER(PropertyName) \
 GAMEPLAYATTRIBUTE_VALUE_INITTER(PropertyName)
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FAttributesInitialized);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FActorDamaged,AActor*, Instigator,AActor*, Causer, float, Damage);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FActorDamagedOrHeal,AActor*, Instigator,AActor*, Causer, float, Damage);
+
 /**
  * 
  */
@@ -29,7 +30,10 @@ public:
 	FAttributesInitialized OnAttributesInitialized;
 	
 	UPROPERTY(BlueprintAssignable)
-	FActorDamaged ActorDamaged;
+	FActorDamagedOrHeal ActorDamaged;
+	
+	UPROPERTY(BlueprintAssignable)
+	FActorDamagedOrHeal ActorHealed;
 	
 	virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;
 	

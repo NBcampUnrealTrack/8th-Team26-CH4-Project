@@ -12,7 +12,7 @@
 // Sets default values
 ALB_BossController::ALB_BossController()
 {
-	
+	UE_LOG(LogTemp, Warning, TEXT("ALB-BossContorller Activate"));
 	PrimaryActorTick.bCanEverTick = false;
 	
 	AttackPatternComponent = CreateDefaultSubobject<ULB_AttackPatternComponent>(TEXT("AttackPatternComponent"));
@@ -29,6 +29,7 @@ void ALB_BossController::OnPossess(APawn* InPawn)
 	
 	if (IsValid(BehaviorTree))
 	{
+		UE_LOG(LogTemp, Warning, TEXT("BehabviorTree Activate"));
 		RunBehaviorTree(BehaviorTree);
 	}
 	
