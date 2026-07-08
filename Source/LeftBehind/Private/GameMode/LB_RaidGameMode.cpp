@@ -244,7 +244,7 @@ bool ALB_RaidGameMode::SpawnBossFromData()
     }
 
     // 보스 CDO에서 캡슐 크기를 읽어 바닥 기준 스폰 위치를 캐릭터 중심 위치로 보정한다.
-    const ALBRaidBossBase* BossCDO = Cast<ALBRaidBossBase>(LoadedBossClass->GetDefaultObject());
+    const ALB_BossCharacter* BossCDO = Cast<ALB_BossCharacter>(LoadedBossClass->GetDefaultObject());
 
     if (bBossSpawnPointIsFloorLocation && BossCDO && BossCDO->GetCapsuleComponent())
     {
@@ -274,12 +274,12 @@ bool ALB_RaidGameMode::SpawnBossFromData()
         ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
 
     // 데이터 테이블에서 로드한 보스 클래스를 실제 월드에 생성한다.
-    SpawnedBoss = GetWorld()->SpawnActor<ALBRaidBossBase>(
-        LoadedBossClass,
-        SpawnTransform,
-        Params
-    );
-
+    SpawnedBoss = GetWorld()->SpawnActor<ALB_BossCharacter>(
+     LoadedBossClass,
+     SpawnTransform,
+     Params
+ );
+    
     if (!SpawnedBoss)
     {
         UE_LOG(LogTemp, Error, TEXT("[RaidGM] SpawnActor returned null."));
@@ -314,12 +314,12 @@ bool ALB_RaidGameMode::SpawnBossFromData()
     LBRaidDebug(
         GetWorld(),
         FString::Printf(
-            TEXT("[RaidGM] Boss spawned. Actor=%s HP=%.0f/%.0f Mana=%.0f/%.0f DEF=%.0f Location=%s Scale=%s"),
+            TEXT("[RaidGM] Boss spawned. Actor=%s HP=%.0f/%.0f DEF=%.0f Location=%s Scale=%s"),
             *SpawnedBoss->GetName(),
             SpawnedBoss->GetCurrentHP(),
             SpawnedBoss->GetMaxHP(),
-            SpawnedBoss->GetCurrentMana(),
-            SpawnedBoss->GetMaxMana(),
+            // 마나 생기면 주석 해제 SpawnedBoss->GetCurrentMana(),
+            // 마나 생기면 주석 해제 SpawnedBoss->GetMaxMana(),
             SpawnedBoss->GetDEF(),
             *SpawnedBoss->GetActorLocation().ToString(),
             *SpawnedBoss->GetActorScale3D().ToString()

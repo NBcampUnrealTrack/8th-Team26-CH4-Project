@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DataTable.h"
-#include "System/Raid/LBRaidBossBase.h"
+#include "Characters/Boss/LB_BossCharacter.h"
 #include "LBRaidDataRows.generated.h"
 
 USTRUCT(BlueprintType)
@@ -18,7 +18,7 @@ struct FLBBossStatsRow : public FTableRowBase
 
 	// 실제로 스폰할 보스 블루프린트/클래스. SoftClass라 필요할 때 동기 로드한다.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	TSoftClassPtr<ALBRaidBossBase> BossClass;
+	TSoftClassPtr<ALB_BossCharacter> BossClass;
 
 	// 보스의 최대 체력. 스폰 후 CurrentHP도 이 값으로 초기화한다.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)

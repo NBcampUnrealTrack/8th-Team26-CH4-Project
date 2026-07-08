@@ -9,11 +9,15 @@
 #include "GameplayTags/LBTags.h"
 #include "LB_BossCharacter.generated.h"
 
+class ULB_AttributeSet;
 struct FGameplayAbilitySpecHandle;
 class ULB_AttackPatternComponent;
 class ULB_ThreatComponent;
 class UAttributeSet;
 class ULB_AbilitySystemComponent;
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnLB_BossHPChangedSignature, float, CurrentHP, float, MaxHP);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnLB_BossDiedSignature);
 
 // 보스 페이즈 하나의 조건이다. HealthThreshold 이하가 되면 해당 페이즈 태그를 방송한다.
 USTRUCT(BlueprintType)
@@ -41,13 +45,53 @@ class LEFTBEHIND_API ALB_BossCharacter : public ALB_BaseCharacter
 
 public:
 	ALB_BossCharacter();
+	
+	
 	virtual void BeginPlay() override;
+	
+	
+	void HandleHealthAttributeChanged(const FOnAttributeChangeData& AttributeChangeData);
+	void HandleMaxHealthAttributeChanged(const FOnAttributeChangeData& AttributeChangeData);
 	virtual UAttributeSet* GetAttributeSet() const override;
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 
+	UFUNCTION()
+	void Die_ServerOnly();
+	UFUNCTION()
+	void OnRep_CurrentHP();
+	
+	UPROPERTY(BlueprintAssignable, Category="LB|Boss")
+	FOnLB_BossHPChangedSignature OnBossHPChanged;
 
+	UPROPERTY(BlueprintAssignable, Category="LB|Boss")
+	FOnLB_BossDiedSignature OnBossDied;
+
+	UFUNCTION(BlueprintCallable, Category="LB|Boss")
+	void InitializeBossStats_ServerOnly(float InMaxHP, float InMaxMana, float InDEF);
+
+	UFUNCTION(BlueprintCallable, Category="LB|Boss")
+	void ApplyRaidDamage_ServerOnly(float DamageAmount);
+
+	UFUNCTION(BlueprintPure, Category="LB|Boss")
+	float GetCurrentHP() const {return CurrentHP;}
+
+	UFUNCTION(BlueprintPure, Category="LB|Boss")
+	float GetMaxHP() const {return MaxHP;}
+
+	//Status 중 마나 없음
+	/*UFUNCTION(BlueprintPure, Category="LB|Boss")
+	float GetCurrentMana() const;
+
+	UFUNCTION(BlueprintPure, Category="LB|Boss")
+	float GetMaxMana() const;*/
+
+	UFUNCTION(BlueprintPure, Category="LB|Boss")
+	float GetDEF() const { return DEF;}
+
+	UFUNCTION(BlueprintPure, Category="LB|Boss")
+	bool IsDead() const { return bIsDead;}
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Replicated)
 	bool bIsBeingLaunched{false};
@@ -75,6 +119,8 @@ public:
 	float RangedDistance;
 
 protected:
+	
+	
 
 	virtual void HandleDeath() override;
 
@@ -88,6 +134,24 @@ protected:
 	virtual int32 CalculatePhase(const FOnAttributeChangeData& AttributeChangeData);
 	
 	void ApplyPhaseAbilities(int32 PhaseIndex);
+	
+
+	//Status
+	UPROPERTY(ReplicatedUsing=OnRep_CurrentHP, BlueprintReadOnly, Category="LB|Boss")
+	float CurrentHP = 10000.f;
+
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="LB|Boss")
+	float MaxHP = 10000.f;
+
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="LB|Boss")
+	float DEF = 50.f;
+
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="LB|Boss")
+	bool bIsDead = false;
+
+	bool bInitializingStats = false;
+	
+
 
 private:
 	UFUNCTION()
@@ -97,7 +161,7 @@ private:
 	TObjectPtr<ULB_AbilitySystemComponent> AbilitySystemComponent;
 	
 	UPROPERTY()
-	TObjectPtr<UAttributeSet> Attributeset;
+	TObjectPtr<ULB_AttributeSet> Attributeset;
 	
 	// ---- Phase ----
 
