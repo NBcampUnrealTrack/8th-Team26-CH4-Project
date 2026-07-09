@@ -90,7 +90,7 @@ void ULB_PartyMemberSlotWidget::UnbindAttributes()
 	CachedAttributeSet = nullptr;
 }
 
-void ULB_PartyMemberSlotWidget::OnRoleChanged(FName NewRoleID)
+void ULB_PartyMemberSlotWidget::OnRoleChanged(ELBRoleType NewRoleType)
 {
 	RefreshAll();
 }
@@ -111,7 +111,7 @@ void ULB_PartyMemberSlotWidget::RefreshAll()
 	
 	BP_UpdatePartyMember(
 		CachedPlayerState->GetPlayerNameText(),
-		CachedPlayerState->GetRoleID(),
+		CachedPlayerState->GetRoleType(),
 		CachedAttributeSet->GetHealth(),
 		CachedAttributeSet->GetMaxHealth(),
 		CachedPlayerState->IsDead()

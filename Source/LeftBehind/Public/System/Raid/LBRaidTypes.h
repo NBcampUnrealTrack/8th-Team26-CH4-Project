@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "LBCharacterTypes.h"
 #include "LBRaidTypes.generated.h"
 
 UENUM(BlueprintType)
@@ -59,4 +60,34 @@ struct FLBRaidResultData
 	// 실패했을 때 남아 있던 보스 HP. 승리 시에는 0으로 기록한다.
 	UPROPERTY(BlueprintReadOnly)
 	float BossRemainingHPOnFail = 0.f;
+};
+
+USTRUCT(BlueprintType)
+struct FLBPlayerFinalResult
+{
+	GENERATED_BODY()
+
+	// 플레이어 코드네임
+	UPROPERTY(BlueprintReadOnly)
+	FText PlayerName;
+
+	// 역할 ID (DT_RoleData 조회 키)
+	UPROPERTY(BlueprintReadOnly)
+	ELBRoleType RoleType = ELBRoleType::DPS;
+
+	// 보스에게 입힌 총 피해량
+	UPROPERTY(BlueprintReadOnly)
+	float TotalDamageDealt = 0.f;
+
+	// 파티원에게 회복시킨 총 힐량
+	UPROPERTY(BlueprintReadOnly)
+	float TotalHealingDone = 0.f;
+
+	// 레이드 중 사망 횟수
+	UPROPERTY(BlueprintReadOnly)
+	int32 DeathCount = 0;
+
+	// MVP 여부 (서버에서 계산 후 플래그)
+	UPROPERTY(BlueprintReadOnly)
+	bool bIsMVP = false;
 };
