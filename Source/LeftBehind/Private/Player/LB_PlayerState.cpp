@@ -27,9 +27,12 @@ void ALB_PlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
-	DOREPLIFETIME(ALB_PlayerState, RoleID);
+	DOREPLIFETIME(ALB_PlayerState, RoleType);
 	DOREPLIFETIME(ALB_PlayerState, DeathCount);
 	DOREPLIFETIME(ALB_PlayerState, bIsDead);
+	DOREPLIFETIME(ALB_PlayerState, TotalDamageDealt);
+	DOREPLIFETIME(ALB_PlayerState, TotalHealingDone);
+	DOREPLIFETIME(ALB_PlayerState, CharacterID);
 }
 
 UAbilitySystemComponent* ALB_PlayerState::GetAbilitySystemComponent() const
@@ -57,6 +60,8 @@ void ALB_PlayerState::ResetRaidStats_ServerOnly()
 
 	DeathCount = 0;
 	bIsDead = false;
+	TotalDamageDealt = 0.f;
+	TotalHealingDone = 0.f;
 
 	// 서버 자신에게는 RepNotify가 자동 호출되지 않으므로 동일한 알림 경로를 직접 실행한다.
 	OnRep_DeathCount();
@@ -66,7 +71,7 @@ void ALB_PlayerState::ResetRaidStats_ServerOnly()
 	ForceNetUpdate();
 }
 
-void ALB_PlayerState::SetRoleID_ServerOnly(FName NewRoleID)
+void ALB_PlayerState::SetRoleType_ServerOnly(ELBRoleType NewRoleType)
 {
 	// 역할 배정은 서버에서만 확정한다.
 	if (!HasAuthority())
@@ -74,10 +79,24 @@ void ALB_PlayerState::SetRoleID_ServerOnly(FName NewRoleID)
 		return;
 	}
 
-	RoleID = NewRoleID;
+	RoleType = NewRoleType;
 	// 서버에서도 UI/블루프린트 델리게이트가 즉시 실행되도록 RepNotify 함수를 재사용한다.
-	OnRep_RoleID();
+	OnRep_RoleType();
 
+	ForceNetUpdate();
+}
+
+void ALB_PlayerState::SetCharacterID_ServerOnly(ELBCharacterID NewCharacterID)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+	
+	CharacterID = NewCharacterID;
+	
+	OnRep_CharacterID();
+	
 	ForceNetUpdate();
 }
 
@@ -111,6 +130,24 @@ void ALB_PlayerState::AddDeathCount_ServerOnly()
 	ForceNetUpdate();
 }
 
+void ALB_PlayerState::AddTotalDamageDealt_ServerOnly(float Amount)
+{
+	if (!HasAuthority() || Amount <= 0.f) return;
+	TotalDamageDealt += Amount;
+}
+
+void ALB_PlayerState::AddTotalHealingDone_ServerOnly(float Amount)
+{
+	if (!HasAuthority() || Amount <= 0.f) return;
+	TotalHealingDone += Amount;
+}
+
+void ALB_PlayerState::SetMVP_ServerOnly(bool bNewMVP)
+{
+	if (!HasAuthority()) return;
+	bIsMVP = bNewMVP;
+}
+
 
 FText ALB_PlayerState::GetPlayerNameText() const
 {
@@ -122,10 +159,10 @@ void ALB_PlayerState::ServerRPCSetPlayerName_Implementation(const FString& InNam
 	SetPlayerName(InName);
 }
 
-void ALB_PlayerState::OnRep_RoleID()
+void ALB_PlayerState::OnRep_RoleType()
 {
 	// RoleID를 직접 읽지 않는 UI도 이벤트만 구독하면 변경을 알 수 있다.
-	OnRoleChanged.Broadcast(RoleID);
+	OnRoleChanged.Broadcast(RoleType);
 }
 
 void ALB_PlayerState::OnRep_DeathCount()
@@ -138,4 +175,9 @@ void ALB_PlayerState::OnRep_IsDead()
 {
 	// 사망/부활 UI, 입력 잠금, 관전 전환 같은 외부 로직이 반응하는 진입점이다.
 	OnDeadStateChanged.Broadcast(bIsDead);
+}
+
+void ALB_PlayerState::OnRep_CharacterID()
+{
+	// 나중에 캐릭터 변경 델리게이트가 필요하면 여기서 브로드캐스트한다.
 }
