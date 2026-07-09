@@ -20,10 +20,7 @@ protected:
 	virtual void NativeConstruct() override;
 
 	// BaseRaidWidget에서 전달되는 결과 이벤트
-	virtual void BP_OnRaidResultChanged_Implementation(const FLBRaidResultData& ResultData) override;
-
-	// 결과 데이터를 BP에 전달
-	void RefreshResult(const FLBRaidResultData& ResultData);
+	virtual void HandleRaidResultChanged(const FLBRaidResultData& ResultData) override;
 
 	// 결과 UI 전체 갱신
 	UFUNCTION(BlueprintImplementableEvent, Category="LB|Raid Result")

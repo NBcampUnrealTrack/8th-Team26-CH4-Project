@@ -56,7 +56,7 @@ protected:
 	UFUNCTION(BlueprintImplementableEvent, Category="LB|Party")
 	void BP_UpdatePartyMember(
 		const FText& PlayerName,
-		ELBRoleType NewRoleType,
+		ELBRoleType RoleType,
 		float CurrentHP,
 		float MaxHP,
 		bool bDead);
