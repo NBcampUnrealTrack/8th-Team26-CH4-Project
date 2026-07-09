@@ -11,7 +11,8 @@ namespace LBTags
 		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Primary, "LBTags.LBAbilities.Primary", "Tag for the Primary Ability");
 		namespace Enemy
 		{
-			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Attack, "LBTags.LBAbilities.Enemy.Attack", "Enemy Attack Tag")
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Attack, "LBTags.LBAbilities.Enemy.Attack", "Enemy Attack Tag");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(WideAttack, "LBTags.LBAbilities.Enemy.WideAttack", "Enemy Wide Attack Tag");
 		}
 
 		
