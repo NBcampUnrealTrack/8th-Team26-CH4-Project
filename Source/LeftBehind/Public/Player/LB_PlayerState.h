@@ -28,7 +28,7 @@ class LEFTBEHIND_API ALB_PlayerState : public APlayerState, public IAbilitySyste
 public:
     ALB_PlayerState();
 
-    // RoleID, DeathCount, bIsDead를 클라이언트에 복제 대상으로 등록한다.
+    // 역할, 레이드 통계, 사망 상태, MVP 여부를 클라이언트 복제 대상으로 등록한다.
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
     // GAS가 이 PlayerState의 ASC를 찾을 때 사용하는 표준 인터페이스 구현.
     virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
@@ -53,7 +53,7 @@ public:
     UPROPERTY(BlueprintAssignable)
     FOnLBDeadStateChanged OnDeadStateChanged;
 
-    // 레이드 시작/재시작 시 서버에서만 누적 사망 정보와 사망 상태를 초기화한다.
+    // 레이드 시작/재시작 시 서버에서만 사망 정보, 누적 전투 통계, MVP 여부를 초기화한다.
     UFUNCTION(BlueprintCallable, Category="LB|PlayerState")
     void ResetRaidStats_ServerOnly();
 

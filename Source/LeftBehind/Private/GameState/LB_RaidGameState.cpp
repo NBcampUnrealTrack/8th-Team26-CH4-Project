@@ -29,6 +29,7 @@ void ALB_RaidGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
     DOREPLIFETIME(ALB_RaidGameState, BossCurrentHP);
     DOREPLIFETIME(ALB_RaidGameState, BossMaxHP);
     DOREPLIFETIME(ALB_RaidGameState, RaidResult);
+    DOREPLIFETIME(ALB_RaidGameState, RaidScoreboardData);
 }
 
 float ALB_RaidGameState::GetCountdownRemaining() const

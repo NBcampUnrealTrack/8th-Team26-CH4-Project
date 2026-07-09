@@ -77,6 +77,11 @@ protected:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Raid|Time")
     float DefaultTimeLimitSec = 300.f;
 
+    // MVP 점수에서 각 역할의 주 임무(딜러=피해, 힐러=회복)가 차지하는 비율이다.
+    // 나머지 비율은 보조 기여도에 사용한다.
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Raid|MVP", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+    float MVPPrimaryWeight = 0.8f;
+
     // 현재 레이드에서 스폰된 보스 액터 참조.
     UPROPERTY()
     TObjectPtr<ALB_BossCharacter> SpawnedBoss;
@@ -98,6 +103,12 @@ protected:
     bool SpawnBossFromData();
     // 제한 시간이 끝났을 때 레이드를 패배로 종료한다.
     void HandleTimeLimitReached();
+
+    // 전투 시작 직전에 모든 참가 플레이어의 이전 레이드 통계를 초기화한다.
+    void ResetAllPlayerRaidStats_ServerOnly();
+
+    // 서버 PlayerArray를 스냅샷으로 만들고 역할별 MVP 한 명을 선정한다.
+    FLBRaidScoreboardData BuildRaidScoreboardData(const FLBRaidResultData& ResultData);
 
     // 승패 결과를 확정하고 타이머 정리, GameState 갱신, 로그 기록을 수행한다.
     void EndRaid(bool bVictory, ELBRaidEndReason EndReason);
