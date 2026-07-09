@@ -128,6 +128,19 @@ void ALB_RaidGameState::SetRaidResult_ServerOnly(const FLBRaidResultData& NewRes
     ForceNetUpdate();
 }
 
+void ALB_RaidGameState::SetRaidScoreboardData_ServerOnly(const FLBRaidScoreboardData& InScoreboardData)
+{
+    if (!HasAuthority())
+    {
+        return;
+    }
+    
+    RaidScoreboardData = InScoreboardData;
+    
+    OnRep_RaidScoreboardData();
+    ForceNetUpdate();
+}
+
 void ALB_RaidGameState::MulticastRaidDebugMessage_Implementation(const FString& Message, FColor Color, float Duration)
 {
     (void)Color;
@@ -201,4 +214,10 @@ void ALB_RaidGameState::OnRep_RaidResult()
 
     UE_LOG(LogTemp, Warning, TEXT("%s"), *Message);
 
+}
+
+
+void ALB_RaidGameState::OnRep_RaidScoreboardData()
+{
+    OnRaidScoreboardChanged.Broadcast(RaidScoreboardData);
 }

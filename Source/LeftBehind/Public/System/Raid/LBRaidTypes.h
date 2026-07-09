@@ -62,32 +62,66 @@ struct FLBRaidResultData
 	float BossRemainingHPOnFail = 0.f;
 };
 
+
+// 플레이어 한 명의 최종 성과
 USTRUCT(BlueprintType)
 struct FLBPlayerFinalResult
 {
 	GENERATED_BODY()
 
-	// 플레이어 코드네임
+	// 플레이어 이름
 	UPROPERTY(BlueprintReadOnly)
 	FText PlayerName;
 
-	// 역할 ID (DT_RoleData 조회 키)
+	// 선택한 캐릭터
+	UPROPERTY(BlueprintReadOnly)
+	ELBCharacterID CharacterID = ELBCharacterID::None;
+
+	// 역할
 	UPROPERTY(BlueprintReadOnly)
 	ELBRoleType RoleType = ELBRoleType::DPS;
 
-	// 보스에게 입힌 총 피해량
+	// 누적 피해량
 	UPROPERTY(BlueprintReadOnly)
 	float TotalDamageDealt = 0.f;
 
-	// 파티원에게 회복시킨 총 힐량
+	// 누적 회복량
 	UPROPERTY(BlueprintReadOnly)
 	float TotalHealingDone = 0.f;
 
-	// 레이드 중 사망 횟수
+	// 사망 횟수
 	UPROPERTY(BlueprintReadOnly)
 	int32 DeathCount = 0;
 
-	// MVP 여부 (서버에서 계산 후 플래그)
+	// MVP 여부
 	UPROPERTY(BlueprintReadOnly)
 	bool bIsMVP = false;
+};
+
+
+// 전체 결과 화면(Scoreboard)에서 사용하는 데이터
+USTRUCT(BlueprintType)
+struct FLBRaidScoreboardData
+{
+	GENERATED_BODY()
+
+	// true면 클리어 성공, false면 패배 또는 중단 결과로 취급한다.
+	UPROPERTY(BlueprintReadOnly)
+	bool bVictory = false;
+	
+	// 결과 화면과 로그에서 사용할 레이드 종료 사유.
+	UPROPERTY(BlueprintReadOnly)
+	ELBRaidEndReason EndReason = ELBRaidEndReason::None;
+	
+	// 클리어 시간
+	UPROPERTY(BlueprintReadOnly)
+	float ClearTimeSec = 0.f;
+
+	// 최종 랭크
+	UPROPERTY(BlueprintReadOnly)
+	FName RankID = NAME_None;
+	
+	// 플레이어 결과 목록
+	UPROPERTY(BlueprintReadOnly)
+	TArray<FLBPlayerFinalResult> PlayerResults;
 };

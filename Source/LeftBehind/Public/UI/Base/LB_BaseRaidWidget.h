@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "LB_BaseUserWidget.h"
+#include "System/Raid/LBRaidTypes.h"
 #include "LB_BaseRaidWidget.generated.h"
 
 // Raid UI 공통 부모 클래스
@@ -31,20 +32,27 @@ protected:
 	UFUNCTION()
 	void OnRaidResultChanged(const FLBRaidResultData& ResultData);
 	
+	UFUNCTION()
+	void OnRaidScoreboardChanged(const FLBRaidScoreboardData& ScoreboardData);
+	
 	// C++ 확장용
 	virtual void HandleRaidStateChanged(ELBRaidState NewState);
 	virtual void HandleBossHPChanged(float CurrentHP, float MaxHP);
 	virtual void HandleRaidResultChanged(const FLBRaidResultData& ResultData);
+	virtual void HandleRaidScoreboardChanged(const FLBRaidScoreboardData& ScoreboardData);
 	
 	// BP 확장용
-	UFUNCTION(BlueprintNativeEvent, Category="LB|Raid")
+	UFUNCTION(BlueprintImplementableEvent, Category="LB|Raid")
 	void BP_OnRaidStateChanged(ELBRaidState NewState);
 
-	UFUNCTION(BlueprintNativeEvent, Category="LB|Raid")
+	UFUNCTION(BlueprintImplementableEvent, Category="LB|Raid")
 	void BP_OnBossHPChanged(float CurrentHP, float MaxHP);
 
-	UFUNCTION(BlueprintNativeEvent, Category="LB|Raid")
+	UFUNCTION(BlueprintImplementableEvent, Category="LB|Raid")
 	void BP_OnRaidResultChanged(const FLBRaidResultData& ResultData);
+	
+	UFUNCTION(BlueprintImplementableEvent, Category="LB|Raid")
+	void BP_OnRaidScoreboardChanged(const FLBRaidScoreboardData& ScoreboardData);
 
 private:
 	void BindRaidGameState();
