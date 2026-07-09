@@ -1,10 +1,14 @@
-#include "GameMode/LB_RaidMVPUtils.h"
-
 #if WITH_DEV_AUTOMATION_TESTS
 
+#include "Engine/DataTable.h"
+#include "GameFramework/Actor.h"
+#include "GameMode/LB_RaidMVPUtils.h"
 #include "GameState/LB_RaidGameState.h"
 #include "Misc/AutomationTest.h"
+#include "Net/UnrealNetwork.h"
 #include "Player/LB_PlayerState.h"
+#include "System/Raid/LBRaidDataRows.h"
+#include "System/Raid/LBRaidTypes.h"
 #include "UObject/UnrealType.h"
 
 #include <limits>
@@ -32,8 +36,11 @@ namespace
 		return FMath::IsNearlyEqual(A, B, KINDA_SMALL_NUMBER);
 	}
 
-	template <typename TObjectType>
-	bool IsLifetimeReplicated(const TObjectType* DefaultObject, const FProperty* Property)
+	// CPF_Net만 검사하면 잘못된 OwnerOnly/InitialOnly 등록을 놓치므로 실제 lifetime 정책까지 조회한다.
+	bool FindLifetimeReplicationPolicy(
+		const AActor* DefaultObject,
+		const FProperty* Property,
+		FLifetimeProperty& OutLifetimeProperty)
 	{
 		if (!DefaultObject || !Property)
 		{
@@ -42,11 +49,111 @@ namespace
 
 		TArray<FLifetimeProperty> LifetimeProperties;
 		DefaultObject->GetLifetimeReplicatedProps(LifetimeProperties);
-		return LifetimeProperties.ContainsByPredicate(
-			[Property](const FLifetimeProperty& LifetimeProperty)
+		if (const FLifetimeProperty* LifetimeProperty = LifetimeProperties.FindByPredicate(
+			[Property](const FLifetimeProperty& Candidate)
 			{
-				return LifetimeProperty.RepIndex == Property->RepIndex;
-			});
+				return Candidate.RepIndex == Property->RepIndex;
+			}))
+		{
+			OutLifetimeProperty = *LifetimeProperty;
+			return true;
+		}
+
+		return false;
+	}
+
+	void TestReplicationPolicy(
+		FAutomationTestBase& Test,
+		const AActor* DefaultObject,
+		const UClass* ObjectClass,
+		const FName PropertyName,
+		const ELifetimeCondition ExpectedCondition,
+		const bool bExpectedRepNotify)
+	{
+		const FString PropertyLabel = FString::Printf(TEXT("%s.%s"), *ObjectClass->GetName(), *PropertyName.ToString());
+		const FProperty* Property = FindFProperty<FProperty>(ObjectClass, PropertyName);
+		Test.TestNotNull(*FString::Printf(TEXT("%s is present in reflection data"), *PropertyLabel), Property);
+		if (!Property)
+		{
+			return;
+		}
+
+		Test.TestTrue(
+			*FString::Printf(TEXT("%s has the network property flag"), *PropertyLabel),
+			Property->HasAnyPropertyFlags(CPF_Net));
+		Test.TestEqual(
+			*FString::Printf(TEXT("%s RepNotify flag matches its serialization contract"), *PropertyLabel),
+			Property->HasAnyPropertyFlags(CPF_RepNotify),
+			bExpectedRepNotify);
+
+		FLifetimeProperty LifetimeProperty;
+		const bool bFoundLifetimeProperty = FindLifetimeReplicationPolicy(DefaultObject, Property, LifetimeProperty);
+		Test.TestTrue(
+			*FString::Printf(TEXT("%s is registered by GetLifetimeReplicatedProps"), *PropertyLabel),
+			bFoundLifetimeProperty);
+		if (!bFoundLifetimeProperty)
+		{
+			return;
+		}
+
+		Test.TestEqual(
+			*FString::Printf(TEXT("%s uses the intended replication condition"), *PropertyLabel),
+			static_cast<uint8>(LifetimeProperty.Condition),
+			static_cast<uint8>(ExpectedCondition));
+		Test.TestEqual(
+			*FString::Printf(TEXT("%s keeps the default change-only RepNotify policy"), *PropertyLabel),
+			static_cast<uint8>(LifetimeProperty.RepNotifyCondition),
+			static_cast<uint8>(REPNOTIFY_OnChanged));
+	}
+
+	void TestDataTableContract(
+		FAutomationTestBase& Test,
+		const TCHAR* AssetPath,
+		const UScriptStruct* ExpectedRowStruct,
+		const TConstArrayView<FName> RequiredRows)
+	{
+		// 자동화 테스트에서만 동기 로드해 패키징된 에셋과 C++ RowStruct 계약이 실제로 이어지는지 검증한다.
+		const UDataTable* DataTable = LoadObject<UDataTable>(nullptr, AssetPath);
+		Test.TestNotNull(*FString::Printf(TEXT("DataTable loads: %s"), AssetPath), DataTable);
+		if (!DataTable)
+		{
+			return;
+		}
+
+		Test.TestTrue(
+			*FString::Printf(TEXT("%s keeps its expected RowStruct"), AssetPath),
+			DataTable->GetRowStruct() == ExpectedRowStruct);
+		for (const FName RequiredRow : RequiredRows)
+		{
+			Test.TestTrue(
+				*FString::Printf(TEXT("%s contains required row %s"), AssetPath, *RequiredRow.ToString()),
+				DataTable->GetRowMap().Contains(RequiredRow));
+		}
+	}
+
+	void TestStructPropertyOrder(
+		FAutomationTestBase& Test,
+		const UScriptStruct* Struct,
+		const TConstArrayView<FName> ExpectedPropertyNames)
+	{
+		TArray<FName> ActualPropertyNames;
+		for (TFieldIterator<FProperty> PropertyIt(Struct, EFieldIteratorFlags::ExcludeSuper); PropertyIt; ++PropertyIt)
+		{
+			ActualPropertyNames.Add(PropertyIt->GetFName());
+		}
+
+		Test.TestEqual(
+			*FString::Printf(TEXT("%s keeps its serialized property count"), *Struct->GetName()),
+			ActualPropertyNames.Num(),
+			ExpectedPropertyNames.Num());
+		const int32 ComparablePropertyCount = FMath::Min(ActualPropertyNames.Num(), ExpectedPropertyNames.Num());
+		for (int32 Index = 0; Index < ComparablePropertyCount; ++Index)
+		{
+			Test.TestEqual(
+				*FString::Printf(TEXT("%s serialized property %d keeps its name and order"), *Struct->GetName(), Index),
+				ActualPropertyNames[Index],
+				ExpectedPropertyNames[Index]);
+		}
 	}
 }
 
@@ -166,6 +273,53 @@ bool FLBRaidMVPInvalidStatsTest::RunTest(const FString& Parameters)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FLBRaidMVPBoundaryContractTest,
+	"LeftBehind.Raid.Scoreboard.MVP.BoundaryContract",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FLBRaidMVPBoundaryContractTest::RunTest(const FString& Parameters)
+{
+	(void)Parameters;
+
+	const float MaxFloat = std::numeric_limits<float>::max();
+	const float NaN = std::numeric_limits<float>::quiet_NaN();
+	const TArray<LBRaidMVP::FScoringInput> MaxValueInputs = {
+		MakeScoringInput(ELBRoleType::DPS, MaxFloat, 0.f, MAX_int32, 7),
+		MakeScoringInput(ELBRoleType::Healer, 0.f, MaxFloat, 0, 8)
+	};
+
+	const LBRaidMVP::FScoringContext MaxValueContext = LBRaidMVP::BuildScoringContext(MaxValueInputs);
+	const LBRaidMVP::FScoringResult MaxDPSResult = LBRaidMVP::CalculateScore(MaxValueInputs[0], MaxValueContext);
+	TestTrue(TEXT("Maximum finite float input stays finite after normalization"), FMath::IsFinite(MaxDPSResult.Score));
+	TestTrue(TEXT("Maximum finite float normalizes to one without overflow"), IsNearlyEqual(MaxDPSResult.PrimaryNormalized, 1.f));
+	TestEqual(TEXT("The maximum death boundary remains unchanged"), LBRaidMVP::SanitizeDeathCount(MAX_int32), MAX_int32);
+	TestEqual(TEXT("A negative death boundary is sanitized without underflow"), LBRaidMVP::SanitizeDeathCount(MIN_int32), 0);
+
+	const ELBRoleType InvalidRole = static_cast<ELBRoleType>(MAX_uint8);
+	const TArray<LBRaidMVP::FScoringInput> InvalidRoleInputs = {
+		MakeScoringInput(InvalidRole, MaxFloat, MaxFloat, 0, 1)
+	};
+	const LBRaidMVP::FScoringResult InvalidRoleResult = LBRaidMVP::CalculateScore(
+		InvalidRoleInputs[0],
+		LBRaidMVP::BuildScoringContext(InvalidRoleInputs));
+	TestTrue(TEXT("An unknown role produces no score"), IsNearlyEqual(InvalidRoleResult.Score, 0.f));
+	TestEqual(TEXT("An unknown role cannot become MVP"), LBRaidMVP::SelectMVPIndex(InvalidRoleInputs), INDEX_NONE);
+
+	LBRaidMVP::FScoringResult CandidateResult;
+	CandidateResult.Score = 0.5002f;
+	LBRaidMVP::FScoringResult BestResult;
+	BestResult.Score = 0.5f;
+	const LBRaidMVP::FScoringInput TieInput = MakeScoringInput(ELBRoleType::DPS, 1.f, 0.f, 0, 1);
+	TestTrue(
+		TEXT("A non-finite epsilon falls back to the deterministic default"),
+		LBRaidMVP::IsBetterCandidate(TieInput, CandidateResult, 1, TieInput, BestResult, 0, NaN));
+	TestTrue(
+		TEXT("A negative epsilon is clamped to zero"),
+		LBRaidMVP::IsBetterCandidate(TieInput, CandidateResult, 1, TieInput, BestResult, 0, -1.f));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FLBRaidMVPTieBreakTest,
 	"LeftBehind.Raid.Scoreboard.MVP.TieBreaks",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -207,6 +361,20 @@ bool FLBRaidMVPTieBreakTest::RunTest(const FString& Parameters)
 	TestTrue(
 		TEXT("Primary normalized contribution is checked before secondary contribution"),
 		LBRaidMVP::IsBetterCandidate(TieInput, HigherPrimary, 1, TieInput, HigherSecondary, 0));
+
+	LBRaidMVP::FScoringInput CandidateWithMoreDeaths = TieInput;
+	CandidateWithMoreDeaths.DeathCount = 100;
+	LBRaidMVP::FScoringResult HigherScore = HigherPrimary;
+	HigherScore.Score = 0.9f;
+	TestTrue(
+		TEXT("Final score has priority over every tie-break field"),
+		LBRaidMVP::IsBetterCandidate(CandidateWithMoreDeaths, HigherScore, 1, TieInput, HigherPrimary, 0));
+
+	LBRaidMVP::FScoringResult BetterSecondary = HigherPrimary;
+	BetterSecondary.SecondaryNormalized = 0.5f;
+	TestTrue(
+		TEXT("Secondary contribution breaks a tie after score, deaths, and primary contribution"),
+		LBRaidMVP::IsBetterCandidate(TieInput, BetterSecondary, 1, TieInput, HigherPrimary, 0));
 	return true;
 }
 
@@ -219,33 +387,135 @@ bool FLBRaidScoreboardReplicationRegistrationTest::RunTest(const FString& Parame
 {
 	(void)Parameters;
 
-	const FProperty* ScoreboardProperty = FindFProperty<FProperty>(
+	const ALB_RaidGameState* RaidGameStateCDO = GetDefault<ALB_RaidGameState>();
+	TestReplicationPolicy(
+		*this,
+		RaidGameStateCDO,
 		ALB_RaidGameState::StaticClass(),
-		GET_MEMBER_NAME_CHECKED(ALB_RaidGameState, RaidScoreboardData));
-	const FProperty* MVPProperty = FindFProperty<FProperty>(
-		ALB_PlayerState::StaticClass(),
-		TEXT("bIsMVP"));
+		GET_MEMBER_NAME_CHECKED(ALB_RaidGameState, RaidResult),
+		COND_None,
+		true);
+	TestReplicationPolicy(
+		*this,
+		RaidGameStateCDO,
+		ALB_RaidGameState::StaticClass(),
+		GET_MEMBER_NAME_CHECKED(ALB_RaidGameState, RaidScoreboardData),
+		COND_None,
+		true);
 
-	TestNotNull(TEXT("RaidScoreboardData is present in reflection data"), ScoreboardProperty);
-	TestNotNull(TEXT("bIsMVP is present in reflection data"), MVPProperty);
+	const ALB_PlayerState* PlayerStateCDO = GetDefault<ALB_PlayerState>();
+	TestReplicationPolicy(*this, PlayerStateCDO, ALB_PlayerState::StaticClass(), TEXT("RoleType"), COND_None, true);
+	TestReplicationPolicy(*this, PlayerStateCDO, ALB_PlayerState::StaticClass(), TEXT("DeathCount"), COND_None, true);
+	TestReplicationPolicy(*this, PlayerStateCDO, ALB_PlayerState::StaticClass(), TEXT("bIsDead"), COND_None, true);
+	TestReplicationPolicy(*this, PlayerStateCDO, ALB_PlayerState::StaticClass(), TEXT("CharacterID"), COND_None, true);
+	TestReplicationPolicy(*this, PlayerStateCDO, ALB_PlayerState::StaticClass(), TEXT("bIsMVP"), COND_None, false);
+	TestReplicationPolicy(*this, PlayerStateCDO, ALB_PlayerState::StaticClass(), TEXT("TotalDamageDealt"), COND_OwnerOnly, false);
+	TestReplicationPolicy(*this, PlayerStateCDO, ALB_PlayerState::StaticClass(), TEXT("TotalHealingDone"), COND_OwnerOnly, false);
 
-	if (ScoreboardProperty)
-	{
-		TestTrue(TEXT("RaidScoreboardData has the network property flag"), ScoreboardProperty->HasAnyPropertyFlags(CPF_Net));
-		TestTrue(TEXT("RaidScoreboardData has a RepNotify flag"), ScoreboardProperty->HasAnyPropertyFlags(CPF_RepNotify));
-		TestTrue(
-			TEXT("RaidScoreboardData is registered by GetLifetimeReplicatedProps"),
-			IsLifetimeReplicated(GetDefault<ALB_RaidGameState>(), ScoreboardProperty));
-	}
+	return true;
+}
 
-	if (MVPProperty)
-	{
-		TestTrue(TEXT("bIsMVP has the network property flag"), MVPProperty->HasAnyPropertyFlags(CPF_Net));
-		TestTrue(
-			TEXT("bIsMVP is registered by GetLifetimeReplicatedProps"),
-			IsLifetimeReplicated(GetDefault<ALB_PlayerState>(), MVPProperty));
-	}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FLBRaidReplicationTuningTest,
+	"LeftBehind.Raid.Scoreboard.ReplicationTuning",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
+bool FLBRaidReplicationTuningTest::RunTest(const FString& Parameters)
+{
+	(void)Parameters;
+
+	const ALB_RaidGameState* RaidGameStateCDO = GetDefault<ALB_RaidGameState>();
+	TestTrue(TEXT("RaidGameState replicates at 10 Hz"), IsNearlyEqual(RaidGameStateCDO->GetNetUpdateFrequency(), 10.f));
+	TestTrue(TEXT("RaidGameState throttles down to 2 Hz"), IsNearlyEqual(RaidGameStateCDO->GetMinNetUpdateFrequency(), 2.f));
+	TestTrue(TEXT("RaidGameState keeps high saturated-network priority"), IsNearlyEqual(RaidGameStateCDO->NetPriority, 10.f));
+
+	const ALB_PlayerState* PlayerStateCDO = GetDefault<ALB_PlayerState>();
+	TestTrue(TEXT("PlayerState replicates at 30 Hz"), IsNearlyEqual(PlayerStateCDO->GetNetUpdateFrequency(), 30.f));
+	TestTrue(TEXT("PlayerState throttles down to 5 Hz"), IsNearlyEqual(PlayerStateCDO->GetMinNetUpdateFrequency(), 5.f));
+	TestTrue(TEXT("PlayerState keeps the intended saturated-network priority"), IsNearlyEqual(PlayerStateCDO->NetPriority, 2.f));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FLBRaidEnumSerializationContractTest,
+	"LeftBehind.Raid.Scoreboard.Serialization.EnumOrdinals",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FLBRaidEnumSerializationContractTest::RunTest(const FString& Parameters)
+{
+	(void)Parameters;
+
+	TestEqual(TEXT("ELBRoleType::DPS ordinal remains 0"), static_cast<uint8>(ELBRoleType::DPS), static_cast<uint8>(0));
+	TestEqual(TEXT("ELBRoleType::Healer ordinal remains 1"), static_cast<uint8>(ELBRoleType::Healer), static_cast<uint8>(1));
+
+	TestEqual(TEXT("ELBCharacterID::None ordinal remains 0"), static_cast<uint8>(ELBCharacterID::None), static_cast<uint8>(0));
+	TestEqual(TEXT("ELBCharacterID::Boris ordinal remains 1"), static_cast<uint8>(ELBCharacterID::Boris), static_cast<uint8>(1));
+	TestEqual(TEXT("ELBCharacterID::Dekker ordinal remains 2"), static_cast<uint8>(ELBCharacterID::Dekker), static_cast<uint8>(2));
+	TestEqual(TEXT("ELBCharacterID::Grux ordinal remains 3"), static_cast<uint8>(ELBCharacterID::Grux), static_cast<uint8>(3));
+	TestEqual(TEXT("ELBCharacterID::IggyScorch ordinal remains 4"), static_cast<uint8>(ELBCharacterID::IggyScorch), static_cast<uint8>(4));
+
+	TestEqual(TEXT("ELBRaidState::Waiting ordinal remains 0"), static_cast<uint8>(ELBRaidState::Waiting), static_cast<uint8>(0));
+	TestEqual(TEXT("ELBRaidState::Countdown ordinal remains 1"), static_cast<uint8>(ELBRaidState::Countdown), static_cast<uint8>(1));
+	TestEqual(TEXT("ELBRaidState::Battle ordinal remains 2"), static_cast<uint8>(ELBRaidState::Battle), static_cast<uint8>(2));
+	TestEqual(TEXT("ELBRaidState::Result ordinal remains 3"), static_cast<uint8>(ELBRaidState::Result), static_cast<uint8>(3));
+
+	TestEqual(TEXT("ELBRaidEndReason::None ordinal remains 0"), static_cast<uint8>(ELBRaidEndReason::None), static_cast<uint8>(0));
+	TestEqual(TEXT("ELBRaidEndReason::BossKilled ordinal remains 1"), static_cast<uint8>(ELBRaidEndReason::BossKilled), static_cast<uint8>(1));
+	TestEqual(TEXT("ELBRaidEndReason::AllDead ordinal remains 2"), static_cast<uint8>(ELBRaidEndReason::AllDead), static_cast<uint8>(2));
+	TestEqual(TEXT("ELBRaidEndReason::TimeOut ordinal remains 3"), static_cast<uint8>(ELBRaidEndReason::TimeOut), static_cast<uint8>(3));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FLBRaidDataTableSerializationContractTest,
+	"LeftBehind.Raid.Scoreboard.Serialization.DataTables",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FLBRaidDataTableSerializationContractTest::RunTest(const FString& Parameters)
+{
+	(void)Parameters;
+
+	const FName BossRows[] = {TEXT("Boss_Proto_Test")};
+	TestDataTableContract(
+		*this,
+		TEXT("/Game/LeftBehind/Data/System/DT_BossStats.DT_BossStats"),
+		FLBBossStatsRow::StaticStruct(),
+		MakeArrayView(BossRows));
+
+	const FName RankRows[] = {TEXT("Rank_Adventurer"), TEXT("Rank_Beginner"), TEXT("Rank_Expert")};
+	TestDataTableContract(
+		*this,
+		TEXT("/Game/LeftBehind/Data/System/DT_RankData.DT_RankData"),
+		FLBRankDataRow::StaticStruct(),
+		MakeArrayView(RankRows));
+
+	const FName RoleRows[] = {TEXT("Role_DPS"), TEXT("Role_Healer")};
+	TestDataTableContract(
+		*this,
+		TEXT("/Game/LeftBehind/Data/System/DT_RoleData.DT_RoleData"),
+		FLBRoleData::StaticStruct(),
+		MakeArrayView(RoleRows));
+
+	const FName CharacterRows[] = {TEXT("Boris"), TEXT("Dekker"), TEXT("Grux"), TEXT("IggyScorch")};
+	TestDataTableContract(
+		*this,
+		TEXT("/Game/LeftBehind/Data/System/DT_CharacterData.DT_CharacterData"),
+		FLBCharacterData::StaticStruct(),
+		MakeArrayView(CharacterRows));
+
+	// 이름과 선언 순서를 고정해 기존 Blueprint 핀과 DataTable 열의 직렬화 계약을 함께 보호한다.
+	const FName BossPropertyNames[] = {
+		TEXT("BossID"), TEXT("BossClass"), TEXT("MaxHP"), TEXT("MaxMana"), TEXT("DEF"), TEXT("TimeLimitSec"), TEXT("Phase2ThresholdRatio")
+	};
+	TestStructPropertyOrder(*this, FLBBossStatsRow::StaticStruct(), MakeArrayView(BossPropertyNames));
+	const FName RankPropertyNames[] = {TEXT("RankID"), TEXT("ClearTimeSec"), TEXT("Title"), TEXT("RewardID")};
+	TestStructPropertyOrder(*this, FLBRankDataRow::StaticStruct(), MakeArrayView(RankPropertyNames));
+	const FName RolePropertyNames[] = {TEXT("RoleName"), TEXT("RoleSubtitle"), TEXT("RoleIcon"), TEXT("RoleColor"), TEXT("RoleType")};
+	TestStructPropertyOrder(*this, FLBRoleData::StaticStruct(), MakeArrayView(RolePropertyNames));
+	const FName CharacterPropertyNames[] = {
+		TEXT("DisplayName"), TEXT("CardPortraitImage"), TEXT("HUDPortraitImage"), TEXT("RoleType"), TEXT("PreviewMesh"), TEXT("bLocked")
+	};
+	TestStructPropertyOrder(*this, FLBCharacterData::StaticStruct(), MakeArrayView(CharacterPropertyNames));
 	return true;
 }
 

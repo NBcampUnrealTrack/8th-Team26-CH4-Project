@@ -4,29 +4,29 @@
 #include "Player/LB_PlayerController.h"
 
 #include "AbilitySystemBlueprintLibrary.h"
-#include "EnhancedInputComponent.h"
-#include "EnhancedInputSubsystems.h"
 #include "AbilitySystemComponent.h"
 #include "Blueprint/UserWidget.h"
+#include "Engine/AssetManager.h"
+#include "Engine/StreamableManager.h"
+#include "Engine/World.h"
+#include "EnhancedInputComponent.h"
+#include "EnhancedInputSubsystems.h"
 #include "GameFramework/Character.h"
-#include "GameFramework/PlayerState.h"
+#include "InputAction.h"
+#include "InputActionValue.h"
+#include "InputMappingContext.h"
 
+#include "GameState/LB_RaidGameState.h"
 #include "GameplayTags/LBTags.h"
+#include "Player/LB_PlayerState.h"
 #include "TimerManager.h"
-
 #include "UI/HUD/LB_RaidHUDWidget.h"
-
-#include "UObject/ConstructorHelpers.h"
 
 ALB_PlayerController::ALB_PlayerController()
 {
-	static ConstructorHelpers::FClassFinder<ULB_RaidHUDWidget> RaidHUDClassFinder(
-		TEXT("/Game/LeftBehind/UI/BattleHUD/HUD/WBP_LB_RaidHUDWidget"));
-
-	if (RaidHUDClassFinder.Succeeded())
-	{
-		RaidHUDWidgetClass = RaidHUDClassFinder.Class;
-	}
+	// 생성자 FClassFinder의 하드 참조를 제거해 서버/비전투 맵 패키지 로드와 메모리 상주를 피한다.
+	RaidHUDWidgetClass = TSoftClassPtr<ULB_RaidHUDWidget>(FSoftObjectPath(
+		TEXT("/Game/LeftBehind/UI/BattleHUD/HUD/WBP_LB_RaidHUDWidget.WBP_LB_RaidHUDWidget_C")));
 }
 
 void ALB_PlayerController::SetupInputComponent()
@@ -53,13 +53,17 @@ void ALB_PlayerController::SetupInputComponent()
 	}
 	if (IsValid(PrimaryAction))
 	{
-		EnhancedInputComponent->BindAction(PrimaryAction, ETriggerEvent::Triggered, this, &ThisClass::Primary);
+		// 입력 프레임마다 RPC를 보내지 않고 눌림/뗌 상태 전환만 서버로 보낸다.
+		EnhancedInputComponent->BindAction(PrimaryAction, ETriggerEvent::Started, this, &ThisClass::PrimaryPressed);
+		EnhancedInputComponent->BindAction(PrimaryAction, ETriggerEvent::Completed, this, &ThisClass::PrimaryReleased);
+		EnhancedInputComponent->BindAction(PrimaryAction, ETriggerEvent::Canceled, this, &ThisClass::PrimaryReleased);
 	}
 }
 
 void ALB_PlayerController::BeginPlay()
 {
 	Super::BeginPlay();
+	bRaidHUDInitializationStopped = false;
 
 	bShowMouseCursor = false;
 
@@ -68,21 +72,24 @@ void ALB_PlayerController::BeginPlay()
 
 	ApplyInputMappingContexts();
 	InitializeRaidHUD();
-
-	if (HasAuthority())
-	{
-		// Listen Server에서 원격 클라이언트도 자기 화면에 HUD를 만들게 한다.
-		ClientInitializeRaidHUD();
-	}
 }
 
 void ALB_PlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	bRaidHUDInitializationStopped = true;
+	bLocalPrimaryHeld = false;
+	if (HasAuthority())
+	{
+		StopPrimaryRepeat_ServerOnly();
+	}
+
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().ClearTimer(RaidHUDInitRetryTimerHandle);
 	}
 
+	CancelRaidHUDClassLoad();
+	RemoveAppliedInputMappingContexts();
 	RemoveRaidHUD();
 
 	Super::EndPlay(EndPlayReason);
@@ -96,38 +103,53 @@ void ALB_PlayerController::AcknowledgePossession(APawn* P)
 
 	// Pawn/PlayerState/ASC가 늦게 준비될 수 있으므로 Possess 이후에도 HUD 생성을 보장한다.
 	InitializeRaidHUD();
+}
 
+
+void ALB_PlayerController::OnUnPossess()
+{
+	// 서버 타이머가 이전 Pawn의 ASC를 계속 발동하지 않도록 소유 해제 시 즉시 연사를 중단한다.
 	if (HasAuthority())
 	{
-		ClientInitializeRaidHUD();
+		StopPrimaryRepeat_ServerOnly();
 	}
+	bLocalPrimaryHeld = false;
+
+	Super::OnUnPossess();
 }
 
 void ALB_PlayerController::Jump()
 {
-	if (!IsValid(GetCharacter())) return;
-	
-	GetCharacter()->Jump();
+	// GetCharacter 내부 Cast/조회 결과를 한 번만 사용해 입력 핫패스의 중복 작업을 없앤다.
+	ACharacter* ControlledCharacter = GetCharacter();
+	if (!IsValid(ControlledCharacter)) return;
+
+	ControlledCharacter->Jump();
 }
 
 void ALB_PlayerController::StopJumping()
 {
-	if (!IsValid(GetCharacter())) return;
-	GetCharacter()->StopJumping();
+	ACharacter* ControlledCharacter = GetCharacter();
+	if (!IsValid(ControlledCharacter)) return;
+
+	ControlledCharacter->StopJumping();
 }
 
 void ALB_PlayerController::Move(const FInputActionValue& Value)
 {
-	if (!IsValid(GetPawn())) return;
+	APawn* ControlledPawn = GetPawn();
+	if (!IsValid(ControlledPawn)) return;
 	
 	const FVector2D MovementVector = Value.Get<FVector2D>();
 	
 	const FRotator YawRotation(0.f, GetControlRotation().Yaw, 0.f);
-	const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
-	const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
+	// 동일 회전 행렬을 한 번만 만들어 전/우 방향 벡터에 재사용한다.
+	const FRotationMatrix YawRotationMatrix(YawRotation);
+	const FVector ForwardDirection = YawRotationMatrix.GetUnitAxis(EAxis::X);
+	const FVector RightDirection = YawRotationMatrix.GetUnitAxis(EAxis::Y);
 	
-	GetPawn()->AddMovementInput(ForwardDirection, MovementVector.Y);
-	GetPawn()->AddMovementInput(RightDirection, MovementVector.X);
+	ControlledPawn->AddMovementInput(ForwardDirection, MovementVector.Y);
+	ControlledPawn->AddMovementInput(RightDirection, MovementVector.X);
 }
 
 void ALB_PlayerController::Look(const FInputActionValue& Value)
@@ -138,31 +160,149 @@ void ALB_PlayerController::Look(const FInputActionValue& Value)
 	AddPitchInput(LookAxisVector.Y);
 }
 
-void ALB_PlayerController::Primary()
+void ALB_PlayerController::PrimaryPressed()
 {
-	const UWorld* World = GetWorld();
-	const float CurrentTime = World ? World->GetTimeSeconds() : 0.f;
-	if (CurrentTime - LastPrimaryActivationTime < PrimaryActivationInterval)
+	if (!IsLocalController() || bLocalPrimaryHeld)
 	{
 		return;
 	}
-	LastPrimaryActivationTime = CurrentTime;
 
-	RequestPrimaryAttack();
+	bLocalPrimaryHeld = true;
+	if (HasAuthority())
+	{
+		SetPrimaryHeld_ServerOnly(true);
+		return;
+	}
+
+	ServerSetPrimaryHeld(true);
+}
+
+void ALB_PlayerController::PrimaryReleased()
+{
+	// Completed와 Canceled가 같은 프레임에 들어와도 release RPC는 한 번만 전송한다.
+	if (!bLocalPrimaryHeld)
+	{
+		return;
+	}
+
+	bLocalPrimaryHeld = false;
+	if (HasAuthority())
+	{
+		SetPrimaryHeld_ServerOnly(false);
+		return;
+	}
+
+	ServerSetPrimaryHeld(false);
+}
+
+void ALB_PlayerController::SetPrimaryHeld_ServerOnly(bool bHeld)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	if (!bHeld)
+	{
+		if (bServerPrimaryHeld)
+		{
+			StopPrimaryRepeat_ServerOnly();
+		}
+		return;
+	}
+
+	if (bServerPrimaryHeld || !IsValid(GetPawn()))
+	{
+		return;
+	}
+
+	bServerPrimaryHeld = true;
+	TryActivatePrimary_ServerOnly();
+
+	if (UWorld* World = GetWorld())
+	{
+		// 반복 공격은 서버의 단일 타이머가 담당해 클라이언트 FPS와 네트워크 지연에 영향을 받지 않는다.
+		const float SafeInterval = GetSafePrimaryActivationInterval();
+		World->GetTimerManager().SetTimer(
+			ServerPrimaryRepeatTimerHandle,
+			this,
+			&ThisClass::HandlePrimaryRepeat_ServerOnly,
+			SafeInterval,
+			true,
+			SafeInterval);
+	}
+	else
+	{
+		bServerPrimaryHeld = false;
+	}
+}
+
+void ALB_PlayerController::HandlePrimaryRepeat_ServerOnly()
+{
+	if (!HasAuthority() || !bServerPrimaryHeld || !IsValid(GetPawn()))
+	{
+		StopPrimaryRepeat_ServerOnly();
+		return;
+	}
+
+	TryActivatePrimary_ServerOnly();
+}
+
+void ALB_PlayerController::StopPrimaryRepeat_ServerOnly()
+{
+	bServerPrimaryHeld = false;
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(ServerPrimaryRepeatTimerHandle);
+	}
+}
+
+bool ALB_PlayerController::TryActivatePrimary_ServerOnly()
+{
+	if (!HasAuthority())
+	{
+		return false;
+	}
+
+	const UWorld* World = GetWorld();
+	if (!IsValid(World))
+	{
+		return false;
+	}
+
+	const double CurrentTime = World->GetTimeSeconds();
+	const double SafeInterval = static_cast<double>(GetSafePrimaryActivationInterval());
+	if (LastPrimaryActivationServerTime >= 0.0
+		&& CurrentTime >= LastPrimaryActivationServerTime
+		&& CurrentTime - LastPrimaryActivationServerTime + UE_KINDA_SMALL_NUMBER < SafeInterval)
+	{
+		return false;
+	}
+
+	// 성공 여부와 무관하게 시도 시각을 기록해 실패 상태에서 Reliable RPC를 연속 호출하는 남용도 제한한다.
+	LastPrimaryActivationServerTime = CurrentTime;
+	return ActivateAbility(LBTags::LBAbilities::Primary);
+}
+
+float ALB_PlayerController::GetSafePrimaryActivationInterval() const
+{
+	return FMath::IsFinite(PrimaryActivationInterval) && PrimaryActivationInterval >= 0.01f
+		? PrimaryActivationInterval
+		: 0.3f;
 }
 
 void ALB_PlayerController::RequestPrimaryAttack()
 {
 	if (HasAuthority())
 	{
-		ActivateAbility(LBTags::LBAbilities::Primary);
+		TryActivatePrimary_ServerOnly();
 		return;
 	}
 
-	ServerActivateAbility(LBTags::LBAbilities::Primary);
+	ServerRequestPrimaryAttack();
 }
 
-void ALB_PlayerController::ApplyInputMappingContexts() const
+void ALB_PlayerController::ApplyInputMappingContexts()
 {
 	ULocalPlayer* LocalPlayer = GetLocalPlayer();
 	if (!IsValid(LocalPlayer)) return;
@@ -172,19 +312,46 @@ void ALB_PlayerController::ApplyInputMappingContexts() const
 
 	for (UInputMappingContext* Context : InputMappingContexts)
 	{
-		if (IsValid(Context))
+		if (IsValid(Context) && !InputSubsystem->HasMappingContext(Context))
 		{
-			// 여러 시점에서 재호출되어도 같은 컨텍스트를 0번 우선순위로 유지한다.
+			// Setup/Begin/Possess 재호출에도 중복 매핑 재빌드를 하지 않고, 직접 추가한 항목만 소유로 기록한다.
 			InputSubsystem->AddMappingContext(Context, 0);
+			AppliedInputMappingContexts.Add(Context);
 		}
 	}
 }
 
+void ALB_PlayerController::RemoveAppliedInputMappingContexts()
+{
+	ULocalPlayer* LocalPlayer = GetLocalPlayer();
+	UEnhancedInputLocalPlayerSubsystem* InputSubsystem = IsValid(LocalPlayer)
+		? ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(LocalPlayer)
+		: nullptr;
+
+	if (IsValid(InputSubsystem))
+	{
+		for (UInputMappingContext* Context : AppliedInputMappingContexts)
+		{
+			if (IsValid(Context) && InputSubsystem->HasMappingContext(Context))
+			{
+				InputSubsystem->RemoveMappingContext(Context);
+			}
+		}
+	}
+
+	AppliedInputMappingContexts.Empty();
+}
+
 bool ALB_PlayerController::ActivateAbility(const FGameplayTag& AbilityTag) const
 {
-	UAbilitySystemComponent* ASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(PlayerState.Get());
+	// PlayerState가 ASC의 실제 소유자이므로 타입이 보장된 경로를 먼저 사용해 반복 reflection/Cast 비용을 줄인다.
+	const ALB_PlayerState* LBPlayerState = GetPlayerState<ALB_PlayerState>();
+	UAbilitySystemComponent* ASC = IsValid(LBPlayerState)
+		? LBPlayerState->GetAbilitySystemComponent()
+		: nullptr;
 	if (!IsValid(ASC))
 	{
+		// Pawn의 PlayerState 연결이 먼저 완료된 예외 순서를 위해 기존 GAS 인터페이스 fallback은 유지한다.
 		ASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(GetPawn());
 	}
 
@@ -220,14 +387,20 @@ void ALB_PlayerController::LogAbilityActivationFailure(const FGameplayTag& Abili
 	);
 }
 
-void ALB_PlayerController::ServerActivateAbility_Implementation(FGameplayTag AbilityTag)
+void ALB_PlayerController::ServerSetPrimaryHeld_Implementation(bool bHeld)
 {
-	ActivateAbility(AbilityTag);
+	SetPrimaryHeld_ServerOnly(bHeld);
+}
+
+void ALB_PlayerController::ServerRequestPrimaryAttack_Implementation()
+{
+	TryActivatePrimary_ServerOnly();
 }
 
 void ALB_PlayerController::InitializeRaidHUD()
 {
-	if (!IsLocalController())
+	// Dedicated Server에는 Slate와 HUD 애셋이 필요 없으므로 로드 요청 자체를 만들지 않는다.
+	if (bRaidHUDInitializationStopped || GetNetMode() == NM_DedicatedServer || !IsLocalController())
 	{
 		return;
 	}
@@ -237,13 +410,31 @@ void ALB_PlayerController::InitializeRaidHUD()
 		return;
 	}
 
-	if (!RaidHUDWidgetClass)
+	if (!AreRaidHUDDependenciesReady())
+	{
+		ScheduleRaidHUDInitializationRetry();
+		return;
+	}
+
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(RaidHUDInitRetryTimerHandle);
+	}
+
+	if (RaidHUDWidgetClass.IsNull())
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[LB UI] RaidHUDWidgetClass is not set. Controller=%s"), *GetNameSafe(this));
 		return;
 	}
 
-	RaidHUDWidget = CreateWidget<ULB_RaidHUDWidget>(this, RaidHUDWidgetClass);
+	UClass* LoadedHUDWidgetClass = RaidHUDWidgetClass.Get();
+	if (!IsValid(LoadedHUDWidgetClass))
+	{
+		RequestRaidHUDClassAsync();
+		return;
+	}
+
+	RaidHUDWidget = CreateWidget<ULB_RaidHUDWidget>(this, LoadedHUDWidgetClass);
 	if (!IsValid(RaidHUDWidget))
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[LB UI] Failed to create RaidHUDWidget. Controller=%s"), *GetNameSafe(this));
@@ -256,6 +447,102 @@ void ALB_PlayerController::InitializeRaidHUD()
 	RaidHUDWidget->SetVisibility(ESlateVisibility::HitTestInvisible);
 }
 
+void ALB_PlayerController::ScheduleRaidHUDInitializationRetry()
+{
+	if (bRaidHUDInitializationStopped)
+	{
+		return;
+	}
+
+	if (UWorld* World = GetWorld())
+	{
+		FTimerManager& TimerManager = World->GetTimerManager();
+		if (!TimerManager.IsTimerActive(RaidHUDInitRetryTimerHandle))
+		{
+			// Pawn/PlayerState/GameState 복제 순서를 Tick으로 감시하지 않고 저비용 one-shot 타이머로 재확인한다.
+			TimerManager.SetTimer(
+				RaidHUDInitRetryTimerHandle,
+				this,
+				&ThisClass::InitializeRaidHUD,
+				0.1f,
+				false);
+		}
+	}
+}
+
+bool ALB_PlayerController::AreRaidHUDDependenciesReady() const
+{
+	const UWorld* World = GetWorld();
+	return IsValid(World)
+		&& IsValid(GetPawn())
+		&& IsValid(GetPlayerState<ALB_PlayerState>())
+		&& IsValid(World->GetGameState<ALB_RaidGameState>());
+}
+
+void ALB_PlayerController::RequestRaidHUDClassAsync()
+{
+	if (bRaidHUDInitializationStopped || RaidHUDLoadHandle.IsValid())
+	{
+		return;
+	}
+
+	const FSoftObjectPath HUDClassPath = RaidHUDWidgetClass.ToSoftObjectPath();
+	if (!HUDClassPath.IsValid())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[LB UI] Raid HUD soft class path is invalid. Controller=%s"), *GetNameSafe(this));
+		return;
+	}
+
+	// HUD 패키지를 로컬 플레이어에게만 비동기 스트리밍해 게임 스레드 hitch와 서버 메모리 상주를 방지한다.
+	RaidHUDLoadHandle = UAssetManager::GetStreamableManager().RequestAsyncLoad(
+		HUDClassPath,
+		FStreamableDelegate::CreateUObject(this, &ThisClass::HandleRaidHUDClassLoaded),
+		FStreamableManager::DefaultAsyncLoadPriority,
+		false,
+		false,
+		TEXT("LB_RaidHUDWidget"));
+
+	if (!RaidHUDLoadHandle.IsValid())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[LB UI] Failed to request Raid HUD async load. Path=%s Controller=%s"),
+			*HUDClassPath.ToString(),
+			*GetNameSafe(this));
+	}
+}
+
+void ALB_PlayerController::HandleRaidHUDClassLoaded()
+{
+	RaidHUDLoadHandle.Reset();
+	if (bRaidHUDInitializationStopped)
+	{
+		return;
+	}
+
+	if (!IsValid(RaidHUDWidgetClass.Get()))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[LB UI] Raid HUD async load completed without a valid class. Path=%s Controller=%s"),
+			*RaidHUDWidgetClass.ToSoftObjectPath().ToString(),
+			*GetNameSafe(this));
+		return;
+	}
+
+	InitializeRaidHUD();
+}
+
+void ALB_PlayerController::CancelRaidHUDClassLoad()
+{
+	if (!RaidHUDLoadHandle.IsValid())
+	{
+		return;
+	}
+
+	if (!RaidHUDLoadHandle->HasLoadCompleted())
+	{
+		RaidHUDLoadHandle->CancelHandle();
+	}
+	RaidHUDLoadHandle.Reset();
+}
+
 void ALB_PlayerController::RemoveRaidHUD()
 {
 	if (IsValid(RaidHUDWidget))
@@ -263,9 +550,4 @@ void ALB_PlayerController::RemoveRaidHUD()
 		RaidHUDWidget->RemoveFromParent();
 		RaidHUDWidget = nullptr;
 	}
-}
-
-void ALB_PlayerController::ClientInitializeRaidHUD_Implementation()
-{
-	InitializeRaidHUD();
 }

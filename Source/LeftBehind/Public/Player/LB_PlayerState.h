@@ -18,6 +18,8 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLBRoleChanged, ELBRoleType, NewRo
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLBDeathCountChanged, int32, NewDeathCount);
 // 생존/사망 상태 변경을 UI, 리스폰 로직 등에 전달한다.
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLBDeadStateChanged, bool, bNewIsDead);
+// 선택 캐릭터가 바뀌었을 때 로비/파티 UI가 PlayerState를 폴링하지 않고 갱신되도록 알린다.
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLBCharacterIDChanged, ELBCharacterID, NewCharacterID);
 
 // 플레이어별 레이드 진행 정보와 GAS AbilitySystemComponent를 보관하는 PlayerState.
 UCLASS()
@@ -52,6 +54,11 @@ public:
     // 블루프린트/UI에서 현재 사망 상태 변경 이벤트를 구독한다.
     UPROPERTY(BlueprintAssignable)
     FOnLBDeadStateChanged OnDeadStateChanged;
+
+    // 블루프린트/UI에서 선택 캐릭터 변경 이벤트를 구독한다.
+    // 이벤트 기반 갱신은 UI Tick/반복 Cast를 없애 클라이언트 CPU 비용과 결합도를 낮춘다.
+    UPROPERTY(BlueprintAssignable)
+    FOnLBCharacterIDChanged OnCharacterIDChanged;
 
     // 레이드 시작/재시작 시 서버에서만 사망 정보, 누적 전투 통계, MVP 여부를 초기화한다.
     UFUNCTION(BlueprintCallable, Category="LB|PlayerState")
@@ -145,11 +152,11 @@ protected:
     UPROPERTY(ReplicatedUsing=OnRep_CharacterID, BlueprintReadOnly, Category="LB|Raid")
     ELBCharacterID CharacterID = ELBCharacterID::None;
     
-    // 보스에게 입힌 누적 총 피해량.
+    // 보스에게 입힌 누적 총 피해량. 진행 중에는 소유 클라이언트에만 복제하고 최종 전원 값은 Scoreboard로 제공한다.
     UPROPERTY(Replicated, BlueprintReadOnly, Category="LB|Stats")
     float TotalDamageDealt = 0.f;
     
-    // 파티원에게 회복시킨 누적 총 힐량.
+    // 파티원에게 회복시킨 누적 총 힐량. 진행 중에는 소유 클라이언트에만 복제해 파티 규모에 따른 대역폭 증가를 막는다.
     UPROPERTY(Replicated, BlueprintReadOnly, Category="LB|Stats")
     float TotalHealingDone = 0.f;
     
@@ -169,6 +176,7 @@ protected:
     UFUNCTION()
     void OnRep_IsDead();
     
+    // CharacterID가 복제되거나 서버에서 직접 갱신된 직후 캐릭터 변경 델리게이트를 방송한다.
     UFUNCTION()
     void OnRep_CharacterID();
 };

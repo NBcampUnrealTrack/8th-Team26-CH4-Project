@@ -30,7 +30,8 @@ FGameplayAbilitySpecHandle ULB_AttackPatternComponent::SelectAttackPattern()
 	
 	for (FGameplayAbilitySpec& Spec : CacahedASC->GetActivatableAbilities())
 	{
-		if (!Spec.Ability->AbilityTags.HasTag(SearchTag)) continue;
+		// UE 5.7부터 AbilityTags 직접 접근이 폐기 예정이므로 읽기 전용 공식 API를 사용한다.
+		if (!Spec.Ability->GetAssetTags().HasTag(SearchTag)) continue;
 		if (!Spec.Ability->CanActivateAbility(Spec.Handle, CacahedASC->AbilityActorInfo.Get())) continue;
 		
 		
