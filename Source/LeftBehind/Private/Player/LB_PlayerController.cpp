@@ -61,6 +61,11 @@ void ALB_PlayerController::BeginPlay()
 {
 	Super::BeginPlay();
 
+	bShowMouseCursor = false;
+
+	FInputModeGameOnly InputMode;
+	SetInputMode(InputMode);
+
 	ApplyInputMappingContexts();
 	InitializeRaidHUD();
 
