@@ -21,6 +21,7 @@ EBTNodeResult::Type ULB_BTT_MoveToTarget::ExecuteTask(UBehaviorTreeComponent& Ow
 	if (!IsValid(BossCharacter)) return EBTNodeResult::Failed;
 	
 	BB->SetValueAsFloat(FName("AttackRange"),BossCharacter->MeleeDistance);
+	BB->SetValueAsFloat(FName("WideAttackRange"),BossCharacter->WideAttackTrigger);
 	
 	return EBTNodeResult::Succeeded;
 }

@@ -117,6 +117,9 @@ public:
 	
 	UPROPERTY(EditAnywhere,BlueprintReadOnly, Category = "BOSS|AI")
 	float RangedDistance;
+	
+	UPROPERTY(EditAnywhere,BlueprintReadOnly, Category = "BOSS|AI")
+	float WideAttackTrigger;
 
 protected:
 	
