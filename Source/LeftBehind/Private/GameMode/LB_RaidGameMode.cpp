@@ -1,6 +1,7 @@
 ﻿//LBRaidGameMode.cpp
 
 #include "GameMode/LB_RaidGameMode.h"
+#include "GameMode/LB_RaidMVPUtils.h"
 
 #include "GameState/LB_RaidGameState.h"
 #include "System/Raid/LBRaidBossBase.h"
@@ -164,6 +165,9 @@ void ALB_RaidGameMode::StartBattle()
         LBRaidDebug(GetWorld(), TEXT("[RaidGM] ERROR: Boss spawn failed. Battle not started."), FColor::Red, 10.f);
         return;
     }
+
+    // 이전 레이드를 같은 월드에서 다시 시작하더라도 누적 통계와 MVP가 남지 않게 한다.
+    ResetAllPlayerRaidStats_ServerOnly();
 
     // 전투 시작 시간을 복제해 UI 타이머와 클리어 타임 계산의 기준으로 사용한다.
     RGS->BattleStartServerTime = GetWorld()->GetTimeSeconds();
@@ -376,13 +380,20 @@ void ALB_RaidGameMode::NotifyPlayerDied(AController* DeadController)
 
     // 모든 플레이어가 사망했는지 검사해 전멸 패배를 판정한다.
     bool bAllDead = true;
+    bool bHasActivePlayer = false;
 
     if (GameState)
     {
         for (APlayerState* PS : GameState->PlayerArray)
         {
             const ALB_PlayerState* OtherPS = Cast<ALB_PlayerState>(PS);
-            if (OtherPS && !OtherPS->IsDead())
+            if (!OtherPS || OtherPS->IsOnlyASpectator() || OtherPS->IsInactive())
+            {
+                continue;
+            }
+
+            bHasActivePlayer = true;
+            if (!OtherPS->IsDead())
             {
                 bAllDead = false;
                 break;
@@ -390,7 +401,7 @@ void ALB_RaidGameMode::NotifyPlayerDied(AController* DeadController)
         }
     }
 
-    if (bAllDead)
+    if (bHasActivePlayer && bAllDead)
     {
         LBRaidDebug(GetWorld(), TEXT("[RaidGM] All players dead. Defeat."), FColor::Red, 8.f);
         EndRaid(false, ELBRaidEndReason::AllDead);
@@ -407,6 +418,122 @@ void ALB_RaidGameMode::HandleTimeLimitReached()
 
     LBRaidDebug(GetWorld(), TEXT("[RaidGM] Time limit reached. Defeat."), FColor::Red, 8.f);
     EndRaid(false, ELBRaidEndReason::TimeOut);
+}
+
+void ALB_RaidGameMode::ResetAllPlayerRaidStats_ServerOnly()
+{
+    if (!HasAuthority() || !GameState)
+    {
+        return;
+    }
+
+    for (APlayerState* PlayerState : GameState->PlayerArray)
+    {
+        if (ALB_PlayerState* LBPlayerState = Cast<ALB_PlayerState>(PlayerState))
+        {
+            LBPlayerState->ResetRaidStats_ServerOnly();
+        }
+    }
+}
+
+FLBRaidScoreboardData ALB_RaidGameMode::BuildRaidScoreboardData(const FLBRaidResultData& ResultData)
+{
+    FLBRaidScoreboardData ScoreboardData;
+    ScoreboardData.bVictory = ResultData.bVictory;
+    ScoreboardData.EndReason = ResultData.EndReason;
+    ScoreboardData.ClearTimeSec = ResultData.ClearTimeSec;
+    ScoreboardData.RankID = ResultData.RankID;
+
+    if (!HasAuthority() || !GameState)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[RaidGM] Cannot build scoreboard without server authority and GameState."));
+        return ScoreboardData;
+    }
+
+    struct FCapturedPlayerResult
+    {
+        ALB_PlayerState* PlayerState = nullptr;
+        LBRaidMVP::FScoringInput ScoringInput;
+    };
+
+    TArray<FCapturedPlayerResult> CapturedPlayers;
+    CapturedPlayers.Reserve(GameState->PlayerArray.Num());
+
+    for (APlayerState* PlayerState : GameState->PlayerArray)
+    {
+        ALB_PlayerState* LBPlayerState = Cast<ALB_PlayerState>(PlayerState);
+        if (!LBPlayerState)
+        {
+            continue;
+        }
+
+        // 이전 결과가 남아 있지 않도록 후보 포함 여부와 관계없이 먼저 해제한다.
+        LBPlayerState->SetMVP_ServerOnly(false);
+
+        if (LBPlayerState->IsOnlyASpectator() || LBPlayerState->IsInactive())
+        {
+            continue;
+        }
+
+        FCapturedPlayerResult& Captured = CapturedPlayers.AddDefaulted_GetRef();
+        Captured.PlayerState = LBPlayerState;
+        Captured.ScoringInput.RoleType = LBPlayerState->GetRoleType();
+        Captured.ScoringInput.TotalDamageDealt = LBRaidMVP::SanitizeStat(LBPlayerState->GetTotalDamageDealt());
+        Captured.ScoringInput.TotalHealingDone = LBRaidMVP::SanitizeStat(LBPlayerState->GetTotalHealingDone());
+        Captured.ScoringInput.DeathCount = FMath::Max(0, LBPlayerState->GetDeathCount());
+        Captured.ScoringInput.PlayerId = LBPlayerState->GetPlayerId();
+    }
+
+    TArray<LBRaidMVP::FScoringInput> ScoringInputs;
+    ScoringInputs.Reserve(CapturedPlayers.Num());
+    for (const FCapturedPlayerResult& Captured : CapturedPlayers)
+    {
+        ScoringInputs.Add(Captured.ScoringInput);
+    }
+
+    const float SafePrimaryWeight = FMath::IsFinite(MVPPrimaryWeight)
+        ? FMath::Clamp(MVPPrimaryWeight, 0.f, 1.f)
+        : LBRaidMVP::DefaultPrimaryWeight;
+    const int32 MVPIndex = LBRaidMVP::SelectMVPIndex(ScoringInputs, SafePrimaryWeight);
+
+    ScoreboardData.PlayerResults.Reserve(CapturedPlayers.Num());
+    for (int32 Index = 0; Index < CapturedPlayers.Num(); ++Index)
+    {
+        const FCapturedPlayerResult& Captured = CapturedPlayers[Index];
+        const bool bIsMVP = Index == MVPIndex;
+        Captured.PlayerState->SetMVP_ServerOnly(bIsMVP);
+
+        FLBPlayerFinalResult& PlayerResult = ScoreboardData.PlayerResults.AddDefaulted_GetRef();
+        PlayerResult.PlayerName = Captured.PlayerState->GetPlayerNameText();
+        PlayerResult.CharacterID = Captured.PlayerState->GetCharacterID();
+        PlayerResult.RoleType = Captured.ScoringInput.RoleType;
+        PlayerResult.TotalDamageDealt = Captured.ScoringInput.TotalDamageDealt;
+        PlayerResult.TotalHealingDone = Captured.ScoringInput.TotalHealingDone;
+        PlayerResult.DeathCount = Captured.ScoringInput.DeathCount;
+        PlayerResult.bIsMVP = bIsMVP;
+    }
+
+    if (CapturedPlayers.IsValidIndex(MVPIndex))
+    {
+        const LBRaidMVP::FScoringContext Context = LBRaidMVP::BuildScoringContext(ScoringInputs);
+        const LBRaidMVP::FScoringResult Score =
+            LBRaidMVP::CalculateScore(CapturedPlayers[MVPIndex].ScoringInput, Context, SafePrimaryWeight);
+
+        UE_LOG(
+            LogTemp,
+            Log,
+            TEXT("[RaidGM] MVP selected. Player=%s Score=%.4f Players=%d"),
+            *CapturedPlayers[MVPIndex].PlayerState->GetPlayerName(),
+            Score.Score,
+            CapturedPlayers.Num()
+        );
+    }
+    else
+    {
+        UE_LOG(LogTemp, Log, TEXT("[RaidGM] No MVP selected because every contribution score was zero."));
+    }
+
+    return ScoreboardData;
 }
 
 void ALB_RaidGameMode::EndRaid(bool bVictory, ELBRaidEndReason EndReason)
@@ -444,8 +571,13 @@ void ALB_RaidGameMode::EndRaid(bool bVictory, ELBRaidEndReason EndReason)
     Result.BossRemainingHPOnFail = bVictory ? 0.f : GetBossRemainingHP();
     Result.RankID = bVictory ? CalculateRank(ClearTimeSec) : NAME_None;
 
-    // 결과 데이터를 먼저 복제하고, 그 다음 Result 상태로 바꿔 UI가 완성된 데이터를 읽게 한다.
+    // 개별 PlayerState의 최종 통계를 하나의 불변 결과 스냅샷으로 만든다.
+    const FLBRaidScoreboardData ScoreboardData = BuildRaidScoreboardData(Result);
+
+    // 결과 스냅샷들을 먼저 기록한 뒤 Result 상태로 전환한다.
+    // 클라이언트 UI는 서로 다른 OnRep의 호출 순서에 의존하지 않고 각 데이터를 캐시해야 한다.
     RGS->SetRaidResult_ServerOnly(Result);
+    RGS->SetRaidScoreboardData_ServerOnly(ScoreboardData);
     RGS->SetRaidState_ServerOnly(ELBRaidState::Result);
 
     // 로컬 Saved 폴더에 결과를 누적 기록한다.
@@ -479,7 +611,8 @@ int32 ALB_RaidGameMode::GetTotalPlayerDeaths() const
     // 레이드 전용 PlayerState만 골라 사망 횟수를 합산한다.
     for (APlayerState* PS : GameState->PlayerArray)
     {
-        if (const ALB_PlayerState* LBPS = Cast<ALB_PlayerState>(PS))
+        if (const ALB_PlayerState* LBPS = Cast<ALB_PlayerState>(PS);
+            LBPS && !LBPS->IsOnlyASpectator() && !LBPS->IsInactive())
         {
             TotalDeaths += LBPS->GetDeathCount();
         }

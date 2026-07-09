@@ -32,6 +32,7 @@ void ALB_PlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 	DOREPLIFETIME(ALB_PlayerState, bIsDead);
 	DOREPLIFETIME(ALB_PlayerState, TotalDamageDealt);
 	DOREPLIFETIME(ALB_PlayerState, TotalHealingDone);
+	DOREPLIFETIME(ALB_PlayerState, bIsMVP);
 	DOREPLIFETIME(ALB_PlayerState, CharacterID);
 }
 
@@ -62,6 +63,7 @@ void ALB_PlayerState::ResetRaidStats_ServerOnly()
 	bIsDead = false;
 	TotalDamageDealt = 0.f;
 	TotalHealingDone = 0.f;
+	bIsMVP = false;
 
 	// 서버 자신에게는 RepNotify가 자동 호출되지 않으므로 동일한 알림 경로를 직접 실행한다.
 	OnRep_DeathCount();
@@ -132,20 +134,33 @@ void ALB_PlayerState::AddDeathCount_ServerOnly()
 
 void ALB_PlayerState::AddTotalDamageDealt_ServerOnly(float Amount)
 {
-	if (!HasAuthority() || Amount <= 0.f) return;
+	if (!HasAuthority() || !FMath::IsFinite(Amount) || Amount <= 0.f)
+	{
+		return;
+	}
+
 	TotalDamageDealt += Amount;
 }
 
 void ALB_PlayerState::AddTotalHealingDone_ServerOnly(float Amount)
 {
-	if (!HasAuthority() || Amount <= 0.f) return;
+	if (!HasAuthority() || !FMath::IsFinite(Amount) || Amount <= 0.f)
+	{
+		return;
+	}
+
 	TotalHealingDone += Amount;
 }
 
 void ALB_PlayerState::SetMVP_ServerOnly(bool bNewMVP)
 {
-	if (!HasAuthority()) return;
+	if (!HasAuthority())
+	{
+		return;
+	}
+
 	bIsMVP = bNewMVP;
+	ForceNetUpdate();
 }
 
 
