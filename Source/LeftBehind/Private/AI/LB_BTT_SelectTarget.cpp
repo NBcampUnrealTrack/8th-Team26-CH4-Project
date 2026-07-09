@@ -26,9 +26,9 @@ EBTNodeResult::Type ULB_BTT_SelectTarget::ExecuteTask(UBehaviorTreeComponent& Ow
 	{
 		BlackboardComponent->SetValueAsObject(FName("Target"),Target);
 		
-		UE_LOG(LogTemp, Warning,
+		/*UE_LOG(LogTemp, Warning,
 	TEXT("BB Target : %s"),
-	*GetNameSafe(Cast<AActor>(BlackboardComponent->GetValueAsObject(TEXT("Target")))));
+	*GetNameSafe(Cast<AActor>(BlackboardComponent->GetValueAsObject(TEXT("Target")))));*/
 	}
 	
 	
