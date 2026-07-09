@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "UI/Base/LB_BaseUserWidget.h"
+#include "System/Raid/LBCharacterTypes.h"
 #include "LB_PartyMemberSlotWidget.generated.h"
 
 // 파티원 한 명의 상태를 표시하는 슬롯 위젯
@@ -43,7 +44,7 @@ protected:
 
 	// PlayerState 변경 이벤트
 	UFUNCTION()
-	void OnRoleChanged(FName NewRoleID);
+	void OnRoleChanged(ELBRoleType NewRoleType);
 
 	UFUNCTION()
 	void OnDeadStateChanged(bool bIsDead);
@@ -55,7 +56,7 @@ protected:
 	UFUNCTION(BlueprintImplementableEvent, Category="LB|Party")
 	void BP_UpdatePartyMember(
 		const FText& PlayerName,
-		FName RoleID,
+		ELBRoleType NewRoleType,
 		float CurrentHP,
 		float MaxHP,
 		bool bDead);
