@@ -20,6 +20,8 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLBDeathCountChanged, int32, NewDe
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLBDeadStateChanged, bool, bNewIsDead);
 // 선택 캐릭터가 바뀌었을 때 로비/파티 UI가 PlayerState를 폴링하지 않고 갱신되도록 알린다.
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLBCharacterIDChanged, ELBCharacterID, NewCharacterID);
+// 코드네임 확정 여부가 바뀌면 대기실 UI가 PlayerState 폴링 없이 반응한다.
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLBCodenameConfirmedChanged, bool, bConfirmed);
 
 // 플레이어별 레이드 진행 정보와 GAS AbilitySystemComponent를 보관하는 PlayerState.
 UCLASS()
@@ -34,6 +36,11 @@ public:
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
     // GAS가 이 PlayerState의 ASC를 찾을 때 사용하는 표준 인터페이스 구현.
     virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
+
+    // seamless travel에서 엔진 기본 이름과 함께 플레이어 정체성 필드만 새 PlayerState로 전달한다.
+    virtual void CopyProperties(APlayerState* PlayerState) override;
+    // 일시 접속 해제 후 복귀할 때 inactive PlayerState의 정체성 필드를 복원한다.
+    virtual void OverrideWith(APlayerState* PlayerState) override;
 
     // 프로젝트 전용 ASC를 그대로 돌려준다. 블루프린트에서 세부 기능을 쓸 때 사용한다.
     UFUNCTION(BlueprintPure, Category="LB|GAS")
@@ -59,6 +66,9 @@ public:
     // 이벤트 기반 갱신은 UI Tick/반복 Cast를 없애 클라이언트 CPU 비용과 결합도를 낮춘다.
     UPROPERTY(BlueprintAssignable)
     FOnLBCharacterIDChanged OnCharacterIDChanged;
+
+    UPROPERTY(BlueprintAssignable)
+    FOnLBCodenameConfirmedChanged OnCodenameConfirmedChanged;
 
     // 레이드 시작/재시작 시 서버에서만 사망 정보, 누적 전투 통계, MVP 여부를 초기화한다.
     UFUNCTION(BlueprintCallable, Category="LB|PlayerState")
@@ -103,9 +113,12 @@ public:
     // 현재 플레이어 이름을 반환한다.
     UFUNCTION(BlueprintPure, Category="LB|PlayerState")
     FText GetPlayerNameText() const;
-    
-    UFUNCTION(Server, BlueprintCallable, Reliable)
-    void ServerRPCSetPlayerName(const FString& InName);
+
+    // 이름 검증/요청 RPC는 owning PlayerController가 담당하고 PlayerState에는 확정 상태만 저장한다.
+    void SetCodenameConfirmed_ServerOnly(bool bConfirmed);
+
+    UFUNCTION(BlueprintPure, Category="LB|PlayerState")
+    bool IsCodenameConfirmed() const { return bCodenameConfirmed; }
 
     // 누적 사망 횟수를 읽는다.
     UFUNCTION(BlueprintPure, Category="LB|PlayerState")
@@ -151,6 +164,9 @@ protected:
     // 선택한 캐릭터 ID
     UPROPERTY(ReplicatedUsing=OnRep_CharacterID, BlueprintReadOnly, Category="LB|Raid")
     ELBCharacterID CharacterID = ELBCharacterID::None;
+
+    UPROPERTY(ReplicatedUsing=OnRep_CodenameConfirmed, BlueprintReadOnly, Category="LB|MainMenu")
+    bool bCodenameConfirmed = false;
     
     // 보스에게 입힌 누적 총 피해량. 진행 중에는 소유 클라이언트에만 복제하고 최종 전원 값은 Scoreboard로 제공한다.
     UPROPERTY(Replicated, BlueprintReadOnly, Category="LB|Stats")
@@ -179,4 +195,7 @@ protected:
     // CharacterID가 복제되거나 서버에서 직접 갱신된 직후 캐릭터 변경 델리게이트를 방송한다.
     UFUNCTION()
     void OnRep_CharacterID();
+
+    UFUNCTION()
+    void OnRep_CodenameConfirmed();
 };

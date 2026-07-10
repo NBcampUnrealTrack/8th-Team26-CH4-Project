@@ -37,6 +37,7 @@ void ALB_PlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 	DOREPLIFETIME_CONDITION(ALB_PlayerState, TotalHealingDone, COND_OwnerOnly);
 	DOREPLIFETIME(ALB_PlayerState, bIsMVP);
 	DOREPLIFETIME(ALB_PlayerState, CharacterID);
+	DOREPLIFETIME(ALB_PlayerState, bCodenameConfirmed);
 }
 
 UAbilitySystemComponent* ALB_PlayerState::GetAbilitySystemComponent() const
@@ -52,6 +53,31 @@ ULB_AbilitySystemComponent* ALB_PlayerState::GetLBAbilitySystemComponent() const
 ULB_AttributeSet* ALB_PlayerState::GetLBAttributeSet() const
 {
 	return AttributeSet;
+}
+
+void ALB_PlayerState::CopyProperties(APlayerState* PlayerState)
+{
+	Super::CopyProperties(PlayerState);
+
+	if (ALB_PlayerState* TargetPlayerState = Cast<ALB_PlayerState>(PlayerState))
+	{
+		// PlayerName은 Super가 복사한다. 레이드 누적 통계는 의도적으로 넘기지 않는다.
+		TargetPlayerState->RoleType = RoleType;
+		TargetPlayerState->CharacterID = CharacterID;
+		TargetPlayerState->bCodenameConfirmed = bCodenameConfirmed;
+	}
+}
+
+void ALB_PlayerState::OverrideWith(APlayerState* PlayerState)
+{
+	Super::OverrideWith(PlayerState);
+
+	if (const ALB_PlayerState* SourcePlayerState = Cast<ALB_PlayerState>(PlayerState))
+	{
+		RoleType = SourcePlayerState->RoleType;
+		CharacterID = SourcePlayerState->CharacterID;
+		bCodenameConfirmed = SourcePlayerState->bCodenameConfirmed;
+	}
 }
 
 void ALB_PlayerState::ResetRaidStats_ServerOnly()
@@ -228,15 +254,16 @@ FText ALB_PlayerState::GetPlayerNameText() const
 	return FText::FromString(GetPlayerName());
 }
 
-void ALB_PlayerState::ServerRPCSetPlayerName_Implementation(const FString& InName)
+void ALB_PlayerState::SetCodenameConfirmed_ServerOnly(bool bConfirmed)
 {
-	// Blueprint 계약과 문자열 정책은 유지하되, 동일 이름은 엔진 내부 이름 복제까지 다시 유발하지 않는다.
-	if (GetPlayerName() == InName)
+	if (!HasAuthority() || bCodenameConfirmed == bConfirmed)
 	{
 		return;
 	}
 
-	SetPlayerName(InName);
+	bCodenameConfirmed = bConfirmed;
+	OnRep_CodenameConfirmed();
+	ForceNetUpdate();
 }
 
 void ALB_PlayerState::OnRep_RoleType()
@@ -261,4 +288,9 @@ void ALB_PlayerState::OnRep_CharacterID()
 {
 	// 캐릭터 선택 UI와 파티 슬롯은 이 이벤트만 구독하면 되므로 매 프레임 PlayerState를 조회할 필요가 없다.
 	OnCharacterIDChanged.Broadcast(CharacterID);
+}
+
+void ALB_PlayerState::OnRep_CodenameConfirmed()
+{
+	OnCodenameConfirmedChanged.Broadcast(bCodenameConfirmed);
 }

@@ -88,4 +88,25 @@ struct FLBCharacterData : public FTableRowBase
 	// true면 캐릭터 선택창에서 선택 불가 상태로 표시
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	bool bLocked = false;
+	
+	// 캐릭터 상세 화면에 표시할 스탯
+	// 사냥 등급 (예: "입문", "보통", "숙련", "전문")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	FText HuntingGrade;
+
+	// 공격력 수치
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	int32 AttackPower = 0;
+
+	// 방어력 수치
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	int32 Defense = 0;
+
+	// 치명타 확률 (0~100)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	int32 CriticalRate = 0;
+
+	// 이동속도 (예: "느림", "보통", "빠름")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	FText MoveSpeed;
 };
