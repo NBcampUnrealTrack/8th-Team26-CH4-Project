@@ -148,9 +148,14 @@ void ALB_BaseCharacter::HandleDeath()
 		return;
 	}
 
-	bAlive = false;	
-	
+	bAlive = false;
+
 	UE_LOG(LogTemp, Warning, TEXT("[LB Character] %s has died"), *GetName());
+
+	if (HasAuthority())
+	{
+		MulticastPlayCosmeticMontage(DeathMontage);
+	}
 }
 
 void ALB_BaseCharacter::HandleRespon()

@@ -20,6 +20,7 @@
 #include "GameplayTags/LBTags.h"
 #include "Player/LB_PlayerState.h"
 #include "TimerManager.h"
+#include "Characters/LB_BaseCharacter.h"
 #include "UI/HUD/LB_RaidHUDWidget.h"
 
 ALB_PlayerController::ALB_PlayerController()
@@ -123,6 +124,7 @@ void ALB_PlayerController::Jump()
 	// GetCharacter 내부 Cast/조회 결과를 한 번만 사용해 입력 핫패스의 중복 작업을 없앤다.
 	ACharacter* ControlledCharacter = GetCharacter();
 	if (!IsValid(ControlledCharacter)) return;
+	if (!IsAlive()) return;
 
 	ControlledCharacter->Jump();
 }
@@ -139,6 +141,7 @@ void ALB_PlayerController::Move(const FInputActionValue& Value)
 {
 	APawn* ControlledPawn = GetPawn();
 	if (!IsValid(ControlledPawn)) return;
+	if (!IsAlive()) return;
 	
 	const FVector2D MovementVector = Value.Get<FVector2D>();
 	
@@ -155,6 +158,7 @@ void ALB_PlayerController::Move(const FInputActionValue& Value)
 void ALB_PlayerController::Look(const FInputActionValue& Value)
 {
 	const FVector2D LookAxisVector = Value.Get<FVector2D>();
+	if (!IsAlive()) return;
 	
 	AddYawInput(LookAxisVector.X);
 	AddPitchInput(LookAxisVector.Y);
@@ -162,6 +166,7 @@ void ALB_PlayerController::Look(const FInputActionValue& Value)
 
 void ALB_PlayerController::PrimaryPressed()
 {
+	if (!IsAlive()) return;
 	if (!IsLocalController() || bLocalPrimaryHeld)
 	{
 		return;
@@ -289,6 +294,13 @@ float ALB_PlayerController::GetSafePrimaryActivationInterval() const
 	return FMath::IsFinite(PrimaryActivationInterval) && PrimaryActivationInterval >= 0.01f
 		? PrimaryActivationInterval
 		: 0.3f;
+}
+
+bool ALB_PlayerController::IsAlive() const
+{
+	ALB_BaseCharacter* BaseCharacter = Cast<ALB_BaseCharacter>(GetPawn());
+	if (!IsValid(BaseCharacter)) return false;
+	return BaseCharacter->IsAlive();
 }
 
 void ALB_PlayerController::RequestPrimaryAttack()
