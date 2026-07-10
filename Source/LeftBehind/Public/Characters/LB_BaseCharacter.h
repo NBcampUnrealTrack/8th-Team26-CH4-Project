@@ -63,5 +63,5 @@ private:
 
 	UPROPERTY(BlueprintReadOnly, meta = (AllowPrivateAccess = "true"), Replicated)
 	bool bAlive = true;
-	
+
 };
