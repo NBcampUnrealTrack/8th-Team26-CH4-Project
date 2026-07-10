@@ -17,7 +17,7 @@ protected:
 
 	virtual void NativeDestruct() override;
 	
-	virtual void BP_OnRaidStateChanged_Implementation(ELBRaidState NewState) override;
+	virtual void HandleRaidStateChanged(ELBRaidState NewState) override;
 
 	// 숫자가 바뀔 때만 호출
 	UFUNCTION(BlueprintImplementableEvent, Category="LB|Countdown")

@@ -4,14 +4,16 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/GameModeBase.h"
-#include "System/Raid/LBRaidTypes.h"
-#include "System/Raid/LBRaidDataRows.h"
-#include "Characters/Boss/LB_BossCharacter.h"
 #include "LB_RaidGameMode.generated.h"
 
 class ALB_RaidGameState;
 class ALB_BossCharacter;
 class UDataTable;
+enum class ELBRaidEndReason : uint8;
+struct FStreamableHandle;
+struct FLBBossStatsRow;
+struct FLBRaidResultData;
+struct FLBRaidScoreboardData;
 
 // 레이드 전체 진행을 서버에서 제어하는 GameMode.
 // 카운트다운, 보스 스폰, 승패 판정, 랭크 계산, 결과 로그 기록을 담당한다.
@@ -25,6 +27,9 @@ public:
 
     // 레이드 GameState를 초기화하고 설정에 따라 자동 카운트다운을 시작한다.
     virtual void BeginPlay() override;
+
+    // 월드 종료 시 타이머, 보스 델리게이트, 비동기 로드 요청을 명시적으로 정리한다.
+    virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
     // Waiting 상태에서 Countdown 상태로 전환하고 전투 시작 타이머를 예약한다.
     UFUNCTION(BlueprintCallable, Category = "LB|Raid")
@@ -50,8 +55,6 @@ protected:
     // 보스 스탯과 보스 클래스 정보를 담은 데이터 테이블.
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Raid|Data")
     TObjectPtr<UDataTable> BossStatsTable;
-    
-
 
     // BossStatsTable에서 사용할 행 이름.
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Raid|Data")
@@ -70,16 +73,26 @@ protected:
     bool bBossSpawnPointIsFloorLocation = true;
 
     // 전투 시작 전 카운트다운 시간.
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Raid|Time")
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Raid|Time", meta = (ClampMin = "0.0"))
     float CountdownSec = 5.f;
 
     // 보스 데이터가 없을 때 사용할 기본 제한 시간.
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Raid|Time")
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Raid|Time", meta = (ClampMin = "0.01"))
     float DefaultTimeLimitSec = 300.f;
 
-    // 현재 레이드에서 스폰된 보스 액터 참조.
-    UPROPERTY()
-    TObjectPtr<ALB_BossCharacter> SpawnedBoss;
+    // MVP 점수에서 각 역할의 주 임무(딜러=피해, 힐러=회복)가 차지하는 비율이다.
+    // 나머지 비율은 보조 기여도에 사용한다.
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Raid|MVP", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+    float MVPPrimaryWeight = 0.8f;
+
+    // GameMode가 월드 소유 액터의 수명을 연장할 이유가 없으므로 약한 참조로 보관해
+    // 레벨 전환/파괴 시 불필요한 강한 참조와 stale pointer 위험을 동시에 줄인다.
+    UPROPERTY(Transient)
+    TWeakObjectPtr<ALB_BossCharacter> SpawnedBoss;
+
+    // 반복 GetGameState 캐스트를 피하되 월드 수명은 침범하지 않도록 약한 참조로 캐시한다.
+    UPROPERTY(Transient)
+    TWeakObjectPtr<ALB_RaidGameState> CachedRaidGameState;
 
     // 카운트다운 종료 후 StartBattle을 호출하는 타이머.
     FTimerHandle CountdownTimerHandle;
@@ -89,8 +102,18 @@ protected:
     // EndRaid가 중복 호출되는 것을 막는 플래그.
     bool bRaidEnded = false;
 
+    // 카운트다운 동안 SoftClass를 미리 읽어 전투 시작 순간의 동기 로드 hitch를 줄인다.
+    TSharedPtr<FStreamableHandle> BossClassLoadHandle;
+
     // 현재 월드의 레이드 전용 GameState를 가져온다.
-    ALB_RaidGameState* GetLBRaidGameState() const;
+    ALB_RaidGameState* GetLBRaidGameState();
+
+    // 보스 행의 필수 계약(행/클래스/최대 HP)을 전투 진입 전에 검증한다.
+    const FLBBossStatsRow* FindValidatedBossRow(const TCHAR* Context) const;
+    // 검증된 SoftClass를 카운트다운과 병렬로 비동기 프리로드한다.
+    void RequestBossClassPreload(const FLBBossStatsRow& BossRow);
+    // 월드 종료 또는 재요청 시 남아 있는 비동기 핸들을 안전하게 해제한다.
+    void CancelBossClassPreload();
 
     // 카운트다운 종료 후 보스를 스폰하고 Battle 상태로 전환한다.
     void StartBattle();
@@ -98,6 +121,12 @@ protected:
     bool SpawnBossFromData();
     // 제한 시간이 끝났을 때 레이드를 패배로 종료한다.
     void HandleTimeLimitReached();
+
+    // 전투 시작 직전에 모든 참가 플레이어의 이전 레이드 통계를 초기화한다.
+    void ResetAllPlayerRaidStats_ServerOnly();
+
+    // 서버 PlayerArray를 스냅샷으로 만들고 역할별 MVP 한 명을 선정한다.
+    FLBRaidScoreboardData BuildRaidScoreboardData(const FLBRaidResultData& ResultData);
 
     // 승패 결과를 확정하고 타이머 정리, GameState 갱신, 로그 기록을 수행한다.
     void EndRaid(bool bVictory, ELBRaidEndReason EndReason);

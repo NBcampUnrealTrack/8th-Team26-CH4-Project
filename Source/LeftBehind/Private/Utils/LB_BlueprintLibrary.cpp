@@ -84,7 +84,7 @@ FClosestActorWithTagResult ULB_BlueprintLibrary::FindClosestActorWithTag(UObject
 	return Result;
 }
 
-void ULB_BlueprintLibrary::SendDamageEventToPlayer(AActor* Target, const TSubclassOf<UGameplayEffect>& DamageEffect,
+bool ULB_BlueprintLibrary::SendDamageEventToPlayer(AActor* Target, const TSubclassOf<UGameplayEffect>& DamageEffect,
 	FGameplayEventData& Payload, const FGameplayTag& DataTag, float Damage, const FGameplayTag& EventTagOverride,
 	UObject* OptionalParticleSystem)
 {
@@ -104,7 +104,7 @@ void ULB_BlueprintLibrary::SendDamageEventToPlayer(AActor* Target, const TSubcla
 	}
 
 	AActor* SourceActor = const_cast<AActor*>(Payload.Instigator.Get());
-	ApplyDamageEffect_ServerOnly(SourceActor, Target, DamageEffect, Payload, DataTag, Damage, ResolvedEventTag, OptionalParticleSystem);
+	return ApplyDamageEffect_ServerOnly(SourceActor, Target, DamageEffect, Payload, DataTag, Damage, ResolvedEventTag, OptionalParticleSystem);
 }
 
 void ULB_BlueprintLibrary::SendDamageEventToPlayers(TArray<AActor*> Targets,

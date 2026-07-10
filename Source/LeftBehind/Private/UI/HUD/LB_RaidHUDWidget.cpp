@@ -5,6 +5,7 @@
 #include "UI/HUD/LB_BattleHUDWidget.h"
 #include "UI/Popup/LB_CountdownWidget.h"
 #include "UI/Popup/LB_RaidResultWidget.h"
+#include "UI/Result/LB_RaidScoreboardWidget.h"
 #include "Components/Overlay.h"
 
 void ULB_RaidHUDWidget::NativeConstruct()
@@ -45,74 +46,42 @@ void ULB_RaidHUDWidget::HandleRaidResultChanged(const FLBRaidResultData& ResultD
 	Super::HandleRaidResultChanged(ResultData);
 }
 
-void ULB_RaidHUDWidget::ShowWaiting()
+void ULB_RaidHUDWidget::ShowWaiting() const
 {
-	if (BattleHUD)
-	{
-		BattleHUD->SetVisibility(ESlateVisibility::Hidden);
-	}
-
-	if (CountdownWidget)
-	{
-		CountdownWidget->SetVisibility(ESlateVisibility::Hidden);
-	}
-
-	if (ResultWidget)
-	{
-		ResultWidget->SetVisibility(ESlateVisibility::Hidden);
-	}
+	if (BattleHUD)       BattleHUD->SetVisibility(ESlateVisibility::Hidden);
+	if (CountdownWidget) CountdownWidget->SetVisibility(ESlateVisibility::Hidden);
+	if (ResultWidget)    ResultWidget->SetVisibility(ESlateVisibility::Hidden);
+	if (ScoreboardWidget) ScoreboardWidget->SetVisibility(ESlateVisibility::Hidden);
 }
 
-void ULB_RaidHUDWidget::ShowCountdown()
+void ULB_RaidHUDWidget::ShowCountdown() const
 {
-	if (BattleHUD)
-	{
-		BattleHUD->SetVisibility(ESlateVisibility::Hidden);
-	}
-
-	if (CountdownWidget)
-	{
-		CountdownWidget->SetVisibility(ESlateVisibility::Visible);
-	}
-
-	if (ResultWidget)
-	{
-		ResultWidget->SetVisibility(ESlateVisibility::Hidden);
-	}
+	if (BattleHUD)       BattleHUD->SetVisibility(ESlateVisibility::Hidden);
+	if (CountdownWidget) CountdownWidget->SetVisibility(ESlateVisibility::Visible);
+	if (ResultWidget)    ResultWidget->SetVisibility(ESlateVisibility::Hidden);
+	if (ScoreboardWidget) ScoreboardWidget->SetVisibility(ESlateVisibility::Hidden);
 }
 
-void ULB_RaidHUDWidget::ShowBattle()
+void ULB_RaidHUDWidget::ShowBattle() const
 {
-	if (BattleHUD)
-	{
-		BattleHUD->SetVisibility(ESlateVisibility::Visible);
-	}
-
-	if (CountdownWidget)
-	{
-		CountdownWidget->SetVisibility(ESlateVisibility::Hidden);
-	}
-
-	if (ResultWidget)
-	{
-		ResultWidget->SetVisibility(ESlateVisibility::Hidden);
-	}
+	if (BattleHUD)       BattleHUD->SetVisibility(ESlateVisibility::Visible);
+	if (CountdownWidget) CountdownWidget->SetVisibility(ESlateVisibility::Hidden);
+	if (ResultWidget)    ResultWidget->SetVisibility(ESlateVisibility::Hidden);
+	if (ScoreboardWidget) ScoreboardWidget->SetVisibility(ESlateVisibility::Hidden);
 }
 
-void ULB_RaidHUDWidget::ShowResult()
+void ULB_RaidHUDWidget::ShowResult() const
 {
-	if (BattleHUD)
-	{
-		BattleHUD->SetVisibility(ESlateVisibility::Visible);
-	}
+	if (BattleHUD)       BattleHUD->SetVisibility(ESlateVisibility::Visible);
+	if (CountdownWidget) CountdownWidget->SetVisibility(ESlateVisibility::Hidden);
+	if (ResultWidget)    ResultWidget->SetVisibility(ESlateVisibility::Visible);
+	if (ScoreboardWidget) ScoreboardWidget->SetVisibility(ESlateVisibility::Hidden);
+}
 
-	if (CountdownWidget)
-	{
-		CountdownWidget->SetVisibility(ESlateVisibility::Hidden);
-	}
-
-	if (ResultWidget)
-	{
-		ResultWidget->SetVisibility(ESlateVisibility::Visible);
-	}
+void ULB_RaidHUDWidget::ShowScoreboard() const
+{
+	if (BattleHUD) BattleHUD->SetVisibility(ESlateVisibility::Hidden);
+	if (CountdownWidget) CountdownWidget->SetVisibility(ESlateVisibility::Hidden);
+	if (ResultWidget) ResultWidget->SetVisibility(ESlateVisibility::Hidden);
+	if (ScoreboardWidget) ScoreboardWidget->SetVisibility(ESlateVisibility::Visible);
 }

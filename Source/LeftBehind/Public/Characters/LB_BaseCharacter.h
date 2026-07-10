@@ -50,14 +50,18 @@ protected:
 	virtual void HandleRespon();
 	
 private:
-	
+
 	UPROPERTY(EditDefaultsOnly, Category= "LeftBehind|Abilities")
 	TArray<TSubclassOf<UGameplayAbility>> StartupAbilities;
-	
+
 	UPROPERTY(EditDefaultsOnly, Category = "LeftBehind|Effects")
 	TSubclassOf<UGameplayEffect> InitializeAttributesEffect;
 
+	// 사망 시 재생할 몽타주다. 캐릭터마다 다르면 이 값만 에디터에서 교체하면 된다.
+	UPROPERTY(EditDefaultsOnly, Category = "LeftBehind|Animation")
+	TObjectPtr<UAnimMontage> DeathMontage;
+
 	UPROPERTY(BlueprintReadOnly, meta = (AllowPrivateAccess = "true"), Replicated)
 	bool bAlive = true;
-	
+
 };

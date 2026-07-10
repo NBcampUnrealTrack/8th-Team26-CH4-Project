@@ -4,6 +4,7 @@
 #include "GameObjects/LB_Projectile.h"
 #include "Characters/LB_PlayerCharacter.h"
 #include "AbilitySystem/LB_AbilitySystemComponent.h"
+#include "Player/LB_PlayerState.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 
 
@@ -29,8 +30,12 @@ void ALB_Projectile::NotifyActorBeginOverlap(AActor* OtherActor)
 	FGameplayEffectSpecHandle SpecHandle = AbilitySystemComponent->MakeOutgoingSpec(HealEffect, 1.f, ContextHandle);
 	
 	AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
-	Destroy();
-}
+	
+	if (ALB_PlayerState* PS = Cast<ALB_PlayerState>(PlayerCharacter->GetPlayerState()))
+	{
+		PS->AddTotalHealingDone_ServerOnly(Heal);
+	}
+	Destroy();}
 
 
 

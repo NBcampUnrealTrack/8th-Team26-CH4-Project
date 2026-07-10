@@ -15,7 +15,8 @@ GAMEPLAYATTRIBUTE_VALUE_SETTER(PropertyName) \
 GAMEPLAYATTRIBUTE_VALUE_INITTER(PropertyName)
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FAttributesInitialized);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FActorDamaged,AActor*, Instigator,AActor*, Causer, float, Damage);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FActorDamagedOrHeal,AActor*, Instigator,AActor*, Causer, float, Damage);
+
 /**
  * 
  */
@@ -29,11 +30,15 @@ public:
 	FAttributesInitialized OnAttributesInitialized;
 	
 	UPROPERTY(BlueprintAssignable)
-	FActorDamaged ActorDamaged;
+	FActorDamagedOrHeal ActorDamaged;
+	
+	UPROPERTY(BlueprintAssignable)
+	FActorDamagedOrHeal ActorHealed;
 	
 	virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;
 	
 	virtual void PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue) override;
+	virtual bool PreGameplayEffectExecute(struct FGameplayEffectModCallbackData& Data) override;
 	virtual void PostGameplayEffectExecute(const struct FGameplayEffectModCallbackData& Data) override;
 
 	// 시작 스탯을 정리할 때 사용한다. Max 값이 정해진 뒤 현재 HP/마나를 최대치로 채운다.

@@ -44,6 +44,12 @@ void ULB_BaseRaidWidget::OnRaidResultChanged(const FLBRaidResultData& ResultData
 	BP_OnRaidResultChanged(ResultData);
 }
 
+void ULB_BaseRaidWidget::OnRaidScoreboardChanged(const FLBRaidScoreboardData& ScoreboardData)
+{
+	HandleRaidScoreboardChanged(ScoreboardData);
+	BP_OnRaidScoreboardChanged(ScoreboardData);
+}
+
 void ULB_BaseRaidWidget::HandleRaidStateChanged(ELBRaidState NewState)
 {
 }
@@ -56,15 +62,7 @@ void ULB_BaseRaidWidget::HandleRaidResultChanged(const FLBRaidResultData& Result
 {
 }
 
-void ULB_BaseRaidWidget::BP_OnRaidStateChanged_Implementation(ELBRaidState NewState)
-{
-}
-
-void ULB_BaseRaidWidget::BP_OnBossHPChanged_Implementation(float CurrentHP, float MaxHP)
-{
-}
-
-void ULB_BaseRaidWidget::BP_OnRaidResultChanged_Implementation(const FLBRaidResultData& ResultData)
+void ULB_BaseRaidWidget::HandleRaidScoreboardChanged(const FLBRaidScoreboardData& ScoreboardData)
 {
 }
 
@@ -89,6 +87,10 @@ void ULB_BaseRaidWidget::BindRaidGameState()
 	CachedRaidGameState->OnRaidResultChanged.AddUniqueDynamic(
 		this,
 		&ThisClass::OnRaidResultChanged);
+	
+	CachedRaidGameState->OnRaidScoreboardChanged.RemoveDynamic(
+		this,
+		&ThisClass::OnRaidScoreboardChanged);
 }
 
 void ULB_BaseRaidWidget::UnbindRaidGameState()
@@ -106,6 +108,10 @@ void ULB_BaseRaidWidget::UnbindRaidGameState()
 	CachedRaidGameState->OnRaidResultChanged.RemoveDynamic(
 		this,
 		&ThisClass::OnRaidResultChanged);
+	
+	CachedRaidGameState->OnRaidScoreboardChanged.RemoveDynamic(
+		this,
+		&ThisClass::OnRaidScoreboardChanged);
 
 	CachedRaidGameState = nullptr;
 }
@@ -116,10 +122,9 @@ void ULB_BaseRaidWidget::SyncCurrentRaidState()
 	
 	OnRaidStateChanged(CachedRaidGameState->RaidState);
 
-	OnBossHPChanged(
-		CachedRaidGameState->BossCurrentHP,
-		CachedRaidGameState->BossMaxHP);
+	OnBossHPChanged(CachedRaidGameState->BossCurrentHP, CachedRaidGameState->BossMaxHP);
 
-	OnRaidResultChanged(
-		CachedRaidGameState->RaidResult);
+	OnRaidResultChanged(CachedRaidGameState->RaidResult);
+	
+	OnRaidScoreboardChanged(CachedRaidGameState->RaidScoreboardData);
 }

@@ -11,9 +11,9 @@ void ULB_CountdownWidget::NativeDestruct()
 	Super::NativeDestruct();
 }
 
-void ULB_CountdownWidget::BP_OnRaidStateChanged_Implementation(ELBRaidState NewState)
+void ULB_CountdownWidget::HandleRaidStateChanged(ELBRaidState NewState)
 {
-	Super::BP_OnRaidStateChanged_Implementation(NewState);
+	Super::HandleRaidStateChanged(NewState);
 	
 	if (NewState == ELBRaidState::Countdown)
 	{

@@ -3,8 +3,60 @@
 #include "AbilitySystem/LB_AttributeSet.h"
 
 #include "AbilitySystemComponent.h"
+#include "Characters/Boss/LB_BossCharacter.h"
+#include "GameFramework/Controller.h"
+#include "GameFramework/Pawn.h"
+#include "GameState/LB_RaidGameState.h"
 #include "GameplayEffectExtension.h"
 #include "Net/UnrealNetwork.h"
+#include "Player/LB_PlayerState.h"
+#include "System/Raid/LBRaidBossBase.h"
+
+namespace
+{
+	ALB_PlayerState* ResolveLBPlayerState(AActor* Actor)
+	{
+		if (ALB_PlayerState* PlayerState = Cast<ALB_PlayerState>(Actor))
+		{
+			return PlayerState;
+		}
+
+		if (APawn* Pawn = Cast<APawn>(Actor))
+		{
+			return Pawn->GetPlayerState<ALB_PlayerState>();
+		}
+
+		if (AController* Controller = Cast<AController>(Actor))
+		{
+			return Controller->GetPlayerState<ALB_PlayerState>();
+		}
+
+		return nullptr;
+	}
+
+	ALB_PlayerState* ResolveSourcePlayerState(const FGameplayEffectContextHandle& Context)
+	{
+		if (UAbilitySystemComponent* SourceASC = Context.GetOriginalInstigatorAbilitySystemComponent())
+		{
+			if (ALB_PlayerState* PlayerState = ResolveLBPlayerState(SourceASC->GetOwnerActor()))
+			{
+				return PlayerState;
+			}
+
+			if (ALB_PlayerState* PlayerState = ResolveLBPlayerState(SourceASC->GetAvatarActor()))
+			{
+				return PlayerState;
+			}
+		}
+
+		return ResolveLBPlayerState(Context.GetOriginalInstigator());
+	}
+
+	bool IsRaidBoss(const AActor* Actor)
+	{
+		return IsValid(Cast<ALB_BossCharacter>(Actor)) || IsValid(Cast<ALBRaidBossBase>(Actor));
+	}
+}
 
 void ULB_AttributeSet::GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const
 {
@@ -37,6 +89,95 @@ void ULB_AttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute, f
 		// Max 값이 0이면 UI 비율 계산과 사망 판정이 꼬이므로 최소 1을 보장한다.
 		NewValue = FMath::Max(1.f, NewValue);
 	}
+}
+
+bool ULB_AttributeSet::PreGameplayEffectExecute(FGameplayEffectModCallbackData& Data)
+{
+	if (!Super::PreGameplayEffectExecute(Data))
+	{
+		return false;
+	}
+
+	if (Data.EvaluatedData.Attribute != GetHealthAttribute())
+	{
+		return true;
+	}
+
+	// Health GameplayEffects in this project are additive. Clamp their magnitude before GAS applies it so
+	// damage/healing events and raid statistics both use the real HP change (no overkill or overheal).
+	if (Data.EvaluatedData.ModifierOp != EGameplayModOp::Additive)
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("[LB Stats] Non-additive Health GameplayEffect is not included in raid statistics. Effect=%s Op=%d"),
+			*GetNameSafe(Data.EffectSpec.Def),
+			static_cast<int32>(Data.EvaluatedData.ModifierOp.GetValue()));
+		return true;
+	}
+
+	const float RawDelta = Data.EvaluatedData.Magnitude;
+	const float OldHealth = GetHealth();
+	if (!FMath::IsFinite(RawDelta) || !FMath::IsFinite(OldHealth))
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("[LB Stats] Ignoring invalid Health delta. Target=%s Delta=%f Health=%f"),
+			*GetNameSafe(Data.Target.GetAvatarActor()),
+			RawDelta,
+			OldHealth);
+		Data.EvaluatedData.Magnitude = 0.f;
+		return true;
+	}
+
+	const float CurrentMaxHealth = GetMaxHealth();
+	const float UnclampedHealth = OldHealth + RawDelta;
+	const float NewHealth = CurrentMaxHealth > 0.f
+		? FMath::Clamp(UnclampedHealth, 0.f, CurrentMaxHealth)
+		: FMath::Max(0.f, UnclampedHealth);
+	const float EffectiveDelta = NewHealth - OldHealth;
+
+	// PostGameplayEffectExecute can now broadcast the effective amount without transient shared state.
+	Data.EvaluatedData.Magnitude = EffectiveDelta;
+
+	AActor* TargetOwner = Data.Target.GetOwnerActor();
+	UWorld* World = IsValid(TargetOwner) ? TargetOwner->GetWorld() : Data.Target.GetWorld();
+	const ALB_RaidGameState* RaidGameState = IsValid(World) ? World->GetGameState<ALB_RaidGameState>() : nullptr;
+	if (!IsValid(TargetOwner)
+		|| !TargetOwner->HasAuthority()
+		|| !IsValid(RaidGameState)
+		|| RaidGameState->RaidState != ELBRaidState::Battle
+		|| FMath::IsNearlyZero(EffectiveDelta))
+	{
+		return true;
+	}
+
+	const FGameplayEffectContextHandle Context = Data.EffectSpec.GetContext();
+	ALB_PlayerState* SourcePlayerState = ResolveSourcePlayerState(Context);
+	if (!IsValid(SourcePlayerState))
+	{
+		return true;
+	}
+
+	AActor* TargetAvatar = Data.Target.GetAvatarActor();
+	if (EffectiveDelta < 0.f && IsRaidBoss(TargetAvatar))
+	{
+		// This runs before the target Health delegate, so a lethal hit is recorded before EndRaid.
+		SourcePlayerState->AddTotalDamageDealt_ServerOnly(-EffectiveDelta);
+	}
+	else if (EffectiveDelta > 0.f)
+	{
+		ALB_PlayerState* TargetPlayerState = ResolveLBPlayerState(TargetOwner);
+		if (!IsValid(TargetPlayerState))
+		{
+			TargetPlayerState = ResolveLBPlayerState(TargetAvatar);
+		}
+
+		// In a raid, two distinct LB PlayerStates represent non-self healing of a party member.
+		if (IsValid(TargetPlayerState) && TargetPlayerState != SourcePlayerState)
+		{
+			SourcePlayerState->AddTotalHealingDone_ServerOnly(EffectiveDelta);
+		}
+	}
+
+	return true;
 }
 
 void ULB_AttributeSet::FillCurrentAttributesToMax()
@@ -97,14 +238,25 @@ void ULB_AttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbac
 	//ActorDamage는 데미지 입력시에 확인 용도
 	if (Data.EvaluatedData.Attribute == GetHealthAttribute())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("HP Decreased"));
+		const float EffectiveDelta = Data.EvaluatedData.Magnitude;
+		
+		
+		UE_LOG(LogTemp, Warning, TEXT("HP Changed"));
 		const FGameplayEffectContextHandle Context = Data.EffectSpec.GetContext();
 		AActor* Instigator = Context.GetOriginalInstigator();
 		AActor* Causer = Context.GetEffectCauser();
-		float Damage = Data.EvaluatedData.Magnitude;
 		
 		
-		ActorDamaged.Broadcast(Instigator,Causer,Damage);
+		if (EffectiveDelta < 0.f)
+		{
+			const float Damage = FMath::Abs(EffectiveDelta);
+			ActorDamaged.Broadcast(Instigator,Causer,Damage);
+		}
+		else if (EffectiveDelta > 0.f)
+		{
+			ActorHealed.Broadcast(Instigator,Causer,EffectiveDelta);
+		}
+
 		
 	}
 

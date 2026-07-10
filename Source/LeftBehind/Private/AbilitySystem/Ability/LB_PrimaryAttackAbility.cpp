@@ -96,8 +96,9 @@ void ULB_PrimaryAttackAbility::ActivateAbility(
 	int32 AppliedCount = 0;
 	for (AActor* HitActor : HitActors)
 	{
-		if (ULB_BlueprintLibrary::ApplyDamageEffect_ServerOnly(
-			AvatarActor,
+		// ApplyDamageEffect_ServerOnly를 직접 부르는 대신 SendDamageEventToPlayer를 써서,
+		// 치명타 여부에 따라 LBTags.Events.Player.Death / HitReact를 대상에게 자동으로 보낸다.
+		if (ULB_BlueprintLibrary::SendDamageEventToPlayer(
 			HitActor,
 			DamageEffect,
 			DamagePayload,

@@ -47,7 +47,7 @@ void ULB_ThreatComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 AActor* ULB_ThreatComponent::SelectMostThreatCharacter()
 {
-	
+	/*UE_LOG(LogTemp, Warning, TEXT("This=%p"), this);*/
 	float CurrentTargetThreat =0;
 	if (Target != nullptr)
 	{
@@ -58,9 +58,10 @@ AActor* ULB_ThreatComponent::SelectMostThreatCharacter()
 	
 	ALB_BaseCharacter* NewTarget = nullptr;
 	float NewTargetThreat = 0;
-	
+	/*UE_LOG(LogTemp, Warning, TEXT("ThreatMap Num=%d"), ThreatMap.Num());*/
 	for (const TPair<ALB_BaseCharacter*, float>& Pair : ThreatMap)
 	{
+		/*UE_LOG(LogTemp, Warning, TEXT("Pair Key=%s Value=%.1f"), *GetNameSafe(Pair.Key), Pair.Value);*/
 		if (NewTargetThreat < Pair.Value)
 		{
 			NewTarget = Pair.Key;
@@ -73,8 +74,17 @@ AActor* ULB_ThreatComponent::SelectMostThreatCharacter()
 	}
 	
 	
-	if (NewTarget == nullptr || NewTarget == Target) return Target;
-	if (CurrentTargetThreat* Margin >= NewTargetThreat) return Target;
+	if (NewTarget == nullptr || NewTarget == Target)
+	{
+		/*UE_LOG(LogTemp, Warning, TEXT("Blocked here. NewTarget=%s, Target=%s, NewTargetThreat=%.1f"),*/
+			/**GetNameSafe(NewTarget), *GetNameSafe(Target), NewTargetThreat);*/
+		return Target;
+	}
+	if (CurrentTargetThreat* Margin >= NewTargetThreat)
+	{
+		/*UE_LOG(LogTemp, Warning, TEXT("NewTarget is not excceed margin"));*/
+		return Target;
+	}
 	
 
 	
@@ -93,7 +103,7 @@ void ULB_ThreatComponent::UpdateThreatMap( AActor* Instigator,  AActor* Causer, 
 	float Threat = Damage;
 	if (ALB_BaseCharacter* ALB_Instigator = Cast<ALB_BaseCharacter>(Instigator))
 	{
-		/*UE_LOG(LogTemp, Warning, TEXT("Instigator : %s"), *GetNameSafe(Instigator));*/
+		/*UE_LOG(LogTemp, Warning, TEXT("Update ThreatMap Instigator : %s"), *GetNameSafe(Instigator));*/
 		ThreatMap.FindOrAdd(ALB_Instigator)+=Threat;	
 	}
 	

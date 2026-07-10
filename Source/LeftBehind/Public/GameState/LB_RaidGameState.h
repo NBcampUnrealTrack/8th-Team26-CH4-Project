@@ -13,6 +13,8 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLBRaidStateChanged, ELBRaidState,
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnLBBossHPChanged, float, CurrentHP, float, MaxHP);
 // 레이드 결과가 확정되었을 때 결과 화면이 구독하는 이벤트.
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLBRaidResultChanged, const FLBRaidResultData&, ResultData);
+// 레이드 종료 후 플레이어별 최종 성과 데이터가 준비되었을 때 UI에 알린다.
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLBRaidScoreboardChanged, const FLBRaidScoreboardData&, ScoreboardData);
 
 // 모든 클라이언트가 읽어야 하는 레이드 진행 상태를 복제하는 GameState.
 UCLASS()
@@ -38,6 +40,10 @@ public:
     UPROPERTY(BlueprintAssignable)
     FOnLBRaidResultChanged OnRaidResultChanged;
 
+    // 플레이어별 최종 성과 변경을 블루프린트/UI에 전달한다.
+    UPROPERTY(BlueprintAssignable)
+    FOnLBRaidScoreboardChanged OnRaidScoreboardChanged;
+    
     // 현재 레이드 단계. RepNotify로 상태 변경 이벤트와 디버그 표시를 실행한다.
     UPROPERTY(ReplicatedUsing=OnRep_RaidState, BlueprintReadOnly, Category="LB|Raid")
     ELBRaidState RaidState = ELBRaidState::Waiting;
@@ -62,9 +68,13 @@ public:
     UPROPERTY(ReplicatedUsing=OnRep_BossHP, BlueprintReadOnly, Category="LB|Raid")
     float BossMaxHP = 1.f;
 
-    // 최종 결과 데이터. Result 상태로 넘어갈 때 함께 갱신된다.
+    // 최종 결과 데이터. late join 클라이언트도 결과를 복원해야 하므로 일반 상태 복제를 유지한다.
     UPROPERTY(ReplicatedUsing=OnRep_RaidResult, BlueprintReadOnly, Category="LB|Raid")
     FLBRaidResultData RaidResult;
+    
+    // 레이드 종료 후 생성된 전체 결과 화면 데이터를 모든 클라이언트에 복제한다.
+    UPROPERTY(ReplicatedUsing=OnRep_RaidScoreboardData, BlueprintReadOnly, Category="LB|Raid")
+    FLBRaidScoreboardData RaidScoreboardData;
 
     // 카운트다운 상태일 때 서버 시간 기준 남은 초를 반환한다.
     UFUNCTION(BlueprintPure, Category="LB|Raid")
@@ -88,6 +98,12 @@ public:
     void SetBossHP_ServerOnly(float CurrentHP, float MaxHP);
     // 서버에서 최종 결과 데이터를 확정한다.
     void SetRaidResult_ServerOnly(const FLBRaidResultData& NewResult);
+    // 서버에서만 최종 결과 화면 데이터를 저장하고 변경 이벤트를 방송한다.
+    void SetRaidScoreboardData_ServerOnly(const FLBRaidScoreboardData& InScoreboardData);
+    // 결과와 스코어보드를 먼저 확정한 뒤 Result 상태를 방송하고, 네트워크 갱신은 한 번만 요청한다.
+    void SetRaidOutcome_ServerOnly(
+        const FLBRaidResultData& NewResult,
+        const FLBRaidScoreboardData& InScoreboardData);
 
     // 서버에서 발생한 디버그 메시지를 모든 PIE 클라이언트 화면에 표시한다.
     UFUNCTION(NetMulticast, Unreliable)
@@ -109,6 +125,10 @@ protected:
     // RaidResult 복제 후 결과 이벤트와 디버그 로그를 실행한다.
     UFUNCTION()
     void OnRep_RaidResult();
+    
+    // 결과 화면 데이터가 복제되거나 서버에서 직접 갱신된 직후 UI 갱신 이벤트를 방송한다.
+    UFUNCTION()
+    void OnRep_RaidScoreboardData();
 
 private:
     // 같은 보스 HP 값이 여러 경로에서 한 번에 들어와도 UI/로그를 중복 실행하지 않기 위한 마지막 알림 값이다.
