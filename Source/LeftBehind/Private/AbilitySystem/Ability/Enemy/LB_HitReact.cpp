@@ -4,10 +4,18 @@
 #include "AbilitySystem/Ability/Enemy/LB_HitReact.h"
 
 void ULB_HitReact::CacheHitDirectionVectors(AActor* Instigator)
-{	
-	AvatarForward = GetAvatarActorFromActorInfo()->GetActorForwardVector();
+{
+	const AActor* Avatar = GetAvatarActorFromActorInfo();
+	if (!IsValid(Avatar) || !IsValid(Instigator))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[LB HitReact] CacheHitDirectionVectors skipped. Avatar=%s Instigator=%s"),
+			*GetNameSafe(Avatar), *GetNameSafe(Instigator));
+		return;
+	}
 
-	const FVector AvatarLocation = GetAvatarActorFromActorInfo()->GetActorLocation();
+	AvatarForward = Avatar->GetActorForwardVector();
+
+	const FVector AvatarLocation = Avatar->GetActorLocation();
 	const FVector InstigatorLocation = Instigator->GetActorLocation();
 
 	ToInstigator = InstigatorLocation - AvatarLocation;
