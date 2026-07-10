@@ -14,6 +14,7 @@ class UOverlay;
 class ULB_CountdownWidget;
 class ULB_BattleHUDWidget;
 class ULB_RaidResultWidget;
+class ULB_RaidScoreboardWidget;
 
 UCLASS()
 class LEFTBEHIND_API ULB_RaidHUDWidget : public ULB_BaseRaidWidget
@@ -39,11 +40,16 @@ protected:
 	// 결과 팝업
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<ULB_RaidResultWidget> ResultWidget;
+	
+	// 스코어 보드
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<ULB_RaidScoreboardWidget> ScoreboardWidget;
 
 private:
 	
-	void ShowWaiting();
-	void ShowCountdown();
-	void ShowBattle();
-	void ShowResult();
+	void ShowWaiting() const;
+	void ShowCountdown() const;
+	void ShowBattle() const;
+	void ShowResult() const;
+	void ShowScoreboard() const;
 };
