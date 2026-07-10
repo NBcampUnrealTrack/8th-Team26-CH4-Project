@@ -11,6 +11,11 @@
 			"AdditionalDependencies": [
 				"AIModule"
 			]
+		},
+		{
+			"Name": "LeftBehindEditorTools",
+			"Type": "Editor",
+			"LoadingPhase": "Default"
 		}
 	],
 	"Plugins": [
