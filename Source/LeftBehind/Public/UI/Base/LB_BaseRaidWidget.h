@@ -10,6 +10,8 @@
 // Raid UI 공통 부모 클래스
 // RaidGameState를 캐싱하고 Delegate를 관리 * Blueprint 이벤트로 전달
 
+class ALB_RaidGameState;
+
 UCLASS(Abstract)
 class LEFTBEHIND_API ULB_BaseRaidWidget : public ULB_BaseUserWidget
 {
