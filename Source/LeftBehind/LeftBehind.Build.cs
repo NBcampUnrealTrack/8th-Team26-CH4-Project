@@ -16,6 +16,7 @@ public class LeftBehind : ModuleRules
 			"GameplayAbilities",
 			"GameplayTasks",
 			"GameplayTags",
+			"NetCore",
 			"AIModule",
 			"UMG"
 		});
