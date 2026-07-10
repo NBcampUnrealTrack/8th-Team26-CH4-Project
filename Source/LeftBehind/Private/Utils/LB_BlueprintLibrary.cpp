@@ -92,7 +92,17 @@ bool ULB_BlueprintLibrary::SendDamageEventToPlayer(AActor* Target, const TSubcla
 
 	if (!ResolvedEventTag.IsValid() || ResolvedEventTag.MatchesTagExact(LBTags::None))
 	{
-		if (const ALB_BaseCharacter* PlayerCharacter = Cast<ALB_BaseCharacter>(Target))
+		
+		if (const ALB_BossCharacter* BossCharacter = Cast<ALB_BossCharacter>(Target))
+		{
+			const ULB_AttributeSet* AttributeSet = Cast<ULB_AttributeSet>(BossCharacter->GetAttributeSet());
+			if (IsValid(AttributeSet))
+			{
+				const bool bLethal = AttributeSet->GetHealth() - FMath::Abs(Damage) <= 0.f;
+				ResolvedEventTag = bLethal ? LBTags::Events::Enemy::Death : LBTags::Events::Enemy::HitReact;
+			}
+		}
+		else if (const ALB_BaseCharacter* PlayerCharacter = Cast<ALB_BaseCharacter>(Target))
 		{
 			const ULB_AttributeSet* AttributeSet = Cast<ULB_AttributeSet>(PlayerCharacter->GetAttributeSet());
 			if (IsValid(AttributeSet))
@@ -102,7 +112,7 @@ bool ULB_BlueprintLibrary::SendDamageEventToPlayer(AActor* Target, const TSubcla
 			}
 		}
 	}
-
+	UE_LOG(LogTemp, Warning, TEXT("[LB Debug] Target=%s ResolvedTag=%s"), *GetNameSafe(Target), *ResolvedEventTag.ToString());
 	AActor* SourceActor = const_cast<AActor*>(Payload.Instigator.Get());
 	return ApplyDamageEffect_ServerOnly(SourceActor, Target, DamageEffect, Payload, DataTag, Damage, ResolvedEventTag, OptionalParticleSystem);
 }
