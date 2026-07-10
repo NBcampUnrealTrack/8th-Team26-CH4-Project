@@ -11,6 +11,8 @@
 EBTNodeResult::Type ULB_BTT_SelectTarget::ExecuteTask(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory)
 {
 	
+	AAIController* AICon = OwnerComp.GetAIOwner();
+	if (!IsValid(AICon)) return EBTNodeResult::Failed;
 	
 	ALB_BossCharacter* BossCharacter = Cast<ALB_BossCharacter>(OwnerComp.GetAIOwner()->GetPawn());
 	if (!IsValid(BossCharacter)) return EBTNodeResult::Failed;
@@ -25,12 +27,14 @@ EBTNodeResult::Type ULB_BTT_SelectTarget::ExecuteTask(UBehaviorTreeComponent& Ow
 	if (UBlackboardComponent* BlackboardComponent = OwnerComp.GetBlackboardComponent())
 	{
 		BlackboardComponent->SetValueAsObject(FName("Target"),Target);
+
 		
-		UE_LOG(LogTemp, Warning,
+		/*UE_LOG(LogTemp, Warning,
 	TEXT("BB Target : %s"),
-	*GetNameSafe(Cast<AActor>(BlackboardComponent->GetValueAsObject(TEXT("Target")))));
+	*GetNameSafe(Cast<AActor>(BlackboardComponent->GetValueAsObject(TEXT("Target")))));*/
 	}
-	
+	AICon->SetFocus(Target, EAIFocusPriority::Gameplay);
+
 	
 	
 	return EBTNodeResult::Succeeded;

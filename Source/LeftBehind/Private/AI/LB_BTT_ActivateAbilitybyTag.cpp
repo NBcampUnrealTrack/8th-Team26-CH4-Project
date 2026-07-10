@@ -10,6 +10,7 @@
 
 EBTNodeResult::Type ULB_BTT_ActivateAbilitybyTag::ExecuteTask(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory)
 {
+	/*UE_LOG(LogTemp,Warning, TEXT("LB_BTT_ActivateAbilitybyTag is start"));*/
 	Super::ExecuteTask(OwnerComp, NodeMemory);
 	
 	if (!AbilityTag.IsValid()) return EBTNodeResult::Failed; 
@@ -22,11 +23,13 @@ EBTNodeResult::Type ULB_BTT_ActivateAbilitybyTag::ExecuteTask(UBehaviorTreeCompo
 	
 	
 	FGameplayAbilitySpec* Spec = FindSpecByTag(ASC, AbilityTag);
-	if (!Spec) return EBTNodeResult::Failed;
+	if (!Spec)
+	{
+		UE_LOG(LogTemp,Warning,TEXT("Spec is not Found"))
+		return EBTNodeResult::Failed;
+	}
 	
-	//TryActiavteAbility를 통해서 Spec를 통해서 능력을 발동시킨다.
-	bool bActivated = ASC->TryActivateAbility(Spec->Handle);
-	if (!bActivated) return EBTNodeResult::Failed;
+
 	
 	
 	//다른 함수들에서 쓰일 캐쉬 변수
@@ -36,6 +39,17 @@ EBTNodeResult::Type ULB_BTT_ActivateAbilitybyTag::ExecuteTask(UBehaviorTreeCompo
 	
 	//능력이 끝날 때의 델리게이트를 구독한다.
 	ASC->OnAbilityEnded.AddUObject(this,&ULB_BTT_ActivateAbilitybyTag::OnAbilityEnded);
+	
+	//TryActiavteAbility를 통해서 Spec를 통해서 능력을 발동시킨다.
+	bool bActivated = ASC->TryActivateAbility(Spec->Handle);
+	
+	/*UE_LOG(LogTemp, Warning, TEXT("[BTT_ActivateAbility] Tag=%s Spec=%s Activated=%d"), 
+	*AbilityTag.ToString(), Spec ? TEXT("Found") : TEXT("NotFound"), bActivated);*/
+	if (!bActivated)
+	{
+		/*UE_LOG(LogTemp,Warning, TEXT("LB_BTT_ActivateAbilitybyTag is not bActivated"));*/
+		return EBTNodeResult::Failed;
+	}
 	
 	return  EBTNodeResult::InProgress;
 	
@@ -89,7 +103,7 @@ void ULB_BTT_ActivateAbilitybyTag::OnAbilityEnded(const FAbilityEndedData& Ended
 	
 	//캔슬 여부에 따라서, 실패 혹은 성공을 만든다.
 	EBTNodeResult::Type Result = EndedData.bWasCancelled ? EBTNodeResult::Failed : EBTNodeResult::Succeeded;
-	
+	/*UE_LOG(LogTemp,Warning, TEXT("LB_BTT_ActivateAbilitybyTag.OnAbilityEnded is start"));*/
 	
 	FinishLatentTask(*CachedOwnerComp,Result);
 }

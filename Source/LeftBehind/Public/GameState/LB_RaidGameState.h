@@ -68,7 +68,7 @@ public:
     UPROPERTY(ReplicatedUsing=OnRep_BossHP, BlueprintReadOnly, Category="LB|Raid")
     float BossMaxHP = 1.f;
 
-    // 최종 결과 데이터. Result 상태로 넘어갈 때 함께 갱신된다.
+    // 최종 결과 데이터. late join 클라이언트도 결과를 복원해야 하므로 일반 상태 복제를 유지한다.
     UPROPERTY(ReplicatedUsing=OnRep_RaidResult, BlueprintReadOnly, Category="LB|Raid")
     FLBRaidResultData RaidResult;
     
@@ -100,6 +100,10 @@ public:
     void SetRaidResult_ServerOnly(const FLBRaidResultData& NewResult);
     // 서버에서만 최종 결과 화면 데이터를 저장하고 변경 이벤트를 방송한다.
     void SetRaidScoreboardData_ServerOnly(const FLBRaidScoreboardData& InScoreboardData);
+    // 결과와 스코어보드를 먼저 확정한 뒤 Result 상태를 방송하고, 네트워크 갱신은 한 번만 요청한다.
+    void SetRaidOutcome_ServerOnly(
+        const FLBRaidResultData& NewResult,
+        const FLBRaidScoreboardData& InScoreboardData);
 
     // 서버에서 발생한 디버그 메시지를 모든 PIE 클라이언트 화면에 표시한다.
     UFUNCTION(NetMulticast, Unreliable)

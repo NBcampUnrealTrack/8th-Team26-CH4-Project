@@ -19,8 +19,10 @@ ALB_PlayerState::ALB_PlayerState()
 	// AttributeSet도 PlayerState가 소유해야 리스폰 후에도 서버/클라이언트가 같은 수치를 본다.
 	AttributeSet = CreateDefaultSubobject<ULB_AttributeSet>(TEXT("AttributeSet"));
 
-	// 역할/사망 상태처럼 UI에 바로 반영되어야 하는 값의 복제 빈도를 높인다.
-	SetNetUpdateFrequency(100.f);
+	// GAS 반응성은 유지하면서 100Hz PlayerState 갱신으로 생기던 불필요한 채널 검사를 줄인다.
+	SetNetUpdateFrequency(30.f);
+	SetMinNetUpdateFrequency(5.f);
+	NetPriority = 2.f;
 }
 
 void ALB_PlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -30,8 +32,10 @@ void ALB_PlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 	DOREPLIFETIME(ALB_PlayerState, RoleType);
 	DOREPLIFETIME(ALB_PlayerState, DeathCount);
 	DOREPLIFETIME(ALB_PlayerState, bIsDead);
-	DOREPLIFETIME(ALB_PlayerState, TotalDamageDealt);
-	DOREPLIFETIME(ALB_PlayerState, TotalHealingDone);
+	// 전투 중 계속 증가하는 개인 통계는 소유자에게만 보내고, 타인의 최종 수치는 글로벌 Scoreboard 한 번으로 전달한다.
+	DOREPLIFETIME_CONDITION(ALB_PlayerState, TotalDamageDealt, COND_OwnerOnly);
+	DOREPLIFETIME_CONDITION(ALB_PlayerState, TotalHealingDone, COND_OwnerOnly);
+	DOREPLIFETIME(ALB_PlayerState, bIsMVP);
 	DOREPLIFETIME(ALB_PlayerState, CharacterID);
 }
 
@@ -58,16 +62,32 @@ void ALB_PlayerState::ResetRaidStats_ServerOnly()
 		return;
 	}
 
+	const bool bDeathCountChanged = DeathCount != 0;
+	const bool bDeadStateChanged = bIsDead;
+	const bool bStatsChanged = TotalDamageDealt != 0.f || TotalHealingDone != 0.f;
+	const bool bMVPChanged = bIsMVP;
+	if (!bDeathCountChanged && !bDeadStateChanged && !bStatsChanged && !bMVPChanged)
+	{
+		return;
+	}
+
 	DeathCount = 0;
 	bIsDead = false;
 	TotalDamageDealt = 0.f;
 	TotalHealingDone = 0.f;
+	bIsMVP = false;
 
-	// 서버 자신에게는 RepNotify가 자동 호출되지 않으므로 동일한 알림 경로를 직접 실행한다.
-	OnRep_DeathCount();
-	OnRep_IsDead();
+	// 서버에서는 RepNotify가 자동 호출되지 않으므로 실제로 변한 이벤트만 같은 경로로 전달한다.
+	if (bDeathCountChanged)
+	{
+		OnRep_DeathCount();
+	}
+	if (bDeadStateChanged)
+	{
+		OnRep_IsDead();
+	}
 
-	// 변경된 값을 다음 네트워크 업데이트까지 기다리지 않고 빠르게 전송한다.
+	// 여러 필드를 한 번에 초기화한 뒤 한 차례만 깨워 복제 스케줄링 비용을 줄인다.
 	ForceNetUpdate();
 }
 
@@ -75,6 +95,12 @@ void ALB_PlayerState::SetRoleType_ServerOnly(ELBRoleType NewRoleType)
 {
 	// 역할 배정은 서버에서만 확정한다.
 	if (!HasAuthority())
+	{
+		return;
+	}
+
+	// 같은 값을 다시 쓰면 RepNotify와 ActorChannel 강제 갱신만 중복되므로 조기에 종료한다.
+	if (RoleType == NewRoleType)
 	{
 		return;
 	}
@@ -89,6 +115,11 @@ void ALB_PlayerState::SetRoleType_ServerOnly(ELBRoleType NewRoleType)
 void ALB_PlayerState::SetCharacterID_ServerOnly(ELBCharacterID NewCharacterID)
 {
 	if (!HasAuthority())
+	{
+		return;
+	}
+
+	if (CharacterID == NewCharacterID)
 	{
 		return;
 	}
@@ -108,6 +139,11 @@ void ALB_PlayerState::SetDead_ServerOnly(bool bNewDead)
 		return;
 	}
 
+	if (bIsDead == bNewDead)
+	{
+		return;
+	}
+
 	bIsDead = bNewDead;
 	// 로컬 서버와 클라이언트 모두 같은 델리게이트 흐름을 타게 한다.
 	OnRep_IsDead();
@@ -123,6 +159,12 @@ void ALB_PlayerState::AddDeathCount_ServerOnly()
 		return;
 	}
 
+	// 장시간 세션이나 잘못된 중복 이벤트에서도 signed overflow(정의되지 않은 동작)를 원천 차단한다.
+	if (DeathCount == TNumericLimits<int32>::Max())
+	{
+		return;
+	}
+
 	++DeathCount;
 	// 결과 집계/화면 표시용 이벤트를 즉시 발생시킨다.
 	OnRep_DeathCount();
@@ -132,20 +174,52 @@ void ALB_PlayerState::AddDeathCount_ServerOnly()
 
 void ALB_PlayerState::AddTotalDamageDealt_ServerOnly(float Amount)
 {
-	if (!HasAuthority() || Amount <= 0.f) return;
-	TotalDamageDealt += Amount;
+	if (!HasAuthority() || !FMath::IsFinite(Amount) || Amount <= 0.f)
+	{
+		return;
+	}
+
+	// float 덧셈을 double에서 계산하고 최대값으로 포화시켜 INF 전파와 결과/MVP 산식 오염을 막는다.
+	const double SafeCurrentTotal = FMath::IsFinite(TotalDamageDealt) && TotalDamageDealt > 0.f
+		? static_cast<double>(TotalDamageDealt)
+		: 0.0;
+	const double SaturatedTotal = FMath::Min(
+		SafeCurrentTotal + static_cast<double>(Amount),
+		static_cast<double>(TNumericLimits<float>::Max()));
+	TotalDamageDealt = static_cast<float>(SaturatedTotal);
 }
 
 void ALB_PlayerState::AddTotalHealingDone_ServerOnly(float Amount)
 {
-	if (!HasAuthority() || Amount <= 0.f) return;
-	TotalHealingDone += Amount;
+	if (!HasAuthority() || !FMath::IsFinite(Amount) || Amount <= 0.f)
+	{
+		return;
+	}
+
+	// 피해량과 동일한 포화 정책을 사용해 통계 필드마다 수치 안정성이 달라지는 문제를 방지한다.
+	const double SafeCurrentTotal = FMath::IsFinite(TotalHealingDone) && TotalHealingDone > 0.f
+		? static_cast<double>(TotalHealingDone)
+		: 0.0;
+	const double SaturatedTotal = FMath::Min(
+		SafeCurrentTotal + static_cast<double>(Amount),
+		static_cast<double>(TNumericLimits<float>::Max()));
+	TotalHealingDone = static_cast<float>(SaturatedTotal);
 }
 
 void ALB_PlayerState::SetMVP_ServerOnly(bool bNewMVP)
 {
-	if (!HasAuthority()) return;
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	if (bIsMVP == bNewMVP)
+	{
+		return;
+	}
+
 	bIsMVP = bNewMVP;
+	ForceNetUpdate();
 }
 
 
@@ -156,6 +230,12 @@ FText ALB_PlayerState::GetPlayerNameText() const
 
 void ALB_PlayerState::ServerRPCSetPlayerName_Implementation(const FString& InName)
 {
+	// Blueprint 계약과 문자열 정책은 유지하되, 동일 이름은 엔진 내부 이름 복제까지 다시 유발하지 않는다.
+	if (GetPlayerName() == InName)
+	{
+		return;
+	}
+
 	SetPlayerName(InName);
 }
 
@@ -179,5 +259,6 @@ void ALB_PlayerState::OnRep_IsDead()
 
 void ALB_PlayerState::OnRep_CharacterID()
 {
-	// 나중에 캐릭터 변경 델리게이트가 필요하면 여기서 브로드캐스트한다.
+	// 캐릭터 선택 UI와 파티 슬롯은 이 이벤트만 구독하면 되므로 매 프레임 PlayerState를 조회할 필요가 없다.
+	OnCharacterIDChanged.Broadcast(CharacterID);
 }

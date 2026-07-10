@@ -264,6 +264,7 @@ void ALB_BossCharacter::HandlePaseChanged(const FOnAttributeChangeData& Attribut
 		FGameplayEffectSpecHandle Spec = AbilitySystemComponent->MakeOutgoingSpec(PhaseTagGrantEffectClass,1.f,GetAbilitySystemComponent()->MakeEffectContext());
 		Spec.Data->DynamicGrantedTags.AddTag(PhaseInfos[CurrentPhaseIndex].PhaseTag);
 		CurrentPhaseTagHandle = GetAbilitySystemComponent()->ApplyGameplayEffectSpecToSelf(*Spec.Data.Get());
+		ApplyPhaseAbilities(CurrentPhaseIndex);
 		
 		//페이즈 변화를 델리게이트 한다. 
 		PhaseChange.Broadcast(PhaseInfos[CurrentPhaseIndex].PhaseTag);
@@ -278,12 +279,11 @@ int32 ALB_BossCharacter::CalculatePhase(const FOnAttributeChangeData& AttributeC
 	// 여러 기준을 한 번에 넘었을 때 가장 뒤의 페이즈까지 바로 진입한다.
 	for (int32 Index = 0; Index < PhaseInfos.Num(); ++Index)
 	{
-		if (PhaseInfos[Index].HealthThreshold >= AttributeChangeData.NewValue)
+		if (MaxHP* PhaseInfos[Index].HealthThreshold >= AttributeChangeData.NewValue)
 		{
 			MatchedPhaseIndex = Index;
 		}
 	}
-
 	return MatchedPhaseIndex;
 }
 

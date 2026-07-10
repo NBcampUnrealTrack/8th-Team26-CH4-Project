@@ -4,8 +4,9 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DataTable.h"
-#include "Characters/Boss/LB_BossCharacter.h"
 #include "LBRaidDataRows.generated.h"
+
+class ALB_BossCharacter;
 
 USTRUCT(BlueprintType)
 struct FLBBossStatsRow : public FTableRowBase
@@ -16,28 +17,30 @@ struct FLBBossStatsRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	FName BossID = NAME_None;
 
-	// 실제로 스폰할 보스 블루프린트/클래스. SoftClass라 필요할 때 동기 로드한다.
+	// 실제로 스폰할 보스 블루프린트/클래스.
+	// 클래스 전체를 하드 참조하지 않아 서버 시작 시 불필요한 보스 에셋 메모리 상주를 막고 비동기 프리로드를 허용한다.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	TSoftClassPtr<ALB_BossCharacter> BossClass;
 
 	// 보스의 최대 체력. 스폰 후 CurrentHP도 이 값으로 초기화한다.
-	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	// Clamp 메타데이터는 기존 행의 직렬화 형식을 바꾸지 않으면서 신규 잘못된 입력을 에디터 단계에서 차단한다.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin="1.0", UIMin="1.0"))
 	float MaxHP = 10000.f;
 
 	// 보스의 최대 마나. 아직 스킬 소비가 없어도 디버그/UI 확장을 위해 GAS Attribute에 넣어 둔다.
-	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin="0.0", UIMin="0.0"))
 	float MaxMana = 100.f;
 
 	// 보스 방어력 값. 현재 기본 데미지 계산에는 직접 쓰이지 않지만 난이도 데이터로 보관한다.
-	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin="0.0", UIMin="0.0"))
 	float DEF = 50.f;
 
 	// 해당 보스 전투의 제한 시간. GameState에 복제되어 UI 타이머 기준이 된다.
-	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin="1.0", UIMin="1.0"))
 	float TimeLimitSec = 300.f;
 
 	// 2페이즈 진입 기준 체력 비율. 보스 패턴 확장 시 사용할 수 있는 데이터다.
-	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin="0.0", ClampMax="1.0", UIMin="0.0", UIMax="1.0"))
 	float Phase2ThresholdRatio = 0.5f;
 };
 
@@ -51,7 +54,8 @@ struct FLBRankDataRow : public FTableRowBase
 	FName RankID = NAME_None;
 
 	// 이 시간 이하로 클리어하면 해당 랭크 후보가 된다.
-	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	// 음수 기준 시간은 정렬/매칭 오류를 만들 수 있어 에디터 입력 단계에서 방지한다.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin="0.0", UIMin="0.0"))
 	float ClearTimeSec = 300.f;
 
 	// 결과 화면에 표시할 랭크명/칭호 텍스트.
