@@ -260,6 +260,12 @@ void ALB_BossCharacter::HandlePaseChanged(const FOnAttributeChangeData& Attribut
 	//다음 페이즈가 유효하다면
 	if (PhaseInfos.IsValidIndex(CurrentPhaseIndex))
 	{
+		if (!PhaseTagGrantEffectClass)
+		{
+			UE_LOG(LogTemp,Warning, TEXT("PhaseTagGrantEffectClass is not set"));
+			return;
+		}
+		
 		//Phase GE에다가 태그를 붙여놓는다.
 		FGameplayEffectSpecHandle Spec = AbilitySystemComponent->MakeOutgoingSpec(PhaseTagGrantEffectClass,1.f,GetAbilitySystemComponent()->MakeEffectContext());
 		Spec.Data->DynamicGrantedTags.AddTag(PhaseInfos[CurrentPhaseIndex].PhaseTag);

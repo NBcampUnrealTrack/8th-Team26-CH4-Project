@@ -94,6 +94,7 @@ private:
 	void StopPrimaryRepeat_ServerOnly();
 	bool TryActivatePrimary_ServerOnly();
 	float GetSafePrimaryActivationInterval() const;
+	bool IsAlive() const;
 
 	void ApplyInputMappingContexts();
 	void RemoveAppliedInputMappingContexts();

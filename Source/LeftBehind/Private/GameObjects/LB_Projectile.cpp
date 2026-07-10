@@ -35,8 +35,7 @@ void ALB_Projectile::NotifyActorBeginOverlap(AActor* OtherActor)
 	{
 		PS->AddTotalHealingDone_ServerOnly(Heal);
 	}
-	Destroy();
-}
+	Destroy();}
 
 
 
