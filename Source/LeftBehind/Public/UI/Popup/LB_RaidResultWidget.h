@@ -7,6 +7,8 @@
 #include "UI/Base/LB_BaseRaidWidget.h"
 #include "LB_RaidResultWidget.generated.h"
 
+class UWidget;
+
 // 레이드 종료 결과 팝업
 // BaseRaidWidget을 통해 RaidResult 이벤트 받음
 
@@ -18,6 +20,8 @@ class LEFTBEHIND_API ULB_RaidResultWidget : public ULB_BaseRaidWidget
 protected:
 
 	virtual void NativeConstruct() override;
+	virtual void NativeDestruct() override;
+	virtual void HandleRaidStateChanged(ELBRaidState NewState) override;
 
 	// BaseRaidWidget에서 전달되는 결과 이벤트
 	virtual void HandleRaidResultChanged(const FLBRaidResultData& ResultData) override;
@@ -26,4 +30,14 @@ protected:
 	UFUNCTION(BlueprintImplementableEvent, Category="LB|Raid Result")
 	void BP_UpdateResult(const FLBRaidResultData& ResultData);
 
+private:
+	UPROPERTY(Transient)
+	TObjectPtr<UWidget> ReturnToMainMenuButton;
+
+	ELBRaidState CurrentRaidState = ELBRaidState::Waiting;
+
+	UFUNCTION()
+	void HandleReturnToMainMenuClicked();
+
+	void RefreshReturnToMainMenuButton();
 };

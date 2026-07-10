@@ -4,12 +4,14 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
+#include "System/Raid/LBRaidTypes.h"
 #include "LB_PlayerController.generated.h"
 
 struct FGameplayTag;
 struct FInputActionValue;
 struct FStreamableHandle;
 
+class ALB_RaidGameState;
 class UAbilitySystemComponent;
 class UInputAction;
 class UInputMappingContext;
@@ -25,6 +27,17 @@ class LEFTBEHIND_API ALB_PlayerController : public APlayerController
 
 public:
 	ALB_PlayerController();
+
+	// 원격 클라이언트 RPC 없이 이동을 시작할 수 있는 로컬 Listen Host/Standalone인지 반환한다.
+	UFUNCTION(BlueprintPure, Category = "LB|Raid|Network")
+	bool IsLocalListenHost() const;
+
+	UFUNCTION(BlueprintPure, Category = "LB|Raid|Travel")
+	bool CanRequestReturnToMainMenu() const;
+
+	// 결과 버튼이 실패 시 다시 활성화할 수 있도록 실제 이동 시작 여부를 반환한다.
+	UFUNCTION(BlueprintCallable, Category = "LB|Raid|Travel")
+	bool RequestReturnToMainMenu();
 	
 protected:
 	virtual void SetupInputComponent() override;
@@ -75,6 +88,10 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<ULB_RaidHUDWidget> RaidHUDWidget;
 
+	// 입력 모드도 RaidState에 반응해야 하므로 로컬 컨트롤러가 구독 중인 GameState를 보관한다.
+	UPROPERTY(Transient)
+	TObjectPtr<ALB_RaidGameState> BoundRaidGameState;
+
 	// 이 Controller가 실제로 추가한 컨텍스트만 기록해 다른 시스템이 소유한 매핑을 EndPlay에서 제거하지 않는다.
 	UPROPERTY(Transient)
 	TSet<TObjectPtr<UInputMappingContext>> AppliedInputMappingContexts;
@@ -108,6 +125,13 @@ private:
 	void HandleRaidHUDClassLoaded();
 	void CancelRaidHUDClassLoad();
 	void RemoveRaidHUD();
+	void BindRaidGameState();
+	void UnbindRaidGameState();
+	void SyncCurrentRaidState();
+	void ApplyRaidStatePresentation(ELBRaidState NewState);
+
+	UFUNCTION()
+	void HandleRaidStateChanged(ELBRaidState NewState);
 	
 	// 눌림/뗌 두 번만 전송하고 연사 주기는 서버 타이머가 담당해 프레임 기반 RPC 폭증을 막는다.
 	UFUNCTION(Server, Reliable)

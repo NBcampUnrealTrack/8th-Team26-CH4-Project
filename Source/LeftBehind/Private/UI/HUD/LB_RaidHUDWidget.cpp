@@ -11,7 +11,8 @@
 void ULB_RaidHUDWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
-	ShowCountdown();
+	// BaseRaidWidget가 현재 GameState를 즉시 동기화한다. 여기서 Countdown으로 다시 덮어쓰면
+	// 비동기로 늦게 생성된 Result HUD가 잘못 숨겨지므로 별도 기본 화면을 강제하지 않는다.
 }
 
 void ULB_RaidHUDWidget::HandleRaidStateChanged(ELBRaidState NewState)

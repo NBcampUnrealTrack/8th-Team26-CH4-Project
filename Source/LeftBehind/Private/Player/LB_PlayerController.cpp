@@ -16,6 +16,7 @@
 #include "InputActionValue.h"
 #include "InputMappingContext.h"
 
+#include "GameMode/LB_RaidGameMode.h"
 #include "GameState/LB_RaidGameState.h"
 #include "GameplayTags/LBTags.h"
 #include "Player/LB_PlayerState.h"
@@ -28,6 +29,46 @@ ALB_PlayerController::ALB_PlayerController()
 	// 생성자 FClassFinder의 하드 참조를 제거해 서버/비전투 맵 패키지 로드와 메모리 상주를 피한다.
 	RaidHUDWidgetClass = TSoftClassPtr<ULB_RaidHUDWidget>(FSoftObjectPath(
 		TEXT("/Game/LeftBehind/UI/BattleHUD/HUD/WBP_LB_RaidHUDWidget.WBP_LB_RaidHUDWidget_C")));
+}
+
+bool ALB_PlayerController::IsLocalListenHost() const
+{
+	const ENetMode NetMode = GetNetMode();
+	return IsLocalController()
+		&& HasAuthority()
+		&& (NetMode == NM_ListenServer || NetMode == NM_Standalone);
+}
+
+bool ALB_PlayerController::CanRequestReturnToMainMenu() const
+{
+	if (!IsLocalListenHost())
+	{
+		return false;
+	}
+
+	ALB_RaidGameMode* RaidGameMode = GetWorld()
+		? GetWorld()->GetAuthGameMode<ALB_RaidGameMode>()
+		: nullptr;
+	return IsValid(RaidGameMode)
+		&& RaidGameMode->CanReturnToMainMenu(this);
+}
+
+bool ALB_PlayerController::RequestReturnToMainMenu()
+{
+	if (!IsLocalListenHost())
+	{
+		UE_LOG(
+			LogTemp,
+			Warning,
+			TEXT("[LB Raid] Remote return-to-menu request rejected. Controller=%s"),
+			*GetNameSafe(this));
+		return false;
+	}
+
+	ALB_RaidGameMode* RaidGameMode = GetWorld()
+		? GetWorld()->GetAuthGameMode<ALB_RaidGameMode>()
+		: nullptr;
+	return IsValid(RaidGameMode) && RaidGameMode->TryReturnToMainMenu(this);
 }
 
 void ALB_PlayerController::SetupInputComponent()
@@ -90,6 +131,7 @@ void ALB_PlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	}
 
 	CancelRaidHUDClassLoad();
+	UnbindRaidGameState();
 	RemoveAppliedInputMappingContexts();
 	RemoveRaidHUD();
 
@@ -417,6 +459,10 @@ void ALB_PlayerController::InitializeRaidHUD()
 		return;
 	}
 
+	// UI 클래스 로드가 늦어져도 현재 Result 상태의 입력 모드는 즉시 적용한다.
+	BindRaidGameState();
+	SyncCurrentRaidState();
+
 	if (IsValid(RaidHUDWidget))
 	{
 		return;
@@ -456,7 +502,8 @@ void ALB_PlayerController::InitializeRaidHUD()
 	// UI는 각 로컬 PlayerController가 자기 화면에 붙인다.
 	// GameMode는 서버에만 있으므로 클라이언트 화면 UI를 만들면 안 된다.
 	RaidHUDWidget->AddToViewport(RaidHUDWidgetZOrder);
-	RaidHUDWidget->SetVisibility(ESlateVisibility::HitTestInvisible);
+	// 생성 시점의 현재 상태를 다시 적용해 Result 도중 로드된 HUD도 버튼 hit-test가 가능하게 한다.
+	SyncCurrentRaidState();
 }
 
 void ALB_PlayerController::ScheduleRaidHUDInitializationRetry()
@@ -561,5 +608,93 @@ void ALB_PlayerController::RemoveRaidHUD()
 	{
 		RaidHUDWidget->RemoveFromParent();
 		RaidHUDWidget = nullptr;
+	}
+}
+
+void ALB_PlayerController::BindRaidGameState()
+{
+	ALB_RaidGameState* CurrentRaidGameState = GetWorld()
+		? GetWorld()->GetGameState<ALB_RaidGameState>()
+		: nullptr;
+	if (BoundRaidGameState == CurrentRaidGameState)
+	{
+		return;
+	}
+
+	UnbindRaidGameState();
+	if (!IsValid(CurrentRaidGameState))
+	{
+		return;
+	}
+
+	BoundRaidGameState = CurrentRaidGameState;
+	BoundRaidGameState->OnRaidStateChanged.AddUniqueDynamic(
+		this,
+		&ThisClass::HandleRaidStateChanged);
+}
+
+void ALB_PlayerController::UnbindRaidGameState()
+{
+	if (BoundRaidGameState)
+	{
+		BoundRaidGameState->OnRaidStateChanged.RemoveDynamic(
+			this,
+			&ThisClass::HandleRaidStateChanged);
+		BoundRaidGameState = nullptr;
+	}
+}
+
+void ALB_PlayerController::SyncCurrentRaidState()
+{
+	if (IsValid(BoundRaidGameState))
+	{
+		ApplyRaidStatePresentation(BoundRaidGameState->RaidState);
+	}
+}
+
+void ALB_PlayerController::HandleRaidStateChanged(ELBRaidState NewState)
+{
+	ApplyRaidStatePresentation(NewState);
+}
+
+void ALB_PlayerController::ApplyRaidStatePresentation(ELBRaidState NewState)
+{
+	if (GetNetMode() == NM_DedicatedServer || !IsLocalController())
+	{
+		return;
+	}
+
+	if (NewState == ELBRaidState::Result)
+	{
+		// UIOnly 전환 뒤에는 Completed/Canceled 입력이 오지 않을 수 있으므로 먼저 hold를 해제한다.
+		if (bLocalPrimaryHeld)
+		{
+			PrimaryReleased();
+		}
+		else if (HasAuthority() && bServerPrimaryHeld)
+		{
+			StopPrimaryRepeat_ServerOnly();
+		}
+
+		bShowMouseCursor = true;
+		FInputModeUIOnly InputMode;
+		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+		SetInputMode(InputMode);
+
+		if (IsValid(RaidHUDWidget))
+		{
+			// HUD 루트는 입력을 가로채지 않고 자식 버튼만 hit-test를 받게 한다.
+			RaidHUDWidget->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+		}
+		return;
+	}
+
+	bShowMouseCursor = false;
+	FInputModeGameOnly InputMode;
+	SetInputMode(InputMode);
+
+	if (IsValid(RaidHUDWidget))
+	{
+		RaidHUDWidget->SetVisibility(ESlateVisibility::HitTestInvisible);
 	}
 }

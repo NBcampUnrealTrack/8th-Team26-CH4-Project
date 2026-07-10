@@ -8,7 +8,9 @@
 
 class ALB_RaidGameState;
 class ALB_BossCharacter;
+class APlayerController;
 class UDataTable;
+class UWorld;
 enum class ELBRaidEndReason : uint8;
 struct FStreamableHandle;
 struct FLBBossStatsRow;
@@ -21,6 +23,10 @@ UCLASS()
 class LEFTBEHIND_API ALB_RaidGameMode : public AGameModeBase
 {
     GENERATED_BODY()
+
+#if WITH_DEV_AUTOMATION_TESTS
+    friend class FLBRaidReturnToMenuContractTest;
+#endif
 
 public:
     ALB_RaidGameMode();
@@ -46,6 +52,16 @@ public:
     // 플레이어 사망을 PlayerState에 기록하고 모든 플레이어 사망 여부를 검사한다.
     UFUNCTION(BlueprintCallable, Category = "LB|Raid")
     void NotifyPlayerDied(AController* DeadController);
+
+    // 결과 화면에서 로컬 Listen Host(또는 Standalone)만 메인 메뉴 복귀를 요청할 수 있다.
+    UFUNCTION(BlueprintPure, Category = "LB|Raid|Travel")
+    bool CanReturnToMainMenu(const APlayerController* RequestingController) const;
+
+    // 검증을 통과한 호스트 요청으로 파티 전체를 메인 메뉴에 non-seamless travel한다.
+    bool TryReturnToMainMenu(APlayerController* RequestingController);
+
+    UFUNCTION(BlueprintPure, Category = "LB|Raid|Travel")
+    TSoftObjectPtr<UWorld> GetMainMenuMap() const { return MainMenuMap; }
 
 protected:
     // BeginPlay에서 자동으로 카운트다운을 시작할지 여부.
@@ -85,6 +101,10 @@ protected:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Raid|MVP", meta = (ClampMin = "0.0", ClampMax = "1.0"))
     float MVPPrimaryWeight = 0.8f;
 
+    // non-seamless travel 목적지. PlayerController/PlayerState를 새로 만들어 로비 선택 상태를 초기화한다.
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Raid|Travel")
+    TSoftObjectPtr<UWorld> MainMenuMap;
+
     // GameMode가 월드 소유 액터의 수명을 연장할 이유가 없으므로 약한 참조로 보관해
     // 레벨 전환/파괴 시 불필요한 강한 참조와 stale pointer 위험을 동시에 줄인다.
     UPROPERTY(Transient)
@@ -102,11 +122,17 @@ protected:
     // EndRaid가 중복 호출되는 것을 막는 플래그.
     bool bRaidEnded = false;
 
+    // 빠른 연속 클릭이나 중복 콜백이 ServerTravel을 여러 번 시작하지 못하게 한다.
+    bool bReturnTravelInProgress = false;
+
     // 카운트다운 동안 SoftClass를 미리 읽어 전투 시작 순간의 동기 로드 hitch를 줄인다.
     TSharedPtr<FStreamableHandle> BossClassLoadHandle;
 
     // 현재 월드의 레이드 전용 GameState를 가져온다.
     ALB_RaidGameState* GetLBRaidGameState();
+
+    // MainMenuMap soft object path를 ServerTravel에 사용할 유효한 long package name으로 변환한다.
+    bool GetMainMenuMapPackageName(FString& OutPackageName) const;
 
     // 보스 행의 필수 계약(행/클래스/최대 HP)을 전투 진입 전에 검증한다.
     const FLBBossStatsRow* FindValidatedBossRow(const TCHAR* Context) const;

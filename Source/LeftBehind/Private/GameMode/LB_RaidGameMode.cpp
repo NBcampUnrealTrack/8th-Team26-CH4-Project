@@ -14,9 +14,12 @@
 #include "Engine/AssetManager.h"
 #include "Engine/DataTable.h"
 #include "Engine/StreamableManager.h"
+#include "Engine/World.h"
+#include "GameFramework/PlayerController.h"
 #include "HAL/FileManager.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/FileHelper.h"
+#include "Misc/PackageName.h"
 #include "Misc/Paths.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogLBRaidGameMode, Log, All);
@@ -69,9 +72,16 @@ namespace
 
 ALB_RaidGameMode::ALB_RaidGameMode()
 {
+    // 메인 메뉴로 돌아갈 때 기존 PlayerController/PlayerState를 이어받지 않아
+    // 코드네임, 역할, 캐릭터 선택과 전투 통계가 새 로비에서 초기화되게 한다.
+    bUseSeamlessTravel = false;
+
     // 레이드 모드에서는 전용 GameState/PlayerState를 사용해 상태 복제와 사망 집계를 처리한다.
     GameStateClass = ALB_RaidGameState::StaticClass();
     PlayerStateClass = ALB_PlayerState::StaticClass();
+
+    MainMenuMap = TSoftObjectPtr<UWorld>(FSoftObjectPath(
+        TEXT("/Game/LeftBehind/Maps/L_MainMenu.L_MainMenu")));
 }
 
 void ALB_RaidGameMode::BeginPlay()
@@ -135,6 +145,82 @@ void ALB_RaidGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
     Super::EndPlay(EndPlayReason);
 }
 
+bool ALB_RaidGameMode::CanReturnToMainMenu(const APlayerController* RequestingController) const
+{
+    if (!HasAuthority()
+        || bReturnTravelInProgress
+        || !IsValid(RequestingController)
+        || RequestingController->GetWorld() != GetWorld()
+        || !RequestingController->HasAuthority()
+        || !RequestingController->IsLocalController())
+    {
+        return false;
+    }
+
+    const ENetMode NetMode = GetNetMode();
+    if (NetMode != NM_ListenServer && NetMode != NM_Standalone)
+    {
+        return false;
+    }
+
+    const ALB_RaidGameState* RaidGameState = GetGameState<ALB_RaidGameState>();
+    if (!IsValid(RaidGameState) || RaidGameState->RaidState != ELBRaidState::Result)
+    {
+        return false;
+    }
+
+    FString MainMenuPackageName;
+    return GetMainMenuMapPackageName(MainMenuPackageName);
+}
+
+bool ALB_RaidGameMode::TryReturnToMainMenu(APlayerController* RequestingController)
+{
+    if (!CanReturnToMainMenu(RequestingController))
+    {
+        UE_LOG(
+            LogLBRaidGameMode,
+            Verbose,
+            TEXT("[RaidGM] Return to main menu rejected. Requester=%s Authority=%d Local=%d State=%d Travel=%d"),
+            *GetNameSafe(RequestingController),
+            IsValid(RequestingController) && RequestingController->HasAuthority() ? 1 : 0,
+            IsValid(RequestingController) && RequestingController->IsLocalController() ? 1 : 0,
+            GetGameState<ALB_RaidGameState>()
+                ? static_cast<int32>(GetGameState<ALB_RaidGameState>()->RaidState)
+                : INDEX_NONE,
+            bReturnTravelInProgress ? 1 : 0);
+        return false;
+    }
+
+    FString MainMenuPackageName;
+    if (!GetMainMenuMapPackageName(MainMenuPackageName))
+    {
+        return false;
+    }
+
+    bReturnTravelInProgress = true;
+    // Blueprint defaults가 바뀌더라도 이 이동은 새 로비 상태를 보장하도록 non-seamless로 고정한다.
+    bUseSeamlessTravel = false;
+
+    UWorld* World = GetWorld();
+    if (!IsValid(World) || !World->ServerTravel(MainMenuPackageName, false))
+    {
+        bReturnTravelInProgress = false;
+        UE_LOG(
+            LogLBRaidGameMode,
+            Error,
+            TEXT("[RaidGM] Return ServerTravel failed immediately. URL=%s"),
+            *MainMenuPackageName);
+        return false;
+    }
+
+    UE_LOG(
+        LogLBRaidGameMode,
+        Log,
+        TEXT("[RaidGM] Starting non-seamless ServerTravel to main menu. URL=%s"),
+        *MainMenuPackageName);
+    return true;
+}
+
 ALB_RaidGameState* ALB_RaidGameMode::GetLBRaidGameState()
 {
     if (CachedRaidGameState.IsValid())
@@ -146,6 +232,48 @@ ALB_RaidGameState* ALB_RaidGameMode::GetLBRaidGameState()
     ALB_RaidGameState* RaidGameState = GetGameState<ALB_RaidGameState>();
     CachedRaidGameState = RaidGameState;
     return RaidGameState;
+}
+
+bool ALB_RaidGameMode::GetMainMenuMapPackageName(FString& OutPackageName) const
+{
+    OutPackageName.Reset();
+    const FSoftObjectPath MainMenuMapPath = MainMenuMap.ToSoftObjectPath();
+    if (MainMenuMapPath.IsNull() || !MainMenuMapPath.IsValid())
+    {
+        UE_LOG(
+            LogLBRaidGameMode,
+            Error,
+            TEXT("[RaidGM] MainMenuMap soft object path is invalid. Path=%s"),
+            *MainMenuMapPath.ToString());
+        return false;
+    }
+
+    OutPackageName = FPackageName::ObjectPathToPackageName(MainMenuMapPath.GetAssetPathString());
+    FText InvalidReason;
+    if (!FPackageName::IsValidLongPackageName(OutPackageName, true, &InvalidReason))
+    {
+        UE_LOG(
+            LogLBRaidGameMode,
+            Error,
+            TEXT("[RaidGM] MainMenuMap has invalid package path. Path=%s Reason=%s"),
+            *MainMenuMapPath.ToString(),
+            *InvalidReason.ToString());
+        OutPackageName.Reset();
+        return false;
+    }
+
+    if (!FPackageName::DoesPackageExist(OutPackageName))
+    {
+        UE_LOG(
+            LogLBRaidGameMode,
+            Error,
+            TEXT("[RaidGM] MainMenuMap package does not exist. Package=%s"),
+            *OutPackageName);
+        OutPackageName.Reset();
+        return false;
+    }
+
+    return true;
 }
 
 const FLBBossStatsRow* ALB_RaidGameMode::FindValidatedBossRow(const TCHAR* Context) const
