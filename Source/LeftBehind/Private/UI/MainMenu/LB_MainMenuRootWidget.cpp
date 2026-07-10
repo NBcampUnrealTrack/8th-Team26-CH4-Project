@@ -7,7 +7,7 @@
 
 namespace
 {
-	FMulticastDelegateProperty* FindClickDelegate(UWidget* Widget)
+	FMulticastDelegateProperty* FindMainMenuRootClickDelegate(UWidget* Widget)
 	{
 		if (!IsValid(Widget))
 		{
@@ -20,9 +20,9 @@ namespace
 		return FindFProperty<FMulticastDelegateProperty>(Widget->GetClass(), TEXT("OnClicked"));
 	}
 
-	void BindClick(UWidget* Widget, UObject* Handler, FName FunctionName)
+	void BindMainMenuRootClick(UWidget* Widget, UObject* Handler, FName FunctionName)
 	{
-		if (FMulticastDelegateProperty* Property = FindClickDelegate(Widget))
+		if (FMulticastDelegateProperty* Property = FindMainMenuRootClickDelegate(Widget))
 		{
 			void* Value = Property->ContainerPtrToValuePtr<void>(Widget);
 			Property->ClearDelegate(Widget, Value);
@@ -32,9 +32,9 @@ namespace
 		}
 	}
 
-	void UnbindClick(UWidget* Widget, UObject* Handler, FName FunctionName)
+	void UnbindMainMenuRootClick(UWidget* Widget, UObject* Handler, FName FunctionName)
 	{
-		if (FMulticastDelegateProperty* Property = FindClickDelegate(Widget))
+		if (FMulticastDelegateProperty* Property = FindMainMenuRootClickDelegate(Widget))
 		{
 			FScriptDelegate Delegate;
 			Delegate.BindUFunction(Handler, FunctionName);
@@ -50,7 +50,7 @@ void ULB_MainMenuRootWidget::NativeConstruct()
 	StartButton = WidgetTree ? WidgetTree->FindWidget(TEXT("BTN_Start_Start")) : nullptr;
 	if (IsValid(StartButton))
 	{
-		BindClick(StartButton, this, GET_FUNCTION_NAME_CHECKED(ThisClass, HandleStartClicked));
+		BindMainMenuRootClick(StartButton, this, GET_FUNCTION_NAME_CHECKED(ThisClass, HandleStartClicked));
 		StartButton->SetIsEnabled(true);
 	}
 }
@@ -59,7 +59,7 @@ void ULB_MainMenuRootWidget::NativeDestruct()
 {
 	if (IsValid(StartButton))
 	{
-		UnbindClick(StartButton, this, GET_FUNCTION_NAME_CHECKED(ThisClass, HandleStartClicked));
+		UnbindMainMenuRootClick(StartButton, this, GET_FUNCTION_NAME_CHECKED(ThisClass, HandleStartClicked));
 	}
 	StartButton = nullptr;
 	Super::NativeDestruct();

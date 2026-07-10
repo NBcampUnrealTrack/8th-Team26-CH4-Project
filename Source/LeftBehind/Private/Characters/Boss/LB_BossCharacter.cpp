@@ -312,6 +312,7 @@ void ALB_BossCharacter::ApplyPhaseAbilities(int32 PhaseIndex)
 
 void ALB_BossCharacter::Die_ServerOnly()
 {
+	UE_LOG(LogTemp,Warning, TEXT("LB_BossCharacter: Die_ServerOnly Activate"));
 	if (!HasAuthority() || bIsDead)
 	{
 		return;

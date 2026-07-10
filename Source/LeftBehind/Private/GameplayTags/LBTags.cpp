@@ -40,6 +40,7 @@ namespace LBTags
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Phase1,"LBTags.Events.Enemy.Phase1","Phase1 for BOSS");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Phase2,"LBTags.Events.Enemy.Phase2","Phase2 for BOSS");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Phase3,"LBTags.Events.Enemy.Phase3","Phase3 for BOSS");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Death, "LBTags.Events.Enemy.Death", "Boss death event");
 		}
 	}
 }
