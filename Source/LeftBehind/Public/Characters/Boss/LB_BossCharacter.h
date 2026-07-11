@@ -62,6 +62,8 @@ public:
 	UFUNCTION()
 	void OnRep_CurrentHP();
 	
+	
+	
 	UPROPERTY(BlueprintAssignable, Category="LB|Boss")
 	FOnLB_BossHPChangedSignature OnBossHPChanged;
 
