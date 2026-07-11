@@ -31,6 +31,13 @@
 			"Enabled": true
 		},
 		{
+			"Name": "OnlineSubsystemEOS",
+			"Enabled": true,
+			"PlatformAllowList": [
+				"Win64"
+			]
+		},
+		{
 			"Name": "FabLauncher",
 			"Enabled": false,
 			"SupportedTargetPlatforms": [

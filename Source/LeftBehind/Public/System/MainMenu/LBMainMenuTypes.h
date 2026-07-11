@@ -10,7 +10,8 @@ enum class ELBMainMenuScreen : uint8
 	Main = 1 UMETA(DisplayName="Main"),
 	Codename = 2 UMETA(DisplayName="Codename"),
 	CharacterSelect = 3 UMETA(DisplayName="Character Select"),
-	Waiting = 4 UMETA(DisplayName="Waiting")
+	Waiting = 4 UMETA(DisplayName="Waiting"),
+	Multiplayer = 5 UMETA(DisplayName="Multiplayer")
 };
 
 UENUM(BlueprintType)
@@ -44,7 +45,7 @@ struct FLBMainMenuSnapshot
 	int32 ConfirmedPlayers = 0;
 
 	UPROPERTY(BlueprintReadOnly, Category="LB|MainMenu")
-	int32 MinPlayersToStart = 2;
+	int32 MinPlayersToStart = 1;
 
 	UPROPERTY(BlueprintReadOnly, Category="LB|MainMenu")
 	FName TargetMapName = NAME_None;

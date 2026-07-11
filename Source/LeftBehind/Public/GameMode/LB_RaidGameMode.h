@@ -57,7 +57,7 @@ public:
     UFUNCTION(BlueprintPure, Category = "LB|Raid|Travel")
     bool CanReturnToMainMenu(const APlayerController* RequestingController) const;
 
-    // 검증을 통과한 호스트 요청으로 파티 전체를 메인 메뉴에 non-seamless travel한다.
+    // 검증을 통과한 호스트 요청으로 파티 전체를 메인 메뉴에 seamless travel한다.
     bool TryReturnToMainMenu(APlayerController* RequestingController);
 
     UFUNCTION(BlueprintPure, Category = "LB|Raid|Travel")
@@ -101,7 +101,7 @@ protected:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Raid|MVP", meta = (ClampMin = "0.0", ClampMax = "1.0"))
     float MVPPrimaryWeight = 0.8f;
 
-    // non-seamless travel 목적지. PlayerController/PlayerState를 새로 만들어 로비 선택 상태를 초기화한다.
+    // seamless travel 목적지. 파티의 코드네임/역할 선택은 유지하고 레이드 통계만 초기화한다.
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Raid|Travel")
     TSoftObjectPtr<UWorld> MainMenuMap;
 

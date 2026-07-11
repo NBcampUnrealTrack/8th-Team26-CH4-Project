@@ -5,6 +5,8 @@
 #include "GameMode/LB_MainMenuGameMode.h"
 #include "GameState/LB_MainMenuGameState.h"
 #include "Player/LB_MainMenuPlayerController.h"
+#include "System/Online/LB_OnlineSessionSubsystem.h"
+#include "UI/MainMenu/LB_MultiplayerHubWidget.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FLBMainMenuCodenameValidationTest,
@@ -67,7 +69,7 @@ bool FLBMainMenuNativeDefaultsTest::RunTest(const FString& Parameters)
 	const ALB_MainMenuGameMode* GameModeCDO = GetDefault<ALB_MainMenuGameMode>();
 	TestTrue(TEXT("Main menu uses seamless travel"), GameModeCDO->bUseSeamlessTravel);
 	TestTrue(TEXT("Pawn-less menu skips RestartPlayer"), GameModeCDO->StartsPlayersWithoutMenuPawns());
-	TestEqual(TEXT("Two players are required by default"), GameModeCDO->GetMinPlayersToStart(), 2);
+	TestEqual(TEXT("One player may start a raid by default"), GameModeCDO->GetMinPlayersToStart(), 1);
 	TestEqual(
 		TEXT("Default raid map is the production Main package"),
 		GameModeCDO->GetRaidMap().ToSoftObjectPath().GetLongPackageName(),
@@ -81,6 +83,18 @@ bool FLBMainMenuNativeDefaultsTest::RunTest(const FString& Parameters)
 	TestTrue(
 		TEXT("Menu PlayerController can deliver Client RPCs such as ClientTravelInternal"),
 		GetDefault<ALB_MainMenuPlayerController>()->GetIsReplicated());
+	TestNotNull(
+		TEXT("The main menu exposes the native EOS sign-in entry point"),
+		ALB_MainMenuPlayerController::StaticClass()->FindFunctionByName(TEXT("BeginOnlinePlay")));
+	TestFalse(
+		TEXT("The native multiplayer hub can be instantiated without a Blueprint asset"),
+		ULB_MultiplayerHubWidget::StaticClass()->HasAnyClassFlags(CLASS_Abstract));
+	TestNotNull(
+		TEXT("The online subsystem exposes social-overlay invitations"),
+		ULB_OnlineSessionSubsystem::StaticClass()->FindFunctionByName(TEXT("OpenSocialOverlay")));
+	TestNotNull(
+		TEXT("The online subsystem exposes explicit room leave"),
+		ULB_OnlineSessionSubsystem::StaticClass()->FindFunctionByName(TEXT("LeaveRoom")));
 	return true;
 }
 

@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
 #include "System/MainMenu/LBMainMenuTypes.h"
+#include "System/Online/LB_OnlineSessionSubsystem.h"
 #include "LB_MainMenuPlayerController.generated.h"
 
 struct FStreamableHandle;
@@ -26,6 +27,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category="LB|MainMenu|UI")
 	void SetMenuScreen(ELBMainMenuScreen NewScreen);
 
+	/** Starts EOS sign-in and opens the room browser once the account is ready. */
+	UFUNCTION(BlueprintCallable, Category="LB|MainMenu|Online")
+	void BeginOnlinePlay();
+
 	UFUNCTION(BlueprintCallable, Category="LB|MainMenu|Name")
 	void SubmitCodename(const FText& RawCodename);
 
@@ -48,6 +53,7 @@ public:
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	virtual void OnRep_PlayerState() override;
 	virtual void PreClientTravel(const FString& PendingURL, ETravelType TravelType, bool bIsSeamlessTravel) override;
 
 	UPROPERTY(EditDefaultsOnly, Category="LB|MainMenu|UI")
@@ -55,6 +61,9 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, Category="LB|MainMenu|UI")
 	TSoftClassPtr<UUserWidget> CodenameWidgetClass;
+
+	UPROPERTY(EditDefaultsOnly, Category="LB|MainMenu|UI")
+	TSoftClassPtr<UUserWidget> MultiplayerWidgetClass;
 
 	UPROPERTY(EditDefaultsOnly, Category="LB|MainMenu|UI")
 	TSoftClassPtr<UUserWidget> CharacterSelectWidgetClass;
@@ -73,6 +82,9 @@ private:
 	TObjectPtr<UUserWidget> CodenameWidget;
 
 	UPROPERTY(Transient)
+	TObjectPtr<UUserWidget> MultiplayerWidget;
+
+	UPROPERTY(Transient)
 	TObjectPtr<UUserWidget> CharacterSelectWidget;
 
 	UPROPERTY(Transient)
@@ -83,6 +95,7 @@ private:
 	TSharedPtr<FStreamableHandle> MenuWidgetLoadHandle;
 	uint32 MenuWidgetLoadSerial = 0;
 	bool bMenuUITeardown = false;
+	bool bOpenMultiplayerAfterSignIn = false;
 
 	void ShowDesiredMenuScreen();
 	void HandleMenuWidgetClassLoaded(ELBMainMenuScreen LoadedScreen, uint32 LoadSerial);
@@ -92,6 +105,12 @@ private:
 	const TSoftClassPtr<UUserWidget>* GetMenuWidgetClass(ELBMainMenuScreen Screen) const;
 	void ApplyMenuInputMode(UUserWidget* FocusWidget);
 	void HandleCodenameSubmission_ServerOnly(const FString& RawCodename);
+	void BindOnlineSubsystem();
+	void UnbindOnlineSubsystem();
+	void ShowInitialOnlineRoomScreen();
+
+	UFUNCTION()
+	void HandleOnlineStateChanged(ELBOnlineState NewState, const FText& StatusMessage);
 
 	UFUNCTION(Server, Reliable)
 	void ServerSubmitCodename(const FString& RawCodename);

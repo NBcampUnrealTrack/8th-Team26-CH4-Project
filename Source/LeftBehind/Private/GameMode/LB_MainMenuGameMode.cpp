@@ -4,6 +4,7 @@
 #include "Misc/PackageName.h"
 #include "Player/LB_MainMenuPlayerController.h"
 #include "Player/LB_PlayerState.h"
+#include "System/Online/LB_OnlineSessionSubsystem.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogLBMainMenuGameMode, Log, All);
 
@@ -31,6 +32,12 @@ void ALB_MainMenuGameMode::BeginPlay()
 {
 	Super::BeginPlay();
 	RefreshLobbySnapshot();
+}
+
+void ALB_MainMenuGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	UnbindRoomPhaseDelegate();
+	Super::EndPlay(EndPlayReason);
 }
 
 void ALB_MainMenuGameMode::PostLogin(APlayerController* NewPlayer)
@@ -121,19 +128,36 @@ bool ALB_MainMenuGameMode::TryStartHunt(APlayerController* RequestingController)
 		return false;
 	}
 
-	bTravelInProgress = true;
-	RefreshLobbySnapshot();
-	UWorld* World = GetWorld();
-	if (!IsValid(World) || !World->ServerTravel(RaidPackageName, false))
+	ULB_OnlineSessionSubsystem* OnlineSubsystem = GetGameInstance()
+		? GetGameInstance()->GetSubsystem<ULB_OnlineSessionSubsystem>()
+		: nullptr;
+	if (IsValid(OnlineSubsystem) && OnlineSubsystem->IsInRoom())
 	{
-		bTravelInProgress = false;
+		if (!OnlineSubsystem->IsRoomHost())
+		{
+			UE_LOG(LogLBMainMenuGameMode, Warning, TEXT("Only the EOS room host may lock and start the raid."));
+			return false;
+		}
+
+		bTravelInProgress = true;
 		RefreshLobbySnapshot();
-		UE_LOG(LogLBMainMenuGameMode, Error, TEXT("ServerTravel failed immediately. URL=%s"), *RaidPackageName);
-		return false;
+		OnlineSubsystem->OnRoomPhaseUpdateComplete.AddUniqueDynamic(
+			this,
+			&ThisClass::HandleRoomPhaseUpdateComplete);
+		if (!OnlineSubsystem->LockRoomForRaid())
+		{
+			UnbindRoomPhaseDelegate();
+			bTravelInProgress = false;
+			RefreshLobbySnapshot();
+			UE_LOG(LogLBMainMenuGameMode, Error, TEXT("EOS room lock request could not be started."));
+			return false;
+		}
+
+		UE_LOG(LogLBMainMenuGameMode, Log, TEXT("Waiting for EOS room lock before raid travel."));
+		return true;
 	}
 
-	UE_LOG(LogLBMainMenuGameMode, Log, TEXT("Starting seamless ServerTravel. URL=%s"), *RaidPackageName);
-	return true;
+	return StartRaidTravel();
 }
 
 ELBCodenameSubmitResult ALB_MainMenuGameMode::TryConfirmCodename(
@@ -321,4 +345,79 @@ bool ALB_MainMenuGameMode::GetRaidMapPackageName(FString& OutPackageName) const
 ALB_MainMenuGameState* ALB_MainMenuGameMode::GetMainMenuGameState() const
 {
 	return GetGameState<ALB_MainMenuGameState>();
+}
+
+bool ALB_MainMenuGameMode::StartRaidTravel()
+{
+	FString RaidPackageName;
+	if (!GetRaidMapPackageName(RaidPackageName))
+	{
+		bTravelInProgress = false;
+		RefreshLobbySnapshot();
+		return false;
+	}
+
+	if (!bTravelInProgress)
+	{
+		bTravelInProgress = true;
+		RefreshLobbySnapshot();
+	}
+
+	UWorld* World = GetWorld();
+	if (!IsValid(World) || !World->ServerTravel(RaidPackageName, false))
+	{
+		bTravelInProgress = false;
+		RefreshLobbySnapshot();
+		UE_LOG(LogLBMainMenuGameMode, Error, TEXT("ServerTravel failed immediately. URL=%s"), *RaidPackageName);
+
+		if (ULB_OnlineSessionSubsystem* OnlineSubsystem = GetGameInstance()
+			? GetGameInstance()->GetSubsystem<ULB_OnlineSessionSubsystem>()
+			: nullptr;
+			IsValid(OnlineSubsystem) && OnlineSubsystem->IsRoomHost())
+		{
+			OnlineSubsystem->ReopenRoomAfterRaid();
+		}
+		return false;
+	}
+
+	UE_LOG(LogLBMainMenuGameMode, Log, TEXT("Starting seamless ServerTravel. URL=%s"), *RaidPackageName);
+	return true;
+}
+
+void ALB_MainMenuGameMode::UnbindRoomPhaseDelegate()
+{
+	if (ULB_OnlineSessionSubsystem* OnlineSubsystem = GetGameInstance()
+		? GetGameInstance()->GetSubsystem<ULB_OnlineSessionSubsystem>()
+		: nullptr)
+	{
+		OnlineSubsystem->OnRoomPhaseUpdateComplete.RemoveDynamic(
+			this,
+			&ThisClass::HandleRoomPhaseUpdateComplete);
+	}
+}
+
+void ALB_MainMenuGameMode::HandleRoomPhaseUpdateComplete(
+	bool bWasSuccessful,
+	ELBRoomPhase Phase,
+	const FText& ErrorMessage)
+{
+	UnbindRoomPhaseDelegate();
+	if (!bTravelInProgress)
+	{
+		return;
+	}
+
+	if (!bWasSuccessful || Phase != ELBRoomPhase::InRaid)
+	{
+		bTravelInProgress = false;
+		RefreshLobbySnapshot();
+		UE_LOG(
+			LogLBMainMenuGameMode,
+			Error,
+			TEXT("EOS room lock failed; raid travel was cancelled. Error=%s"),
+			*ErrorMessage.ToString());
+		return;
+	}
+
+	StartRaidTravel();
 }
