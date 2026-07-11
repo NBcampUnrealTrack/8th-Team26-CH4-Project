@@ -68,18 +68,24 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FLBMainMenuNativeDefaultsTest::RunTest(const FString& Parameters)
 {
 	(void)Parameters;
-	FString PIEGameURLOptions;
+	FString DefaultPlatformService;
 	TestTrue(
-		TEXT("Editor PIE URL options are configured"),
+		TEXT("A default online service is configured"),
 		GConfig->GetString(
-			TEXT("/Script/UnrealEd.EditorEngine"),
-			TEXT("InEditorGameURLOptions"),
-			PIEGameURLOptions,
+			TEXT("OnlineSubsystem"),
+			TEXT("DefaultPlatformService"),
+			DefaultPlatformService,
 			GEngineIni));
+	TestEqual(TEXT("EOS is the default online service"), DefaultPlatformService, FString(TEXT("EOS")));
+
+	FString PIEGameURLOptions;
+	GConfig->GetString(
+		TEXT("/Script/UnrealEd.EditorEngine"),
+		TEXT("InEditorGameURLOptions"),
+		PIEGameURLOptions,
+		GEngineIni);
 	const FURL PIEURL(nullptr, *FString::Printf(TEXT("/Game/LeftBehind/Maps/L_MainMenu%s"), *PIEGameURLOptions), TRAVEL_Absolute);
-	TestTrue(
-		TEXT("Two-player PIE forces EOS NetDriver IP socket passthrough"),
-		PIEURL.HasOption(TEXT("bUseIPSockets")));
+	TestFalse(TEXT("PIE keeps EOS P2P transport"), PIEURL.HasOption(TEXT("bUseIPSockets")));
 
 	const ALB_MainMenuGameMode* GameModeCDO = GetDefault<ALB_MainMenuGameMode>();
 	TestTrue(TEXT("Main menu uses seamless travel"), GameModeCDO->bUseSeamlessTravel);

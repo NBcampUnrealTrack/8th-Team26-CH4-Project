@@ -1,7 +1,5 @@
 #include "System/Online/LB_OnlineSessionSubsystem.h"
 
-#include "System/Online/LB_OnlineSessionPolicy.h"
-
 #include "Engine/Engine.h"
 #include "Engine/NetDriver.h"
 #include "GameFramework/PlayerController.h"
@@ -9,9 +7,8 @@
 #include "Interfaces/OnlineIdentityInterface.h"
 #include "Interfaces/OnlineSessionInterface.h"
 #include "Kismet/GameplayStatics.h"
-#include "Misc/CommandLine.h"
+#include "Misc/ConfigCacheIni.h"
 #include "Misc/PackageName.h"
-#include "Misc/Parse.h"
 #include "Online/OnlineSessionNames.h"
 #include "OnlineSessionSettings.h"
 #include "OnlineSubsystem.h"
@@ -24,6 +21,128 @@ namespace
 {
 	constexpr int32 LBLocalUserNum = 0;
 	const FName LBMainMenuMap(TEXT("/Game/LeftBehind/Maps/L_MainMenu"));
+
+	namespace LBOnlineSessionPolicy
+	{
+		constexpr int32 MaxPublicConnections = 4;
+		constexpr int32 MaxSearchResults = 50;
+		const FName RoomPhaseKey(TEXT("ROOM_PHASE"));
+		const FString WaitingPhaseValue(TEXT("Waiting"));
+		const FString InRaidPhaseValue(TEXT("InRaid"));
+
+		FName GetRoomPhaseKey()
+		{
+			return RoomPhaseKey;
+		}
+
+		const FString& GetWaitingPhaseValue()
+		{
+			return WaitingPhaseValue;
+		}
+
+		const FString& GetInRaidPhaseValue()
+		{
+			return InRaidPhaseValue;
+		}
+
+		void ApplyWaitingPolicy(FOnlineSessionSettings& Settings)
+		{
+			Settings.NumPublicConnections = MaxPublicConnections;
+			Settings.NumPrivateConnections = 0;
+			Settings.bShouldAdvertise = true;
+			Settings.bAllowJoinInProgress = true;
+			Settings.bIsLANMatch = false;
+			Settings.bIsDedicated = false;
+			Settings.bUsesStats = false;
+			Settings.bAllowInvites = true;
+			Settings.bUsesPresence = true;
+			Settings.bAllowJoinViaPresence = true;
+			Settings.bAllowJoinViaPresenceFriendsOnly = false;
+			Settings.bAntiCheatProtected = false;
+			Settings.bUseLobbiesIfAvailable = true;
+			Settings.bUseLobbiesVoiceChatIfAvailable = false;
+			Settings.Set(
+				GetRoomPhaseKey(),
+				GetWaitingPhaseValue(),
+				EOnlineDataAdvertisementType::ViaOnlineService);
+			Settings.Set(
+				SETTING_HOST_MIGRATION,
+				false,
+				EOnlineDataAdvertisementType::DontAdvertise);
+		}
+
+		FOnlineSessionSettings MakeWaitingRoomSettings()
+		{
+			FOnlineSessionSettings Settings;
+			ApplyWaitingPolicy(Settings);
+			return Settings;
+		}
+
+		void ApplyInRaidPolicy(FOnlineSessionSettings& Settings, const int32 CurrentPlayers)
+		{
+			Settings.NumPublicConnections = 0;
+			Settings.NumPrivateConnections = FMath::Clamp(CurrentPlayers, 1, MaxPublicConnections);
+			Settings.bShouldAdvertise = false;
+			Settings.bAllowJoinInProgress = false;
+			Settings.bAllowInvites = false;
+			Settings.bUsesPresence = true;
+			Settings.bAllowJoinViaPresence = false;
+			Settings.bAllowJoinViaPresenceFriendsOnly = false;
+			Settings.bIsLANMatch = false;
+			Settings.bUseLobbiesIfAvailable = true;
+			Settings.bUseLobbiesVoiceChatIfAvailable = false;
+			Settings.Set(
+				GetRoomPhaseKey(),
+				GetInRaidPhaseValue(),
+				EOnlineDataAdvertisementType::ViaOnlineService);
+			Settings.Set(
+				SETTING_HOST_MIGRATION,
+				false,
+				EOnlineDataAdvertisementType::DontAdvertise);
+		}
+
+		bool CanStartExclusiveOperation(
+			const bool bHasPendingOperation,
+			const bool bConnectionTravelPending,
+			const bool bMenuTravelPending)
+		{
+			return !bHasPendingOperation && !bConnectionTravelPending && !bMenuTravelPending;
+		}
+
+		bool CanAcceptInvite(
+			const FOnlineSessionSettings& InviteSettings,
+			const int32 NumOpenPublicConnections,
+			const int32 ExpectedBuildUniqueId)
+		{
+			FString Phase;
+			return InviteSettings.BuildUniqueId == ExpectedBuildUniqueId
+				&& InviteSettings.Get(GetRoomPhaseKey(), Phase)
+				&& Phase == GetWaitingPhaseValue()
+				&& InviteSettings.NumPublicConnections > 0
+				&& NumOpenPublicConnections > 0;
+		}
+
+		bool IsCurrentJoinSelection(const TArray<FLBRoomSummary>& Rooms, const FString& RoomId)
+		{
+			if (RoomId.IsEmpty())
+			{
+				return false;
+			}
+
+			int32 MatchingRooms = 0;
+			bool bMatchingRoomCanJoin = false;
+			for (const FLBRoomSummary& Room : Rooms)
+			{
+				if (Room.RoomId == RoomId)
+				{
+					++MatchingRooms;
+					bMatchingRoomCanJoin = Room.bCanJoin;
+				}
+			}
+
+			return MatchingRooms == 1 && bMatchingRoomCanJoin;
+		}
+	}
 
 	enum class ELBPendingOnlineOperation : uint8
 	{
@@ -49,6 +168,14 @@ namespace
 			NSLOCTEXT("LeftBehind", "OnlineActionFailedWithDetail", "{0}에 실패했습니다: {1}"),
 			Action,
 			FText::FromString(Detail));
+	}
+
+	FText MakeEOSUnavailableError()
+	{
+		return NSLOCTEXT(
+			"LeftBehind",
+			"EOSUnavailable",
+			"EOS를 초기화하지 못했습니다. DefaultEngine.ini의 EOS 기본값과 Config/GeneratedEngine.ini의 LeftBehindDev Artifact를 확인한 뒤 Unreal Editor를 완전히 다시 시작해 주세요.");
 	}
 }
 
@@ -81,42 +208,23 @@ public:
 				&FLBOnlineSessionRuntime::HandleTravelFailure);
 		}
 
-		OnlineSubsystem = Online::GetSubsystem(OwnerSubsystem->GetWorld());
+		OnlineSubsystem = Online::GetSubsystem(
+			OwnerSubsystem->GetWorld(),
+			FName(TEXT("EOS")));
 		if (!OnlineSubsystem)
 		{
-			ReportError(
-				NSLOCTEXT("LeftBehind", "OnlineSubsystemMissing", "온라인 서비스가 시작되지 않았습니다. EOS 설정을 확인해 주세요."),
-				ELBOnlineState::Error);
+			ReportError(MakeEOSUnavailableError(), ELBOnlineState::Error);
 			return;
 		}
 
-		constexpr bool bAllowEditorLanFallback =
-#if WITH_EDITOR
-			true;
-#else
-			false;
-#endif
-		TransportMode = LBOnlineSessionPolicy::ResolveTransportMode(
-			OnlineSubsystem->GetSubsystemName(),
-			bAllowEditorLanFallback);
-		if (TransportMode == LBOnlineSessionPolicy::ETransportMode::Unsupported)
+		if (OnlineSubsystem->GetSubsystemName() != FName(TEXT("EOS")))
 		{
 			ReportError(
 				FText::Format(
-					NSLOCTEXT("LeftBehind", "WrongOnlineSubsystem", "EOS 대신 {0} 온라인 서비스가 선택되었습니다. EOS 설정을 확인해 주세요."),
+					NSLOCTEXT("LeftBehind", "WrongOnlineSubsystem", "EOS 대신 {0} 온라인 서비스가 선택되었습니다. DefaultEngine.ini를 확인해 주세요."),
 					FText::FromName(OnlineSubsystem->GetSubsystemName())),
 				ELBOnlineState::Error);
 			return;
-		}
-
-		bUsingEditorLanFallback = TransportMode == LBOnlineSessionPolicy::ETransportMode::EditorLan;
-		OwnerSubsystem->bUsingEditorLanFallback = bUsingEditorLanFallback;
-		if (bUsingEditorLanFallback)
-		{
-			UE_LOG(
-				LogLBOnlineSession,
-				Warning,
-				TEXT("EOS artifacts are not configured. Using editor-only NULL/LAN session fallback."));
 		}
 
 		Identity = OnlineSubsystem->GetIdentityInterface();
@@ -125,18 +233,15 @@ public:
 		if (!Identity.IsValid() || !Sessions.IsValid())
 		{
 			ReportError(
-				NSLOCTEXT("LeftBehind", "OnlineInterfacesMissing", "EOS 로그인 또는 방 기능을 불러오지 못했습니다. 프로젝트 플러그인 설정을 확인해 주세요."),
+				NSLOCTEXT("LeftBehind", "OnlineInterfacesMissing", "EOS 로그인 또는 방 기능을 불러오지 못했습니다. 프로젝트 플러그인과 Artifact 설정을 확인해 주세요."),
 				ELBOnlineState::Error);
 			return;
 		}
 
-		if (!bUsingEditorLanFallback)
-		{
-			InviteAcceptedHandle = Sessions->AddOnSessionUserInviteAcceptedDelegate_Handle(
-				FOnSessionUserInviteAcceptedDelegate::CreateSP(
-					AsShared(),
-					&FLBOnlineSessionRuntime::HandleInviteAccepted));
-		}
+		InviteAcceptedHandle = Sessions->AddOnSessionUserInviteAcceptedDelegate_Handle(
+			FOnSessionUserInviteAcceptedDelegate::CreateSP(
+				AsShared(),
+				&FLBOnlineSessionRuntime::HandleInviteAccepted));
 		SessionFailureHandle = Sessions->AddOnSessionFailureDelegate_Handle(
 			FOnSessionFailureDelegate::CreateSP(
 				AsShared(),
@@ -206,12 +311,6 @@ public:
 		Sessions.Reset();
 		Identity.Reset();
 		OnlineSubsystem = nullptr;
-		TransportMode = LBOnlineSessionPolicy::ETransportMode::Unsupported;
-		bUsingEditorLanFallback = false;
-		if (ULB_OnlineSessionSubsystem* OwnerSubsystem = Owner.Get())
-		{
-			OwnerSubsystem->bUsingEditorLanFallback = false;
-		}
 		Owner.Reset();
 	}
 
@@ -245,33 +344,18 @@ public:
 			FOnLoginCompleteDelegate::CreateSP(
 				AsShared(),
 				&FLBOnlineSessionRuntime::HandleLoginComplete));
-		FString CommandLineAuthType;
-		FParse::Value(FCommandLine::Get(), TEXT("AUTH_TYPE="), CommandLineAuthType);
-		bool bLoginStarted = false;
-		if (bUsingEditorLanFallback)
-		{
-			bLoginStarted = Identity->AutoLogin(LBLocalUserNum);
-		}
-		else if (!CommandLineAuthType.IsEmpty())
-		{
-			// AutoLogin is the OSSv1 path that consumes Dev Auth Tool command-line credentials.
-			bLoginStarted = Identity->AutoLogin(LBLocalUserNum);
-		}
-		else
-		{
-			// UE 5.7 binary builds do not persist EOS auth tokens. Calling accountportal
-			// directly avoids the non-callback persistent-auth branch in OnlineSubsystemEOS.
-			FOnlineAccountCredentials AccountPortalCredentials;
-			AccountPortalCredentials.Type = TEXT("accountportal");
-			bLoginStarted = Identity->Login(LBLocalUserNum, AccountPortalCredentials);
-		}
+		// Online PIE Play Credentials complete before the game instance is created.
+		// If no stored PIE login exists, use Account Portal without launch arguments.
+		FOnlineAccountCredentials AccountPortalCredentials;
+		AccountPortalCredentials.Type = TEXT("accountportal");
+		const bool bLoginStarted = Identity->Login(LBLocalUserNum, AccountPortalCredentials);
 
 		if (!bLoginStarted)
 		{
 			ClearLoginDelegate();
 			PendingOperation = ELBPendingOnlineOperation::None;
 			ReportError(
-				NSLOCTEXT("LeftBehind", "AutoLoginNotStarted", "EOS 로그인을 시작하지 못했습니다. Dev Auth Tool 또는 로그인 설정을 확인해 주세요."),
+				NSLOCTEXT("LeftBehind", "AccountPortalLoginNotStarted", "EOS Account Portal 로그인을 시작하지 못했습니다. Artifact와 EAS 설정을 확인해 주세요."),
 				ELBOnlineState::Error);
 			return false;
 		}
@@ -301,8 +385,7 @@ public:
 			FOnCreateSessionCompleteDelegate::CreateSP(
 				AsShared(),
 				&FLBOnlineSessionRuntime::HandleCreateComplete));
-		const FOnlineSessionSettings Settings = LBOnlineSessionPolicy::MakeWaitingRoomSettings(
-			bUsingEditorLanFallback);
+		const FOnlineSessionSettings Settings = LBOnlineSessionPolicy::MakeWaitingRoomSettings();
 		if (!Sessions->CreateSession(LBLocalUserNum, NAME_GameSession, Settings))
 		{
 			ClearCreateDelegate();
@@ -334,11 +417,8 @@ public:
 
 		ActiveSearch = MakeShared<FOnlineSessionSearch>();
 		ActiveSearch->MaxSearchResults = LBOnlineSessionPolicy::MaxSearchResults;
-		ActiveSearch->bIsLanQuery = bUsingEditorLanFallback;
-		if (!bUsingEditorLanFallback)
-		{
-			ActiveSearch->QuerySettings.Set(SEARCH_LOBBIES, true, EOnlineComparisonOp::Equals);
-		}
+		ActiveSearch->bIsLanQuery = false;
+		ActiveSearch->QuerySettings.Set(SEARCH_LOBBIES, true, EOnlineComparisonOp::Equals);
 		ActiveSearch->QuerySettings.Set(
 			FName(TEXT("BuildUniqueId")),
 			GetBuildUniqueId(),
@@ -431,32 +511,78 @@ public:
 
 	bool OpenSocialOverlay()
 	{
-		if (!bInRoom)
+		FText UnavailableReason;
+		if (!CanOpenSocialOverlay(&UnavailableReason))
 		{
-			ReportNonFatalError(NSLOCTEXT("LeftBehind", "InviteOutsideRoom", "친구를 초대하려면 먼저 방에 들어가야 합니다."));
+			ReportNonFatalError(UnavailableReason);
 			return false;
 		}
 
-		if (bUsingEditorLanFallback)
-		{
-			ReportNonFatalError(NSLOCTEXT(
-				"LeftBehind",
-				"LanFallbackHasNoOverlay",
-				"Local LAN test mode does not provide EOS friend invitations."));
-			return false;
-		}
-
-		if (!ExternalUI.IsValid())
-		{
-			ReportNonFatalError(NSLOCTEXT("LeftBehind", "OverlayUnavailable", "EOS 소셜 오버레이를 사용할 수 없습니다. Overlay Redistributable 설치를 확인해 주세요."));
-			return false;
-		}
-
+		ClearLastError();
 		if (!ExternalUI->ShowFriendsUI(LBLocalUserNum))
 		{
 			ReportNonFatalError(NSLOCTEXT("LeftBehind", "OverlayOpenFailed", "EOS 친구 창을 열지 못했습니다. 오버레이 설치와 친구 권한을 확인해 주세요."));
 			return false;
 		}
+
+		return true;
+	}
+
+	bool CanOpenSocialOverlay(FText* OutUnavailableReason = nullptr) const
+	{
+		if (OutUnavailableReason)
+		{
+			*OutUnavailableReason = FText::GetEmpty();
+		}
+
+		const auto Reject = [OutUnavailableReason](const FText& Reason)
+		{
+			if (OutUnavailableReason)
+			{
+				*OutUnavailableReason = Reason;
+			}
+			return false;
+		};
+
+		if (!bInRoom)
+		{
+			return Reject(NSLOCTEXT("LeftBehind", "InviteOutsideRoom", "친구를 초대하려면 먼저 방에 들어가야 합니다."));
+		}
+		if (!IsLoggedIn())
+		{
+			return Reject(NSLOCTEXT("LeftBehind", "InviteRequiresLogin", "친구를 초대하려면 EOS 로그인이 필요합니다."));
+		}
+		if (!ExternalUI.IsValid())
+		{
+			return Reject(NSLOCTEXT("LeftBehind", "OverlayUnavailable", "EOS 소셜 오버레이를 사용할 수 없습니다. Overlay Redistributable 설치를 확인해 주세요."));
+		}
+
+		bool bOverlayEnabled = false;
+		bool bSocialOverlayEnabled = false;
+		const TCHAR* EOSSettingsSection = TEXT("/Script/OnlineSubsystemEOS.EOSSettings");
+		if (!GConfig
+			|| !GConfig->GetBool(EOSSettingsSection, TEXT("bEnableOverlay"), bOverlayEnabled, GEngineIni)
+			|| !GConfig->GetBool(EOSSettingsSection, TEXT("bEnableSocialOverlay"), bSocialOverlayEnabled, GEngineIni)
+			|| !bOverlayEnabled
+			|| !bSocialOverlayEnabled)
+		{
+			return Reject(NSLOCTEXT(
+				"LeftBehind",
+				"SocialOverlayDisabled",
+				"EOS 친구 오버레이가 꺼져 있습니다. 게임과 에디터를 완전히 종료한 뒤 다시 실행해 주세요."));
+		}
+
+#if WITH_EDITOR
+		const ULB_OnlineSessionSubsystem* OwnerSubsystem = Owner.Get();
+		const UWorld* World = IsValid(OwnerSubsystem) ? OwnerSubsystem->GetWorld() : nullptr;
+		if (IsValid(World) && World->WorldType == EWorldType::PIE)
+		{
+			return Reject(NSLOCTEXT(
+				"LeftBehind",
+				"SocialOverlayUnavailableInPIE",
+				"UE 5.7의 PIE에서는 Epic 친구 오버레이를 열 수 없습니다. 별도 게임 창이나 패키지에서 사용해 주세요."));
+		}
+#endif
 
 		return true;
 	}
@@ -487,7 +613,6 @@ public:
 private:
 	TWeakObjectPtr<ULB_OnlineSessionSubsystem> Owner;
 	IOnlineSubsystem* OnlineSubsystem = nullptr;
-	LBOnlineSessionPolicy::ETransportMode TransportMode = LBOnlineSessionPolicy::ETransportMode::Unsupported;
 	IOnlineIdentityPtr Identity;
 	IOnlineSessionPtr Sessions;
 	IOnlineExternalUIPtr ExternalUI;
@@ -499,7 +624,6 @@ private:
 	ELBRoomPhase PendingRoomPhase = ELBRoomPhase::Waiting;
 	bool bInRoom = false;
 	bool bRoomHost = false;
-	bool bUsingEditorLanFallback = false;
 	bool bConnectionTravelPending = false;
 	bool bMenuTravelPending = false;
 	bool bTravelToMenuAfterDestroy = false;
@@ -659,10 +783,7 @@ private:
 		{
 			OwnerSubsystem->SetRooms({});
 			OwnerSubsystem->SetState(ELBOnlineState::Traveling);
-			const FString ListenOptions = bUsingEditorLanFallback
-				? TEXT("listen?bUseIPSockets")
-				: TEXT("listen");
-			UGameplayStatics::OpenLevel(OwnerSubsystem, LBMainMenuMap, true, ListenOptions);
+			UGameplayStatics::OpenLevel(OwnerSubsystem, LBMainMenuMap, true, TEXT("listen"));
 		}
 	}
 
@@ -684,6 +805,7 @@ private:
 			return;
 		}
 
+		const int32 RawSearchResultCount = ActiveSearch->SearchResults.Num();
 		TArray<FLBRoomSummary> NewRooms;
 		RoomResultIndices.Reset();
 		for (int32 Index = 0; Index < ActiveSearch->SearchResults.Num(); ++Index)
@@ -729,6 +851,12 @@ private:
 			const int32 NameOrder = Left.HostDisplayName.Compare(Right.HostDisplayName, ESearchCase::IgnoreCase);
 			return NameOrder == 0 ? Left.RoomId < Right.RoomId : NameOrder < 0;
 		});
+		UE_LOG(
+			LogLBOnlineSession,
+			Log,
+			TEXT("EOS lobby search completed. RawResults=%d PublishedRooms=%d"),
+			RawSearchResultCount,
+			NewRooms.Num());
 
 		ClearLastError();
 		OwnerSubsystem->SetRooms(MoveTemp(NewRooms));
@@ -737,14 +865,14 @@ private:
 
 	bool BeginJoin(FOnlineSessionSearchResult DesiredSession)
 	{
-		// 별도 프로세스라도 같은 Epic 계정이면 EOS P2P 목적지가 자기 자신이 되어
+		// 서로 다른 PIE 인스턴스라도 같은 Epic 계정이면 EOS P2P 목적지가 자기 자신이 되어
 		// handshake가 응답 없이 timeout된다. 네트워크 이동 전에 명확하게 차단한다.
-		if (!bUsingEditorLanFallback && IsSessionOwnedByLocalUser(DesiredSession))
+		if (IsSessionOwnedByLocalUser(DesiredSession))
 		{
 			ReportNonFatalError(NSLOCTEXT(
 				"LeftBehind",
 				"JoinOwnEOSAccountRoom",
-				"같은 Epic 계정으로 만든 방에는 입장할 수 없습니다. 두 번째 프로세스는 Dev Auth Tool의 Player2로 실행하세요."));
+				"같은 Epic 계정으로 만든 방에는 입장할 수 없습니다. 두 번째 PIE 인스턴스가 Play Credentials의 Player2를 사용하게 설정하세요."));
 			return false;
 		}
 
@@ -753,12 +881,9 @@ private:
 			return false;
 		}
 
-		// EOS requires these bits on invite-derived results before JoinSession.
-		if (!bUsingEditorLanFallback)
-		{
-			DesiredSession.Session.SessionSettings.bUsesPresence = true;
-			DesiredSession.Session.SessionSettings.bUseLobbiesIfAvailable = true;
-		}
+		// EOS does not restore these bits when it copies lobby search/invite data.
+		DesiredSession.Session.SessionSettings.bUsesPresence = true;
+		DesiredSession.Session.SessionSettings.bUseLobbiesIfAvailable = true;
 		JoinCompleteHandle = Sessions->AddOnJoinSessionCompleteDelegate_Handle(
 			FOnJoinSessionCompleteDelegate::CreateSP(
 				AsShared(),
@@ -801,11 +926,6 @@ private:
 				NSLOCTEXT("LeftBehind", "ConnectStringMissing", "방에는 참가했지만 호스트의 접속 주소를 받지 못했습니다. 다시 시도해 주세요."));
 			return;
 		}
-		if (bUsingEditorLanFallback && !ConnectString.Contains(TEXT("bUseIPSockets")))
-		{
-			ConnectString += TEXT("?bUseIPSockets");
-		}
-
 		ULB_OnlineSessionSubsystem* OwnerSubsystem = Owner.Get();
 		APlayerController* PlayerController = OwnerSubsystem && OwnerSubsystem->GetWorld()
 			? OwnerSubsystem->GetWorld()->GetFirstPlayerController()
@@ -965,14 +1085,11 @@ private:
 				FMath::Max(TrackedMembers, TotalCapacity - OpenConnections),
 				1,
 				LBOnlineSessionPolicy::MaxPublicConnections);
-			LBOnlineSessionPolicy::ApplyInRaidPolicy(
-				UpdatedSettings,
-				CurrentPlayers,
-				bUsingEditorLanFallback);
+			LBOnlineSessionPolicy::ApplyInRaidPolicy(UpdatedSettings, CurrentPlayers);
 		}
 		else
 		{
-			LBOnlineSessionPolicy::ApplyWaitingPolicy(UpdatedSettings, bUsingEditorLanFallback);
+			LBOnlineSessionPolicy::ApplyWaitingPolicy(UpdatedSettings);
 		}
 
 		PendingOperation = ELBPendingOnlineOperation::UpdatePhase;
@@ -1376,6 +1493,23 @@ bool ULB_OnlineSessionSubsystem::LeaveRoom()
 bool ULB_OnlineSessionSubsystem::OpenSocialOverlay()
 {
 	return Runtime.IsValid() && Runtime->OpenSocialOverlay();
+}
+
+bool ULB_OnlineSessionSubsystem::CanOpenSocialOverlay(FText* OutUnavailableReason) const
+{
+	if (Runtime.IsValid())
+	{
+		return Runtime->CanOpenSocialOverlay(OutUnavailableReason);
+	}
+
+	if (OutUnavailableReason)
+	{
+		*OutUnavailableReason = NSLOCTEXT(
+			"LeftBehind",
+			"SocialOverlayRuntimeUnavailable",
+			"EOS 친구 오버레이가 아직 준비되지 않았습니다.");
+	}
+	return false;
 }
 
 bool ULB_OnlineSessionSubsystem::LockRoomForRaid()

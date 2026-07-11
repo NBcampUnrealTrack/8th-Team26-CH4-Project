@@ -81,11 +81,11 @@ public:
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 	virtual void Deinitialize() override;
 
-	/** Starts EOS AutoLogin (including Dev Auth Tool command-line credentials). */
+	/** Uses an existing Online PIE login, or starts an EOS Account Portal login. */
 	UFUNCTION(BlueprintCallable, Category="LB|Online")
 	bool SignIn();
 
-	/** Creates the fixed-policy four-player EOS lobby or editor LAN room. */
+	/** Creates the fixed-policy four-player EOS lobby. */
 	UFUNCTION(BlueprintCallable, Category="LB|Online")
 	bool CreateRoom();
 
@@ -105,6 +105,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category="LB|Online")
 	bool OpenSocialOverlay();
 
+	/** Returns whether this process can open the EOS friends overlay and why not. */
+	bool CanOpenSocialOverlay(FText* OutUnavailableReason = nullptr) const;
+
 	/**
 	 * Host-only async update performed before ServerTravel to the raid.
 	 * Wait for OnRoomPhaseUpdateComplete(success, InRaid, ...) before traveling.
@@ -121,10 +124,6 @@ public:
 
 	UFUNCTION(BlueprintPure, Category="LB|Online")
 	bool IsRoomHost() const;
-
-	/** True only when an editor build fell back from unconfigured EOS to local LAN sessions. */
-	UFUNCTION(BlueprintPure, Category="LB|Online")
-	bool IsUsingEditorLanFallback() const { return bUsingEditorLanFallback; }
 
 	UFUNCTION(BlueprintPure, Category="LB|Online")
 	TArray<FLBRoomSummary> GetRooms() const { return Rooms; }
@@ -155,9 +154,6 @@ private:
 
 	UPROPERTY(Transient)
 	FText LastError;
-
-	UPROPERTY(Transient)
-	bool bUsingEditorLanFallback = false;
 
 	TSharedPtr<FLBOnlineSessionRuntime> Runtime;
 

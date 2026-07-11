@@ -6,6 +6,7 @@
 #include "GameMode/LB_MainMenuGameMode.h"
 #include "Player/LB_PlayerState.h"
 #include "System/Online/LB_OnlineSessionSubsystem.h"
+#include "UI/MainMenu/LB_MainMenuRootWidget.h"
 #include "UI/MainMenu/LB_MultiplayerHubWidget.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogLBMainMenuPlayerController, Log, All);
@@ -142,8 +143,23 @@ void ALB_MainMenuPlayerController::SetMenuScreen(ELBMainMenuScreen NewScreen)
 		return;
 	}
 
+	if (NewScreen != ELBMainMenuScreen::Main)
+	{
+		bShowRoomEntryAfterMainLoad = false;
+	}
 	DesiredScreen = NewScreen;
 	ShowDesiredMenuScreen();
+}
+
+void ALB_MainMenuPlayerController::ShowRoomEntryScreen()
+{
+	if (bMenuUITeardown || GetNetMode() == NM_DedicatedServer || !IsLocalController())
+	{
+		return;
+	}
+
+	bShowRoomEntryAfterMainLoad = true;
+	SetMenuScreen(ELBMainMenuScreen::Main);
 }
 
 void ALB_MainMenuPlayerController::SubmitCodename(const FText& RawCodename)
@@ -232,6 +248,7 @@ void ALB_MainMenuPlayerController::TeardownMenuUI()
 	WaitingWidget = nullptr;
 	DesiredScreen = ELBMainMenuScreen::None;
 	VisibleScreen = ELBMainMenuScreen::None;
+	bShowRoomEntryAfterMainLoad = false;
 }
 
 void ALB_MainMenuPlayerController::ShowDesiredMenuScreen()
@@ -264,6 +281,18 @@ void ALB_MainMenuPlayerController::ShowDesiredMenuScreen()
 		}
 		ExistingWidget->SetVisibility(ESlateVisibility::Visible);
 		VisibleScreen = DesiredScreen;
+		if (VisibleScreen == ELBMainMenuScreen::Main && bShowRoomEntryAfterMainLoad)
+		{
+			bShowRoomEntryAfterMainLoad = false;
+			if (ULB_MainMenuRootWidget* MainMenuRoot = Cast<ULB_MainMenuRootWidget>(ExistingWidget))
+			{
+				MainMenuRoot->ShowRoomEntryPanel();
+			}
+			else
+			{
+				UE_LOG(LogLBMainMenuPlayerController, Error, TEXT("Main menu widget does not use ULB_MainMenuRootWidget."));
+			}
+		}
 		ApplyMenuInputMode(ExistingWidget);
 		return;
 	}

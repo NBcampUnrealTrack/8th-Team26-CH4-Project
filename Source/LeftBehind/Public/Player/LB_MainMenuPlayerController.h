@@ -27,6 +27,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category="LB|MainMenu|UI")
 	void SetMenuScreen(ELBMainMenuScreen NewScreen);
 
+	/** Returns from the EOS room browser to the existing Start/room-entry panel. */
+	UFUNCTION(BlueprintCallable, Category="LB|MainMenu|UI")
+	void ShowRoomEntryScreen();
+
 	/** Starts EOS sign-in and opens the room browser once the account is ready. */
 	UFUNCTION(BlueprintCallable, Category="LB|MainMenu|Online")
 	void BeginOnlinePlay();
@@ -96,6 +100,7 @@ private:
 	uint32 MenuWidgetLoadSerial = 0;
 	bool bMenuUITeardown = false;
 	bool bOpenMultiplayerAfterSignIn = false;
+	bool bShowRoomEntryAfterMainLoad = false;
 
 	void ShowDesiredMenuScreen();
 	void HandleMenuWidgetClassLoaded(ELBMainMenuScreen LoadedScreen, uint32 LoadSerial);

@@ -12,15 +12,8 @@
 
 namespace
 {
-	FText GetDefaultOnlineStatus(const ELBOnlineState State, const bool bUsingEditorLanFallback)
+	FText GetDefaultOnlineStatus(const ELBOnlineState State)
 	{
-		if (bUsingEditorLanFallback && State == ELBOnlineState::Ready)
-		{
-			return LOCTEXT(
-				"EditorLanReady",
-				"Local LAN test mode. Configure EOS artifacts to browse internet rooms and invite friends.");
-		}
-
 		switch (State)
 		{
 		case ELBOnlineState::SignedOut:
@@ -304,10 +297,8 @@ void ULB_MultiplayerHubWidget::HandleOnlineStateChanged(
 		{
 			EffectiveMessage = BoundOnlineSubsystem->GetLastError();
 		}
-		const bool bUsingEditorLanFallback = IsValid(BoundOnlineSubsystem)
-			&& BoundOnlineSubsystem->IsUsingEditorLanFallback();
 		StatusText->SetText(EffectiveMessage.IsEmpty()
-			? GetDefaultOnlineStatus(NewState, bUsingEditorLanFallback)
+			? GetDefaultOnlineStatus(NewState)
 			: EffectiveMessage);
 		const bool bHasError = NewState == ELBOnlineState::Error
 			|| (IsValid(BoundOnlineSubsystem) && !BoundOnlineSubsystem->GetLastError().IsEmpty());
@@ -389,7 +380,7 @@ FReply ULB_MultiplayerHubWidget::HandleBackClicked()
 {
 	if (ALB_MainMenuPlayerController* Controller = Cast<ALB_MainMenuPlayerController>(GetOwningPlayer()))
 	{
-		Controller->SetMenuScreen(ELBMainMenuScreen::Main);
+		Controller->ShowRoomEntryScreen();
 	}
 	return FReply::Handled();
 }

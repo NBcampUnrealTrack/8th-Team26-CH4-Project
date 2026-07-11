@@ -16,165 +16,7 @@ $projectPath = Join-Path $projectRoot "LeftBehind.uproject"
 $generatedConfigPath = Join-Path $projectRoot "Config\GeneratedEngine.ini"
 $setupScriptPath = Join-Path $PSScriptRoot "SetupEOSDev.ps1"
 
-function Get-EOSConfigurationDetails {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Path
-    )
-
-    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
-        return $null
-    }
-
-    $content = Get-Content -LiteralPath $Path -Raw -Encoding utf8
-    $defaultArtifactMatch = [regex]::Match(
-        $content,
-        '(?m)^\s*DefaultArtifactName\s*=\s*"([A-Za-z][A-Za-z0-9_-]{2,63})"\s*$')
-    if (-not $defaultArtifactMatch.Success) {
-        return $null
-    }
-
-    $defaultArtifact = $defaultArtifactMatch.Groups[1].Value
-    $artifactMatches = [regex]::Matches(
-        $content,
-        '(?m)^\s*\+Artifacts\s*=\s*(\([^\r\n]*\))\s*$')
-
-    foreach ($artifactMatch in $artifactMatches) {
-        $artifactEntry = $artifactMatch.Groups[1].Value
-        $artifactNameMatch = [regex]::Match(
-            $artifactEntry,
-            '(?:^|[,(])\s*ArtifactName\s*=\s*"([A-Za-z][A-Za-z0-9_-]{2,63})"')
-        if (-not $artifactNameMatch.Success -or
-            -not [string]::Equals(
-                $defaultArtifact,
-                $artifactNameMatch.Groups[1].Value,
-                [System.StringComparison]::Ordinal)) {
-            continue
-        }
-
-        $clientIdMatch = [regex]::Match(
-            $artifactEntry,
-            '(?:^|[,(])\s*ClientId\s*=\s*"(xyz[A-Za-z0-9]{20,})"')
-        $clientSecretMatch = [regex]::Match(
-            $artifactEntry,
-            '(?:^|[,(])\s*ClientSecret\s*=\s*"((?!\*+")[A-Za-z0-9+/_-]{20,})"')
-        $productIdMatch = [regex]::Match(
-            $artifactEntry,
-            '(?:^|[,(])\s*ProductId\s*=\s*"([0-9a-fA-F]{32})"')
-        $sandboxIdMatch = [regex]::Match(
-            $artifactEntry,
-            '(?:^|[,(])\s*SandboxId\s*=\s*"(p-[a-z0-9]{20,})"')
-        $deploymentIdMatch = [regex]::Match(
-            $artifactEntry,
-            '(?:^|[,(])\s*DeploymentId\s*=\s*"([0-9a-fA-F]{32})"')
-
-        if ($clientIdMatch.Success -and
-            $clientSecretMatch.Success -and
-            $productIdMatch.Success -and
-            $sandboxIdMatch.Success -and
-            $deploymentIdMatch.Success) {
-            return [pscustomobject]@{
-                ArtifactName = $defaultArtifact
-                ProductId = $productIdMatch.Groups[1].Value
-            }
-        }
-    }
-
-    return $null
-}
-
-function Test-EOSConfiguration {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Path
-    )
-
-    return $null -ne (Get-EOSConfigurationDetails -Path $Path)
-}
-
-function Test-EOSCredentialEnvironment {
-    $requiredNames = @(
-        "EOS_PRODUCT_ID",
-        "EOS_SANDBOX_ID",
-        "EOS_DEPLOYMENT_ID",
-        "EOS_CLIENT_ID",
-        "EOS_CLIENT_SECRET"
-    )
-
-    foreach ($name in $requiredNames) {
-        if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
-            return $false
-        }
-    }
-
-    return $true
-}
-
-function Get-UnrealEngineRoot {
-    $candidates = @()
-    $environmentRoot = [Environment]::GetEnvironmentVariable("UE_5_7_ROOT")
-    if (-not [string]::IsNullOrWhiteSpace($environmentRoot)) {
-        $candidates += $environmentRoot
-    }
-
-    $registryPath = "HKLM:\SOFTWARE\EpicGames\Unreal Engine\5.7"
-    $registrySettings = Get-ItemProperty -LiteralPath $registryPath -ErrorAction SilentlyContinue
-    if ($registrySettings) {
-        $installedDirectory = $registrySettings.PSObject.Properties["InstalledDirectory"]
-        if ($installedDirectory -and -not [string]::IsNullOrWhiteSpace($installedDirectory.Value)) {
-            $candidates += $installedDirectory.Value
-        }
-    }
-
-    $programFiles = [Environment]::GetEnvironmentVariable("ProgramFiles")
-    if (-not [string]::IsNullOrWhiteSpace($programFiles)) {
-        $candidates += (Join-Path $programFiles "Epic Games\UE_5.7")
-    }
-
-    foreach ($candidate in ($candidates | Select-Object -Unique)) {
-        $runUAT = Join-Path $candidate "Engine\Build\BatchFiles\RunUAT.bat"
-        if (Test-Path -LiteralPath $runUAT -PathType Leaf) {
-            return [System.IO.Path]::GetFullPath($candidate)
-        }
-    }
-
-    throw "Unreal Engine 5.7 설치 경로를 찾을 수 없습니다. UE_5_7_ROOT 환경 변수 또는 Epic Games Launcher 설치를 확인하세요."
-}
-
-function Resolve-SignedEpicBinary {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$EnvironmentName,
-
-        [Parameter(Mandatory = $true)]
-        [string[]]$Candidates,
-
-        [Parameter(Mandatory = $true)]
-        [string]$DisplayName
-    )
-
-    $paths = @()
-    $environmentPath = [Environment]::GetEnvironmentVariable($EnvironmentName)
-    if (-not [string]::IsNullOrWhiteSpace($environmentPath)) {
-        $paths += $environmentPath
-    }
-    $paths += $Candidates
-
-    foreach ($path in ($paths | Select-Object -Unique)) {
-        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
-            continue
-        }
-
-        $signature = Get-AuthenticodeSignature -LiteralPath $path
-        if ($signature.Status -eq [System.Management.Automation.SignatureStatus]::Valid -and
-            $signature.SignerCertificate -and
-            $signature.SignerCertificate.Subject -like '*O=Epic Games Inc.*') {
-            return [System.IO.Path]::GetFullPath($path)
-        }
-    }
-
-    throw "$DisplayName 파일을 찾지 못했거나 Epic Games 디지털 서명이 유효하지 않습니다. $EnvironmentName 환경 변수로 공식 EOS 배포 파일 경로를 지정하세요."
-}
+. (Join-Path $PSScriptRoot "EOSDevCommon.ps1")
 
 if ((Get-Process -Name "UnrealEditor" -ErrorAction SilentlyContinue) -and -not $AllowEditorRunning) {
     throw "패키징 중 DLL 잠금을 방지하려면 실행 중인 Unreal Editor를 모두 종료해야 합니다."
@@ -188,7 +30,7 @@ if (-not (Test-EOSConfiguration -Path $generatedConfigPath)) {
         & $setupScriptPath -NonInteractive
     }
     else {
-        throw "빌드 PC의 EOS 설정이 없습니다. Scripts/SetupEOSDev.ps1을 한 번 실행하거나 EOS_* secret 환경 변수를 설정하세요. 다른 PC에서는 이 작업이 필요하지 않습니다."
+        throw "빌드 PC의 EOS 설정이 없습니다. Scripts/SetupEOSDev.ps1을 직접 실행하거나 승인된 빌드 환경에서 EOS_* secret을 주입하세요."
     }
 }
 
@@ -211,28 +53,21 @@ elseif (-not [System.IO.Path]::IsPathRooted($OutputRoot)) {
 $OutputRoot = [System.IO.Path]::GetFullPath($OutputRoot)
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $archiveDirectory = Join-Path $OutputRoot "LeftBehind-Win64-$Configuration-$timestamp"
-$engineRoot = Get-UnrealEngineRoot
-$runUATPath = Join-Path $engineRoot "Engine\Build\BatchFiles\RunUAT.bat"
-$programData = [Environment]::GetEnvironmentVariable("ProgramData")
-$programFilesX86 = [Environment]::GetEnvironmentVariable("ProgramFiles(x86)")
-$bootstrapperCandidates = @()
-$installerCandidates = @()
-if (-not [string]::IsNullOrWhiteSpace($programData)) {
-    $bootstrapperCandidates += (Join-Path $programData "Epic\EpicGamesLauncher\Data\Update\Install\Portal\Extras\EOSBootStrapper\EOSBootStrapper.exe")
-    $installerCandidates += (Join-Path $programData "Epic\EpicGamesLauncher\Data\Update\Install\Portal\Extras\EOS\EpicOnlineServicesInstaller.exe")
-}
-if (-not [string]::IsNullOrWhiteSpace($programFilesX86)) {
-    $bootstrapperCandidates += (Join-Path $programFilesX86 "Epic Games\Launcher\Portal\Extras\EOSBootStrapper\EOSBootStrapper.exe")
-    $installerCandidates += (Join-Path $programFilesX86 "Epic Games\Launcher\Portal\Extras\EOS\EpicOnlineServicesInstaller.exe")
-}
+$engineInfo = Get-LBUnrealEngineInfo
+$engineRoot = $engineInfo.Root
+$runUATPath = $engineInfo.RunUATPath
 $eosBootstrapperSource = Resolve-SignedEpicBinary `
     -EnvironmentName "EOS_BOOTSTRAPPER_PATH" `
-    -Candidates $bootstrapperCandidates `
-    -DisplayName "EOS Bootstrapper"
+    -Candidates (Get-EOSBootstrapperCandidates) `
+    -DisplayName "EOS Bootstrapper" `
+    -ExpectedFileNames @("EOSBootStrapper.exe")
 $eosInstallerSource = Resolve-SignedEpicBinary `
     -EnvironmentName "EOS_REDISTRIBUTABLE_INSTALLER_PATH" `
-    -Candidates $installerCandidates `
-    -DisplayName "EOS Redistributable Installer"
+    -Candidates (Get-EOSRedistributableInstallerCandidates) `
+    -DisplayName "EOS Redistributable Installer" `
+    -ExpectedFileNames @("EpicOnlineServicesInstaller.exe") `
+    -ExpectedProductName "EOS Installer" `
+    -ExpectedFileDescription "Epic Online Services Installer"
 
 New-Item -ItemType Directory -Path $OutputRoot -Force | Out-Null
 

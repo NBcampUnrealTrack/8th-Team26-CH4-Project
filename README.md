@@ -33,25 +33,32 @@
 
 ---
 
-## 에디터 로컬 실행
+## EOS 2인 PIE 테스트
 
-EOS Artifact가 아직 설정되지 않은 에디터 빌드는 자동으로 로컬 LAN 테스트 모드로 전환됩니다. 이 모드에서는 방 생성·검색·참가를 같은 PC 또는 같은 LAN에서 테스트할 수 있지만, Epic 계정 로그인·인터넷 방 검색·친구 초대는 사용할 수 없습니다.
+### 1. 최초 1회 Artifact 등록
 
-에디터에서도 실제 EOS를 사용하려면 `Scripts/SetupEOSDev.ps1`을 실행해 `Config/GeneratedEngine.ini`를 만든 뒤 에디터를 완전히 재시작하세요. 해당 파일에는 Client Secret이 포함되므로 커밋하거나 공유하지 마세요.
-
----
-
-## 다른 PC용 EOS 패키징
-
-대상 PC에는 EOS 프로젝트 값을 따로 설정하지 않습니다. 빌드 PC에서만 `Scripts/SetupEOSDev.ps1`로 EOS 자격 정보를 한 번 등록한 뒤 다음 명령으로 Win64 패키지를 생성합니다.
+EOS Developer Portal의 Dev 환경에서 Product ID, Sandbox ID, Deployment ID, 런타임 SDK Client ID와 Client Secret을 준비한 뒤 실행합니다.
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\Scripts\PackagePortableWin64.ps1
+powershell -ExecutionPolicy Bypass -File .\Scripts\SetupEOSDev.ps1
 ```
 
-완료 후 스크립트가 마지막에 출력하는 폴더 전체를 전달하세요. 스크립트는 EOS Artifact 설정이 유효한지 먼저 검사하고, 게임 실행 파일·EOS SDK DLL·EOS Bootstrapper·공식 EOS Redistributable Installer·pak/IoStore·VC++ 필수 구성 요소가 모두 포함되었는지 검증합니다. 대상 PC에서는 `StartLeftBehind.cmd`만 실행하면 됩니다. 최초 실행 시 VC++ 필수 구성 요소와 EOS Redistributable 설치를 위한 Windows 관리자 권한 확인만 승인하면 되며, Product/Sandbox/Client 값 입력이나 `SetupEOSDev.ps1` 실행은 필요하지 않습니다. 설치 관리자가 재부팅을 요구하는 경우 Windows를 한 번 재시작한 뒤 같은 파일을 다시 실행하세요.
+스크립트가 로컬 전용 `Config/GeneratedEngine.ini`에 `LeftBehindDev` Artifact를 등록합니다. 이 파일에는 Client Secret이 있으므로 커밋하거나 공유하지 말고, 생성 후 에디터를 완전히 재시작합니다.
 
-`Config/GeneratedEngine.ini`에는 Client Secret이 포함되므로 Git에 커밋하거나 별도로 전달하지 마세요. 패키징된 클라이언트에는 EOS 접속에 필요한 런타임 자격 정보가 포함되므로 Developer Portal의 Client Policy는 게임에 필요한 최소 권한만 허용해야 합니다.
+### 2. DevAuth와 Play Credentials 설정
+
+EOS SDK 공식 다운로드본의 `EOS_DevAuthTool`을 포트 `6666`으로 실행합니다. 두 Epic 계정을 Developer Portal에서 이 Product의 테스터로 등록한 뒤, 각각 `Player1`, `Player2`라는 Credential Name으로 로그인합니다. DevAuth Tool은 PIE 테스트 동안 계속 실행해 둡니다. 한 계정의 Account Portal 로그인만 확인할 때는 Dev Auth Tool이 필요하지 않습니다.
+
+에디터의 `Edit > Editor Preferences > Level Editor > Play Credentials`에서 `Enable Logins`를 켜고 다음 두 Credential을 추가합니다.
+
+| 순서 | User Id | Password | Type |
+| --- | --- | --- | --- |
+| 0 | `localhost:6666` | `Player1` | `developer` |
+| 1 | `localhost:6666` | `Player2` | `developer` |
+
+### 3. 2인 PIE 실행
+
+Play 고급 설정에서 `Play Mode=New Editor Window (PIE)`, `Number of Players=2`, `Net Mode=Play Standalone`, `Run Under One Process=true`, `Launch Separate Server=false`로 설정하고 실행합니다. 첫 번째 창에서 세션을 만들고 두 번째 창에서 검색·참가하면 별도 커맨드라인이나 패키징 없이 EOS 흐름을 확인할 수 있습니다.
 
 ---
 
