@@ -25,6 +25,10 @@ class LEFTBEHIND_API ALB_PlayerController : public APlayerController
 {
 	GENERATED_BODY()
 
+#if WITH_DEV_AUTOMATION_TESTS
+	friend class FLBRaidReturnToMenuContractTest;
+#endif
+
 public:
 	ALB_PlayerController();
 
@@ -43,6 +47,9 @@ protected:
 	virtual void SetupInputComponent() override;
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	virtual void ReceivedPlayer() override;
+	virtual void BeginPlayingState() override;
+	virtual void OnRep_PlayerState() override;
 	virtual void AcknowledgePossession(APawn* P) override;
 	virtual void OnUnPossess() override;
 
@@ -99,6 +106,7 @@ private:
 	FTimerHandle RaidHUDInitRetryTimerHandle;
 	TSharedPtr<FStreamableHandle> RaidHUDLoadHandle;
 	bool bRaidHUDInitializationStopped = false;
+	bool bRaidHUDDependencyWaitLogged = false;
 	
 	void Jump();
 	void StopJumping();

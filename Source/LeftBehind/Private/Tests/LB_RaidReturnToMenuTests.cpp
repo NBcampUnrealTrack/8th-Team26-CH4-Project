@@ -12,6 +12,8 @@
 #include "GameMode/LB_RaidGameMode.h"
 #include "GameState/LB_RaidGameState.h"
 #include "Player/LB_PlayerController.h"
+#include "TimerManager.h"
+#include "UI/HUD/LB_RaidHUDWidget.h"
 #include "UI/Popup/LB_RaidResultWidget.h"
 #include "UObject/UnrealType.h"
 
@@ -29,9 +31,13 @@ bool FLBRaidReturnToMenuContractTest::RunTest(const FString& Parameters)
 		TEXT("The native return destination is the production main-menu package"),
 		RaidGameModeCDO->GetMainMenuMap().ToSoftObjectPath().GetLongPackageName(),
 		FString(TEXT("/Game/LeftBehind/Maps/L_MainMenu")));
-	TestFalse(
-		TEXT("Returning to the main menu uses non-seamless travel so lobby selections are reset"),
+	TestTrue(
+		TEXT("Returning to the main menu preserves the EOS party and lobby selections with seamless travel"),
 		RaidGameModeCDO->bUseSeamlessTravel);
+	TestTrue(
+		TEXT("The native raid game mode always falls back to the raid player controller"),
+		RaidGameModeCDO->PlayerControllerClass
+			&& RaidGameModeCDO->PlayerControllerClass->IsChildOf(ALB_PlayerController::StaticClass()));
 	TestNull(
 		TEXT("Remote clients have no ServerReturnToMainMenu RPC surface"),
 		ALB_PlayerController::StaticClass()->FindFunctionByName(TEXT("ServerReturnToMainMenu")));
@@ -46,9 +52,11 @@ bool FLBRaidReturnToMenuContractTest::RunTest(const FString& Parameters)
 		ALB_RaidGameMode* TestGameMode = NewObject<ALB_RaidGameMode>(TestWorld->PersistentLevel);
 		ALB_RaidGameState* TestGameState = NewObject<ALB_RaidGameState>(TestWorld->PersistentLevel);
 		APlayerController* TestController = NewObject<APlayerController>(TestWorld->PersistentLevel);
+		ALB_PlayerController* TestRaidController = NewObject<ALB_PlayerController>(TestWorld->PersistentLevel);
 		TestNotNull(TEXT("The policy test raid game mode is constructed"), TestGameMode);
 		TestNotNull(TEXT("The policy test raid game state is constructed"), TestGameState);
 		TestNotNull(TEXT("The policy test local controller is constructed"), TestController);
+		TestNotNull(TEXT("The raid HUD retry controller is constructed"), TestRaidController);
 
 		if (TestGameMode && TestGameState && TestController)
 		{
@@ -82,7 +90,42 @@ bool FLBRaidReturnToMenuContractTest::RunTest(const FString& Parameters)
 			TestGameMode->bReturnTravelInProgress = false;
 		}
 
+		if (TestRaidController)
+		{
+			TestRaidController->ScheduleRaidHUDInitializationRetry();
+			FTimerManager& TimerManager = TestWorld->GetTimerManager();
+			TestTrue(
+				TEXT("A missing client dependency starts the low-frequency HUD retry"),
+				TimerManager.IsTimerActive(TestRaidController->RaidHUDInitRetryTimerHandle));
+
+			// TimerManager는 새 타이머를 첫 Tick 끝에 활성화하므로 서로 다른 두 프레임을 진행한다.
+			// 원격 클라이언트에서 첫 0.1초 안에 복제가 끝나지 않아도 재시도가 사라지면 안 된다.
+			++GFrameCounter;
+			TimerManager.Tick(0.f);
+			++GFrameCounter;
+			TimerManager.Tick(0.11f);
+			TestTrue(
+				TEXT("The HUD retry remains active after its first unsuccessful callback"),
+				TimerManager.IsTimerActive(TestRaidController->RaidHUDInitRetryTimerHandle));
+			TimerManager.ClearTimer(TestRaidController->RaidHUDInitRetryTimerHandle);
+		}
+
 		TestWorld->DestroyWorld(false);
+	}
+
+	const ALB_PlayerController* RaidPlayerControllerCDO = GetDefault<ALB_PlayerController>();
+	const FString RaidHUDClassPath = RaidPlayerControllerCDO->RaidHUDWidgetClass.ToSoftObjectPath().ToString();
+	TestEqual(
+		TEXT("The native raid controller keeps the packaged raid HUD fallback"),
+		RaidHUDClassPath,
+		FString(TEXT("/Game/LeftBehind/UI/BattleHUD/HUD/WBP_LB_RaidHUDWidget.WBP_LB_RaidHUDWidget_C")));
+	UClass* RaidHUDClass = LoadClass<ULB_RaidHUDWidget>(nullptr, *RaidHUDClassPath);
+	TestNotNull(TEXT("The packaged raid HUD widget class loads"), RaidHUDClass);
+	if (RaidHUDClass)
+	{
+		TestTrue(
+			TEXT("The raid HUD asset uses the native raid HUD implementation"),
+			RaidHUDClass->IsChildOf(ULB_RaidHUDWidget::StaticClass()));
 	}
 
 	const TCHAR* ResultWidgetClassPath =

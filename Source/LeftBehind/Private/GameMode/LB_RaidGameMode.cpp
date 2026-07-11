@@ -5,6 +5,7 @@
 
 #include "Characters/Boss/LB_BossCharacter.h"
 #include "GameState/LB_RaidGameState.h"
+#include "Player/LB_PlayerController.h"
 #include "Player/LB_PlayerState.h"
 #include "System/Raid/LBRaidDataRows.h"
 #include "System/Raid/LBRaidTypes.h"
@@ -72,13 +73,14 @@ namespace
 
 ALB_RaidGameMode::ALB_RaidGameMode()
 {
-    // 메인 메뉴로 돌아갈 때 기존 PlayerController/PlayerState를 이어받지 않아
-    // 코드네임, 역할, 캐릭터 선택과 전투 통계가 새 로비에서 초기화되게 한다.
-    bUseSeamlessTravel = false;
+    // EOS 파티와 코드네임/역할 선택을 유지한 채 같은 파티가 대기실로 복귀한다.
+    // ALB_PlayerState::CopyProperties는 로비 선택만 전달하고 레이드 통계는 전달하지 않는다.
+    bUseSeamlessTravel = true;
 
     // 레이드 모드에서는 전용 GameState/PlayerState를 사용해 상태 복제와 사망 집계를 처리한다.
     GameStateClass = ALB_RaidGameState::StaticClass();
     PlayerStateClass = ALB_PlayerState::StaticClass();
+    PlayerControllerClass = ALB_PlayerController::StaticClass();
 
     MainMenuMap = TSoftObjectPtr<UWorld>(FSoftObjectPath(
         TEXT("/Game/LeftBehind/Maps/L_MainMenu.L_MainMenu")));
@@ -198,8 +200,8 @@ bool ALB_RaidGameMode::TryReturnToMainMenu(APlayerController* RequestingControll
     }
 
     bReturnTravelInProgress = true;
-    // Blueprint defaults가 바뀌더라도 이 이동은 새 로비 상태를 보장하도록 non-seamless로 고정한다.
-    bUseSeamlessTravel = false;
+    // Blueprint defaults가 바뀌어도 기존 EOS 파티/PlayerState 선택을 유지하도록 seamless로 고정한다.
+    bUseSeamlessTravel = true;
 
     UWorld* World = GetWorld();
     if (!IsValid(World) || !World->ServerTravel(MainMenuPackageName, false))
@@ -216,7 +218,7 @@ bool ALB_RaidGameMode::TryReturnToMainMenu(APlayerController* RequestingControll
     UE_LOG(
         LogLBRaidGameMode,
         Log,
-        TEXT("[RaidGM] Starting non-seamless ServerTravel to main menu. URL=%s"),
+        TEXT("[RaidGM] Starting seamless ServerTravel to main menu. URL=%s"),
         *MainMenuPackageName);
     return true;
 }

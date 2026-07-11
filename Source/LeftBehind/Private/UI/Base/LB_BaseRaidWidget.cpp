@@ -88,7 +88,7 @@ void ULB_BaseRaidWidget::BindRaidGameState()
 		this,
 		&ThisClass::OnRaidResultChanged);
 	
-	CachedRaidGameState->OnRaidScoreboardChanged.RemoveDynamic(
+	CachedRaidGameState->OnRaidScoreboardChanged.AddUniqueDynamic(
 		this,
 		&ThisClass::OnRaidScoreboardChanged);
 }

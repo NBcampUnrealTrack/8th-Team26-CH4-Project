@@ -69,6 +69,6 @@ void ULB_MainMenuRootWidget::HandleStartClicked()
 {
 	if (ALB_MainMenuPlayerController* Controller = Cast<ALB_MainMenuPlayerController>(GetOwningPlayer()))
 	{
-		Controller->SetMenuScreen(ELBMainMenuScreen::Codename);
+		Controller->BeginOnlinePlay();
 	}
 }

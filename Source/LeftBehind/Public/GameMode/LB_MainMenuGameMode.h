@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/GameModeBase.h"
 #include "System/MainMenu/LBMainMenuTypes.h"
+#include "System/Online/LB_OnlineSessionSubsystem.h"
 #include "LB_MainMenuGameMode.generated.h"
 
 class ALB_MainMenuGameState;
@@ -22,6 +23,7 @@ public:
 	ALB_MainMenuGameMode();
 
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void PostLogin(APlayerController* NewPlayer) override;
 	virtual void Logout(AController* Exiting) override;
 	virtual void HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer) override;
@@ -49,7 +51,7 @@ public:
 
 protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="LB|MainMenu|Travel", meta=(ClampMin="1"))
-	int32 MinPlayersToStart = 2;
+	int32 MinPlayersToStart = 1;
 
 	// World soft reference이므로 Class Defaults에 맵 에셋 선택기가 나타나며 cooker도 의존성을 추적할 수 있다.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="LB|MainMenu|Travel")
@@ -66,4 +68,12 @@ private:
 	bool AreAllActivePlayersLoaded() const;
 	bool GetRaidMapPackageName(FString& OutPackageName) const;
 	ALB_MainMenuGameState* GetMainMenuGameState() const;
+	bool StartRaidTravel();
+	void UnbindRoomPhaseDelegate();
+
+	UFUNCTION()
+	void HandleRoomPhaseUpdateComplete(
+		bool bWasSuccessful,
+		ELBRoomPhase Phase,
+		const FText& ErrorMessage);
 };

@@ -7,6 +7,7 @@
 #include "AbilitySystemComponent.h"
 #include "Blueprint/UserWidget.h"
 #include "Engine/AssetManager.h"
+#include "Engine/LocalPlayer.h"
 #include "Engine/StreamableManager.h"
 #include "Engine/World.h"
 #include "EnhancedInputComponent.h"
@@ -23,6 +24,8 @@
 #include "TimerManager.h"
 #include "Characters/LB_BaseCharacter.h"
 #include "UI/HUD/LB_RaidHUDWidget.h"
+
+DEFINE_LOG_CATEGORY_STATIC(LogLBRaidUI, Log, All);
 
 ALB_PlayerController::ALB_PlayerController()
 {
@@ -136,6 +139,32 @@ void ALB_PlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	RemoveRaidHUD();
 
 	Super::EndPlay(EndPlayReason);
+}
+
+void ALB_PlayerController::ReceivedPlayer()
+{
+	Super::ReceivedPlayer();
+
+	// Seamless travel 중 새 PlayerController의 BeginPlay가 ULocalPlayer 연결보다 먼저 올 수 있다.
+	// ReceivedPlayer는 owning client가 확정된 시점이므로 여기서 HUD 초기화를 반드시 재진입한다.
+	ApplyInputMappingContexts();
+	InitializeRaidHUD();
+}
+
+void ALB_PlayerController::BeginPlayingState()
+{
+	Super::BeginPlayingState();
+
+	// Pawn 전환이 끝난 시점에도 한 번 더 확인한다. InitializeRaidHUD는 중복 생성에 안전하다.
+	InitializeRaidHUD();
+}
+
+void ALB_PlayerController::OnRep_PlayerState()
+{
+	Super::OnRep_PlayerState();
+
+	// 원격 클라이언트의 PlayerState 복제가 늦게 도착하면 이벤트 기반으로 즉시 재확인한다.
+	InitializeRaidHUD();
 }
 
 void ALB_PlayerController::AcknowledgePossession(APawn* P)
@@ -470,9 +499,24 @@ void ALB_PlayerController::InitializeRaidHUD()
 
 	if (!AreRaidHUDDependenciesReady())
 	{
+		if (!bRaidHUDDependencyWaitLogged)
+		{
+			const UWorld* World = GetWorld();
+			UE_LOG(
+				LogLBRaidUI,
+				Log,
+				TEXT("Raid HUD is waiting for client dependencies. Controller=%s LocalPlayer=%s Pawn=%s PlayerState=%s GameState=%s"),
+				*GetNameSafe(this),
+				*GetNameSafe(GetLocalPlayer()),
+				*GetNameSafe(GetPawn()),
+				*GetNameSafe(GetPlayerState<ALB_PlayerState>()),
+				*GetNameSafe(World ? World->GetGameState<ALB_RaidGameState>() : nullptr));
+			bRaidHUDDependencyWaitLogged = true;
+		}
 		ScheduleRaidHUDInitializationRetry();
 		return;
 	}
+	bRaidHUDDependencyWaitLogged = false;
 
 	if (UWorld* World = GetWorld())
 	{
@@ -501,7 +545,24 @@ void ALB_PlayerController::InitializeRaidHUD()
 
 	// UI는 각 로컬 PlayerController가 자기 화면에 붙인다.
 	// GameMode는 서버에만 있으므로 클라이언트 화면 UI를 만들면 안 된다.
-	RaidHUDWidget->AddToViewport(RaidHUDWidgetZOrder);
+	if (!RaidHUDWidget->AddToPlayerScreen(RaidHUDWidgetZOrder))
+	{
+		UE_LOG(
+			LogLBRaidUI,
+			Warning,
+			TEXT("Failed to attach Raid HUD to the local player's screen. Controller=%s"),
+			*GetNameSafe(this));
+		RaidHUDWidget = nullptr;
+		ScheduleRaidHUDInitializationRetry();
+		return;
+	}
+
+	UE_LOG(
+		LogLBRaidUI,
+		Log,
+		TEXT("Raid HUD attached to local player screen. Controller=%s Widget=%s"),
+		*GetNameSafe(this),
+		*GetNameSafe(RaidHUDWidget));
 	// 생성 시점의 현재 상태를 다시 적용해 Result 도중 로드된 HUD도 버튼 hit-test가 가능하게 한다.
 	SyncCurrentRaidState();
 }
@@ -518,13 +579,14 @@ void ALB_PlayerController::ScheduleRaidHUDInitializationRetry()
 		FTimerManager& TimerManager = World->GetTimerManager();
 		if (!TimerManager.IsTimerActive(RaidHUDInitRetryTimerHandle))
 		{
-			// Pawn/PlayerState/GameState 복제 순서를 Tick으로 감시하지 않고 저비용 one-shot 타이머로 재확인한다.
+			// 원격 클라이언트의 Pawn/PlayerState/GameState는 여러 네트워크 프레임에 걸쳐 도착할 수 있다.
+			// 성공 경로와 EndPlay에서 명시적으로 해제하는 저주기 타이머로 준비될 때까지 재확인한다.
 			TimerManager.SetTimer(
 				RaidHUDInitRetryTimerHandle,
 				this,
 				&ThisClass::InitializeRaidHUD,
 				0.1f,
-				false);
+				true);
 		}
 	}
 }
@@ -533,6 +595,7 @@ bool ALB_PlayerController::AreRaidHUDDependenciesReady() const
 {
 	const UWorld* World = GetWorld();
 	return IsValid(World)
+		&& IsValid(GetLocalPlayer())
 		&& IsValid(GetPawn())
 		&& IsValid(GetPlayerState<ALB_PlayerState>())
 		&& IsValid(World->GetGameState<ALB_RaidGameState>());
