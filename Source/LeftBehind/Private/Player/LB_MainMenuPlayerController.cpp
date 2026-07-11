@@ -21,7 +21,7 @@ ALB_MainMenuPlayerController::ALB_MainMenuPlayerController()
 	CodenameWidgetClass = TSoftClassPtr<UUserWidget>(FSoftObjectPath(
 		TEXT("/Game/LeftBehind/UI/MainMenu/WBP_CodenameEntry.WBP_CodenameEntry_C")));
 	CharacterSelectWidgetClass = TSoftClassPtr<UUserWidget>(FSoftObjectPath(
-		TEXT("/Game/LeftBehind/UI/MainMenu/WBP_CharacterSelect.WBP_CharacterSelect_C")));
+		TEXT("/Game/LeftBehind/UI/CharacterSelect/WBP_LB_CharacterSelectWidget.WBP_LB_CharacterSelectWidget_C")));
 	WaitingWidgetClass = TSoftClassPtr<UUserWidget>(FSoftObjectPath(
 		TEXT("/Game/LeftBehind/UI/MainMenu/WBP_WaitingRoom.WBP_WaitingRoom_C")));
 }
@@ -81,6 +81,11 @@ void ALB_MainMenuPlayerController::BeginOnlinePlay()
 {
 	if (!IsLocalController() || bMenuUITeardown)
 	{
+		return;
+	}
+	if (IsLocalNetworkPIE())
+	{
+		ShowInitialOnlineRoomScreen();
 		return;
 	}
 
@@ -433,6 +438,15 @@ void ALB_MainMenuPlayerController::UnbindOnlineSubsystem()
 
 void ALB_MainMenuPlayerController::ShowInitialOnlineRoomScreen()
 {
+	if (IsLocalNetworkPIE())
+	{
+		const ALB_PlayerState* LBPlayerState = GetPlayerState<ALB_PlayerState>();
+		SetMenuScreen(IsValid(LBPlayerState) && LBPlayerState->IsCodenameConfirmed()
+			? ELBMainMenuScreen::Waiting
+			: ELBMainMenuScreen::Codename);
+		return;
+	}
+
 	ULB_OnlineSessionSubsystem* OnlineSubsystem = GetGameInstance()
 		? GetGameInstance()->GetSubsystem<ULB_OnlineSessionSubsystem>()
 		: nullptr;
@@ -453,6 +467,18 @@ void ALB_MainMenuPlayerController::ShowInitialOnlineRoomScreen()
 	SetMenuScreen(IsValid(LBPlayerState) && LBPlayerState->IsCodenameConfirmed()
 		? ELBMainMenuScreen::Waiting
 		: ELBMainMenuScreen::Codename);
+}
+
+bool ALB_MainMenuPlayerController::IsLocalNetworkPIE() const
+{
+#if WITH_EDITOR
+	const UWorld* World = GetWorld();
+	return IsValid(World)
+		&& World->WorldType == EWorldType::PIE
+		&& GetNetMode() != NM_Standalone;
+#else
+	return false;
+#endif
 }
 
 void ALB_MainMenuPlayerController::HandleOnlineStateChanged(

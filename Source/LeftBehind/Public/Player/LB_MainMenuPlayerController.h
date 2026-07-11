@@ -108,6 +108,7 @@ private:
 	void BindOnlineSubsystem();
 	void UnbindOnlineSubsystem();
 	void ShowInitialOnlineRoomScreen();
+	bool IsLocalNetworkPIE() const;
 
 	UFUNCTION()
 	void HandleOnlineStateChanged(ELBOnlineState NewState, const FText& StatusMessage);

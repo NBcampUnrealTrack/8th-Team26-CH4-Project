@@ -51,6 +51,10 @@ protected:
 	
 	// Attribute 변경 이벤트
 	void OnHealthChanged(const FOnAttributeChangeData& Data);
+	void OnMaxHealthChanged(const FOnAttributeChangeData& Data);
+
+	UFUNCTION()
+	void OnAttributesInitialized();
 	
 	// BP에 전체 정보 전달
 	UFUNCTION(BlueprintImplementableEvent, Category="LB|Party")
@@ -76,4 +80,5 @@ private:
 	TObjectPtr<ULB_AttributeSet> CachedAttributeSet;
 
 	FDelegateHandle HealthChangedHandle;
+	FDelegateHandle MaxHealthChangedHandle;
 };

@@ -74,17 +74,47 @@ void ULB_PartyMemberSlotWidget::BindAttributes()
 		.AddUObject(
 			this,
 			&ThisClass::OnHealthChanged);
+
+	MaxHealthChangedHandle =
+		CachedASC->GetGameplayAttributeValueChangeDelegate(
+			ULB_AttributeSet::GetMaxHealthAttribute())
+		.AddUObject(
+			this,
+			&ThisClass::OnMaxHealthChanged);
+
+	CachedAttributeSet->OnAttributesInitialized.AddUniqueDynamic(
+		this,
+		&ThisClass::OnAttributesInitialized);
 }
 
 void ULB_PartyMemberSlotWidget::UnbindAttributes()
 {
-	if (!CachedASC || !HealthChangedHandle.IsValid()) return;
-	
-	CachedASC->GetGameplayAttributeValueChangeDelegate(
-			ULB_AttributeSet::GetHealthAttribute())
-			.Remove(HealthChangedHandle);
+	if (CachedASC)
+	{
+		if (HealthChangedHandle.IsValid())
+		{
+			CachedASC->GetGameplayAttributeValueChangeDelegate(
+				ULB_AttributeSet::GetHealthAttribute())
+				.Remove(HealthChangedHandle);
+		}
+
+		if (MaxHealthChangedHandle.IsValid())
+		{
+			CachedASC->GetGameplayAttributeValueChangeDelegate(
+				ULB_AttributeSet::GetMaxHealthAttribute())
+				.Remove(MaxHealthChangedHandle);
+		}
+	}
+
+	if (CachedAttributeSet)
+	{
+		CachedAttributeSet->OnAttributesInitialized.RemoveDynamic(
+			this,
+			&ThisClass::OnAttributesInitialized);
+	}
 	
 	HealthChangedHandle.Reset();
+	MaxHealthChangedHandle.Reset();
 
 	CachedASC = nullptr;
 	CachedAttributeSet = nullptr;
@@ -105,9 +135,20 @@ void ULB_PartyMemberSlotWidget::OnHealthChanged(const FOnAttributeChangeData& Da
 	RefreshAll();
 }
 
+void ULB_PartyMemberSlotWidget::OnMaxHealthChanged(const FOnAttributeChangeData& Data)
+{
+	RefreshAll();
+}
+
+void ULB_PartyMemberSlotWidget::OnAttributesInitialized()
+{
+	RefreshAll();
+}
+
 void ULB_PartyMemberSlotWidget::RefreshAll()
 {
 	if (!CachedPlayerState || !CachedAttributeSet) return;
+	if (!CachedAttributeSet->bAttributeInitialized || CachedAttributeSet->GetMaxHealth() <= 0.f) return;
 	
 	BP_UpdatePartyMember(
 		CachedPlayerState->GetPlayerNameText(),

@@ -7,6 +7,8 @@
 #include "System/Raid/LBRaidTypes.h"
 #include "LB_RaidGameState.generated.h"
 
+class ALB_PlayerState;
+
 // 레이드 상태가 Waiting/Countdown/Battle/Result로 바뀔 때 UI가 반응할 수 있게 한다.
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLBRaidStateChanged, ELBRaidState, NewState);
 // 보스 HP 표시용 이벤트. GameMode가 BossBase의 HP 변경을 받아 GameState에 기록하면 이 이벤트가 흐른다.
@@ -15,6 +17,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnLBBossHPChanged, float, CurrentH
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLBRaidResultChanged, const FLBRaidResultData&, ResultData);
 // 레이드 종료 후 플레이어별 최종 성과 데이터가 준비되었을 때 UI에 알린다.
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLBRaidScoreboardChanged, const FLBRaidScoreboardData&, ScoreboardData);
+DECLARE_MULTICAST_DELEGATE(FOnLBRaidPlayerArrayChanged);
 
 // 모든 클라이언트가 읽어야 하는 레이드 진행 상태를 복제하는 GameState.
 UCLASS()
@@ -27,6 +30,15 @@ public:
 
     // 레이드 상태, 시간, 보스 HP, 결과 데이터를 복제 대상으로 등록한다.
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+    // seamless travel 및 late join으로 유효한 PlayerState 목록이 바뀌면 파티 UI에 알린다.
+    virtual void AddPlayerState(APlayerState* PlayerState) override;
+    virtual void RemovePlayerState(APlayerState* PlayerState) override;
+
+    FOnLBRaidPlayerArrayChanged OnRaidPlayerArrayChanged;
+
+    // seamless travel 중 이전 맵 PlayerState를 제외한 현재 레이드 명단을 반환한다.
+    void GetCurrentRaidPlayerStates(TArray<ALB_PlayerState*>& OutPlayerStates) const;
 
     // 상태 변경을 블루프린트/UI에 전달한다.
     UPROPERTY(BlueprintAssignable)

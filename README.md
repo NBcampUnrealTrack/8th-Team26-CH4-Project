@@ -33,6 +33,20 @@
 
 ---
 
+## 다른 PC용 EOS 패키징
+
+대상 PC에는 EOS 프로젝트 값을 따로 설정하지 않습니다. 빌드 PC에서만 `Scripts/SetupEOSDev.ps1`로 EOS 자격 정보를 한 번 등록한 뒤 다음 명령으로 Win64 패키지를 생성합니다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Scripts\PackagePortableWin64.ps1
+```
+
+완료 후 스크립트가 마지막에 출력하는 폴더 전체를 전달하세요. 스크립트는 EOS Artifact 설정이 유효한지 먼저 검사하고, 게임 실행 파일·EOS SDK DLL·EOS Bootstrapper·공식 EOS Redistributable Installer·pak/IoStore·VC++ 필수 구성 요소가 모두 포함되었는지 검증합니다. 대상 PC에서는 `StartLeftBehind.cmd`만 실행하면 됩니다. 최초 실행 시 VC++ 필수 구성 요소와 EOS Redistributable 설치를 위한 Windows 관리자 권한 확인만 승인하면 되며, Product/Sandbox/Client 값 입력이나 `SetupEOSDev.ps1` 실행은 필요하지 않습니다. 설치 관리자가 재부팅을 요구하는 경우 Windows를 한 번 재시작한 뒤 같은 파일을 다시 실행하세요.
+
+`Config/GeneratedEngine.ini`에는 Client Secret이 포함되므로 Git에 커밋하거나 별도로 전달하지 마세요. 패키징된 클라이언트에는 EOS 접속에 필요한 런타임 자격 정보가 포함되므로 Developer Portal의 Client Policy는 게임에 필요한 최소 권한만 허용해야 합니다.
+
+---
+
 ## 세계에 남겨진 사람들
 
 인류 문명이 무너진 뒤, 도시는 더 이상 사람들의 것이 아니게 되었습니다.

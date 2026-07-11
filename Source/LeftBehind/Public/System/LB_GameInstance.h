@@ -17,6 +17,7 @@ class LEFTBEHIND_API ULB_GameInstance : public UGameInstance
 public:
 	virtual void Init() override;
 	virtual void Shutdown() override;
+	virtual bool EnableListenServer(bool bEnable, int32 PortOverride = 0) override;
 
 	UPROPERTY(BlueprintAssignable, Category="LB|Network")
 	FOnLBConnectionFailure OnConnectionFailure;

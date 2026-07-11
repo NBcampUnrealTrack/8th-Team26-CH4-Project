@@ -1,6 +1,8 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
+#include "Engine/EngineBaseTypes.h"
 #include "Misc/AutomationTest.h"
+#include "Misc/ConfigCacheIni.h"
 
 #include "GameMode/LB_MainMenuGameMode.h"
 #include "GameState/LB_MainMenuGameState.h"
@@ -66,6 +68,19 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FLBMainMenuNativeDefaultsTest::RunTest(const FString& Parameters)
 {
 	(void)Parameters;
+	FString PIEGameURLOptions;
+	TestTrue(
+		TEXT("Editor PIE URL options are configured"),
+		GConfig->GetString(
+			TEXT("/Script/UnrealEd.EditorEngine"),
+			TEXT("InEditorGameURLOptions"),
+			PIEGameURLOptions,
+			GEngineIni));
+	const FURL PIEURL(nullptr, *FString::Printf(TEXT("/Game/LeftBehind/Maps/L_MainMenu%s"), *PIEGameURLOptions), TRAVEL_Absolute);
+	TestTrue(
+		TEXT("Two-player PIE forces EOS NetDriver IP socket passthrough"),
+		PIEURL.HasOption(TEXT("bUseIPSockets")));
+
 	const ALB_MainMenuGameMode* GameModeCDO = GetDefault<ALB_MainMenuGameMode>();
 	TestTrue(TEXT("Main menu uses seamless travel"), GameModeCDO->bUseSeamlessTravel);
 	TestTrue(TEXT("Pawn-less menu skips RestartPlayer"), GameModeCDO->StartsPlayersWithoutMenuPawns());

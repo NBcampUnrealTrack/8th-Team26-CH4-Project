@@ -4,6 +4,7 @@
 
 #include "DrawDebugHelpers.h"
 #include "Net/UnrealNetwork.h"
+#include "Player/LB_PlayerState.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogLBRaidGameState, Log, All);
 
@@ -116,6 +117,43 @@ void ALB_RaidGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
     DOREPLIFETIME_CONDITION_NOTIFY(ALB_RaidGameState, BossMaxHP, COND_None, REPNOTIFY_OnChanged);
     DOREPLIFETIME_CONDITION_NOTIFY(ALB_RaidGameState, RaidResult, COND_None, REPNOTIFY_OnChanged);
     DOREPLIFETIME_CONDITION_NOTIFY(ALB_RaidGameState, RaidScoreboardData, COND_None, REPNOTIFY_OnChanged);
+}
+
+void ALB_RaidGameState::AddPlayerState(APlayerState* PlayerState)
+{
+    const int32 PreviousCount = PlayerArray.Num();
+    Super::AddPlayerState(PlayerState);
+
+    if (PlayerArray.Num() != PreviousCount)
+    {
+        OnRaidPlayerArrayChanged.Broadcast();
+    }
+}
+
+void ALB_RaidGameState::RemovePlayerState(APlayerState* PlayerState)
+{
+    const int32 PreviousCount = PlayerArray.Num();
+    Super::RemovePlayerState(PlayerState);
+
+    if (PlayerArray.Num() != PreviousCount)
+    {
+        OnRaidPlayerArrayChanged.Broadcast();
+    }
+}
+
+void ALB_RaidGameState::GetCurrentRaidPlayerStates(TArray<ALB_PlayerState*>& OutPlayerStates) const
+{
+    OutPlayerStates.Reset();
+    OutPlayerStates.Reserve(PlayerArray.Num());
+
+    for (APlayerState* PlayerState : PlayerArray)
+    {
+        ALB_PlayerState* RaidPlayerState = Cast<ALB_PlayerState>(PlayerState);
+        if (RaidPlayerState && !RaidPlayerState->IsFromPreviousLevel())
+        {
+            OutPlayerStates.Add(RaidPlayerState);
+        }
+    }
 }
 
 float ALB_RaidGameState::GetCountdownRemaining() const
