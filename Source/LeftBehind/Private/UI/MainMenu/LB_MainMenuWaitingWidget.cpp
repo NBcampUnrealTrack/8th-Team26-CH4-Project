@@ -175,7 +175,10 @@ void ULB_MainMenuWaitingWidget::RefreshOnlineControls(
 	const bool bRoomControlsEnabled = bInRoom && State == ELBOnlineState::InRoom;
 	if (InviteButton.IsValid())
 	{
-		InviteButton->SetEnabled(bRoomControlsEnabled);
+		const bool bSupportsInvites = IsValid(BoundOnlineSubsystem)
+			&& !BoundOnlineSubsystem->IsUsingEditorLanFallback();
+		InviteButton->SetVisibility(bSupportsInvites ? EVisibility::Visible : EVisibility::Collapsed);
+		InviteButton->SetEnabled(bRoomControlsEnabled && bSupportsInvites);
 	}
 	if (LeaveButton.IsValid())
 	{
@@ -187,6 +190,14 @@ void ULB_MainMenuWaitingWidget::RefreshOnlineControls(
 		if (EffectiveMessage.IsEmpty() && State == ELBOnlineState::Error && IsValid(BoundOnlineSubsystem))
 		{
 			EffectiveMessage = BoundOnlineSubsystem->GetLastError();
+		}
+		if (EffectiveMessage.IsEmpty()
+			&& IsValid(BoundOnlineSubsystem)
+			&& BoundOnlineSubsystem->IsUsingEditorLanFallback())
+		{
+			EffectiveMessage = LOCTEXT(
+				"EditorLanRoom",
+				"Local LAN test mode. EOS friend invitations are disabled.");
 		}
 		OnlineStatusText->SetText(EffectiveMessage);
 		const bool bHasError = State == ELBOnlineState::Error

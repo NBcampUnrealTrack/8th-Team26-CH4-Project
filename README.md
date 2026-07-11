@@ -33,6 +33,14 @@
 
 ---
 
+## 에디터 로컬 실행
+
+EOS Artifact가 아직 설정되지 않은 에디터 빌드는 자동으로 로컬 LAN 테스트 모드로 전환됩니다. 이 모드에서는 방 생성·검색·참가를 같은 PC 또는 같은 LAN에서 테스트할 수 있지만, Epic 계정 로그인·인터넷 방 검색·친구 초대는 사용할 수 없습니다.
+
+에디터에서도 실제 EOS를 사용하려면 `Scripts/SetupEOSDev.ps1`을 실행해 `Config/GeneratedEngine.ini`를 만든 뒤 에디터를 완전히 재시작하세요. 해당 파일에는 Client Secret이 포함되므로 커밋하거나 공유하지 마세요.
+
+---
+
 ## 다른 PC용 EOS 패키징
 
 대상 PC에는 EOS 프로젝트 값을 따로 설정하지 않습니다. 빌드 PC에서만 `Scripts/SetupEOSDev.ps1`로 EOS 자격 정보를 한 번 등록한 뒤 다음 명령으로 Win64 패키지를 생성합니다.

@@ -52,6 +52,10 @@
 				"Mac",
 				"Linux"
 			]
+		},
+		{
+			"Name": "OnlineServicesEOS",
+			"Enabled": true
 		}
 	]
 }

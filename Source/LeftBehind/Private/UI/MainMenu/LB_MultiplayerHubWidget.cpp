@@ -12,8 +12,15 @@
 
 namespace
 {
-	FText GetDefaultOnlineStatus(ELBOnlineState State)
+	FText GetDefaultOnlineStatus(const ELBOnlineState State, const bool bUsingEditorLanFallback)
 	{
+		if (bUsingEditorLanFallback && State == ELBOnlineState::Ready)
+		{
+			return LOCTEXT(
+				"EditorLanReady",
+				"Local LAN test mode. Configure EOS artifacts to browse internet rooms and invite friends.");
+		}
+
 		switch (State)
 		{
 		case ELBOnlineState::SignedOut:
@@ -297,7 +304,11 @@ void ULB_MultiplayerHubWidget::HandleOnlineStateChanged(
 		{
 			EffectiveMessage = BoundOnlineSubsystem->GetLastError();
 		}
-		StatusText->SetText(EffectiveMessage.IsEmpty() ? GetDefaultOnlineStatus(NewState) : EffectiveMessage);
+		const bool bUsingEditorLanFallback = IsValid(BoundOnlineSubsystem)
+			&& BoundOnlineSubsystem->IsUsingEditorLanFallback();
+		StatusText->SetText(EffectiveMessage.IsEmpty()
+			? GetDefaultOnlineStatus(NewState, bUsingEditorLanFallback)
+			: EffectiveMessage);
 		const bool bHasError = NewState == ELBOnlineState::Error
 			|| (IsValid(BoundOnlineSubsystem) && !BoundOnlineSubsystem->GetLastError().IsEmpty());
 		StatusText->SetColorAndOpacity(bHasError

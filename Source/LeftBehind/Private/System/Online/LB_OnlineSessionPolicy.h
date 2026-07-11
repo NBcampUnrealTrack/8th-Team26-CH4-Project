@@ -6,16 +6,24 @@
 
 namespace LBOnlineSessionPolicy
 {
+	enum class ETransportMode : uint8
+	{
+		EOS,
+		EditorLan,
+		Unsupported
+	};
+
 	inline constexpr int32 MaxPublicConnections = 4;
 	inline constexpr int32 MaxSearchResults = 50;
 
 	FName GetRoomPhaseKey();
 	FString GetWaitingPhaseValue();
 	FString GetInRaidPhaseValue();
+	ETransportMode ResolveTransportMode(FName SubsystemName, bool bAllowEditorLanFallback);
 
-	FOnlineSessionSettings MakeWaitingRoomSettings();
-	void ApplyWaitingPolicy(FOnlineSessionSettings& Settings);
-	void ApplyInRaidPolicy(FOnlineSessionSettings& Settings, int32 CurrentPlayers);
+	FOnlineSessionSettings MakeWaitingRoomSettings(bool bUseLan = false);
+	void ApplyWaitingPolicy(FOnlineSessionSettings& Settings, bool bUseLan = false);
+	void ApplyInRaidPolicy(FOnlineSessionSettings& Settings, int32 CurrentPlayers, bool bUseLan = false);
 
 	bool CanStartExclusiveOperation(bool bHasPendingOperation, bool bConnectionTravelPending, bool bMenuTravelPending);
 	bool CanAcceptInvite(

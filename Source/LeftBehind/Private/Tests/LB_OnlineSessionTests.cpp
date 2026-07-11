@@ -6,6 +6,31 @@
 #include "System/Online/LB_OnlineSessionPolicy.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FLBOnlineTransportSelectionPolicyTest,
+	"LeftBehind.Online.Policy.TransportSelection",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FLBOnlineTransportSelectionPolicyTest::RunTest(const FString& Parameters)
+{
+	(void)Parameters;
+	using LBOnlineSessionPolicy::ETransportMode;
+
+	TestTrue(
+		TEXT("EOS is always the production transport"),
+		LBOnlineSessionPolicy::ResolveTransportMode(FName(TEXT("EOS")), false) == ETransportMode::EOS);
+	TestTrue(
+		TEXT("NULL becomes LAN only when the editor explicitly allows it"),
+		LBOnlineSessionPolicy::ResolveTransportMode(FName(TEXT("NULL")), true) == ETransportMode::EditorLan);
+	TestTrue(
+		TEXT("A packaged build still rejects NULL fallback"),
+		LBOnlineSessionPolicy::ResolveTransportMode(FName(TEXT("NULL")), false) == ETransportMode::Unsupported);
+	TestTrue(
+		TEXT("Unexpected providers remain unsupported"),
+		LBOnlineSessionPolicy::ResolveTransportMode(FName(TEXT("Unexpected")), true) == ETransportMode::Unsupported);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FLBOnlineWaitingRoomPolicyTest,
 	"LeftBehind.Online.Policy.WaitingRoom",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -44,6 +69,32 @@ bool FLBOnlineWaitingRoomPolicyTest::RunTest(const FString& Parameters)
 			EOnlineDataAdvertisementType::DontAdvertise);
 	}
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FLBOnlineLanFallbackPolicyTest,
+	"LeftBehind.Online.Policy.EditorLanFallback",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FLBOnlineLanFallbackPolicyTest::RunTest(const FString& Parameters)
+{
+	(void)Parameters;
+	FOnlineSessionSettings Settings = LBOnlineSessionPolicy::MakeWaitingRoomSettings(true);
+
+	TestTrue(TEXT("The editor fallback advertises a LAN match"), Settings.bIsLANMatch);
+	TestTrue(TEXT("The LAN room remains discoverable"), Settings.bShouldAdvertise);
+	TestFalse(TEXT("The LAN fallback does not request an EOS lobby"), Settings.bUseLobbiesIfAvailable);
+	TestFalse(TEXT("The LAN fallback does not expose presence"), Settings.bUsesPresence);
+	TestFalse(TEXT("The LAN fallback does not expose EOS invites"), Settings.bAllowInvites);
+
+	LBOnlineSessionPolicy::ApplyInRaidPolicy(Settings, 2, true);
+	TestFalse(TEXT("A raid is hidden from NULL LAN discovery"), Settings.bIsLANMatch);
+	TestFalse(TEXT("The raid phase still rejects new LAN joins"), Settings.bAllowJoinInProgress);
+
+	LBOnlineSessionPolicy::ApplyWaitingPolicy(Settings, true);
+	TestTrue(TEXT("The LAN transport survives reopening the room"), Settings.bIsLANMatch);
+	TestTrue(TEXT("The reopened LAN room is joinable again"), Settings.bAllowJoinInProgress);
 	return true;
 }
 

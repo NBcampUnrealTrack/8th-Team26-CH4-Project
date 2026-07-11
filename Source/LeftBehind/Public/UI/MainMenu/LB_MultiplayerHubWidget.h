@@ -9,7 +9,7 @@ class SButton;
 class STextBlock;
 class SVerticalBox;
 
-/** Event-driven EOS room browser. It never polls or calls the online interfaces directly. */
+/** Event-driven room browser for EOS and the editor-only LAN fallback. */
 UCLASS(Blueprintable)
 class LEFTBEHIND_API ULB_MultiplayerHubWidget : public UUserWidget
 {

@@ -32,7 +32,7 @@ struct LEFTBEHIND_API FLBRoomSummary
 {
 	GENERATED_BODY()
 
-	/** Opaque EOS lobby/session id. UI code should never parse this value. */
+	/** Opaque online room id. UI code should never parse this value. */
 	UPROPERTY(BlueprintReadOnly, Category="LB|Online")
 	FString RoomId;
 
@@ -85,11 +85,11 @@ public:
 	UFUNCTION(BlueprintCallable, Category="LB|Online")
 	bool SignIn();
 
-	/** Creates the fixed-policy public four-player lobby. */
+	/** Creates the fixed-policy four-player EOS lobby or editor LAN room. */
 	UFUNCTION(BlueprintCallable, Category="LB|Online")
 	bool CreateRoom();
 
-	/** Replaces the current room snapshot with a fresh EOS lobby search. */
+	/** Replaces the current room snapshot with a fresh online room search. */
 	UFUNCTION(BlueprintCallable, Category="LB|Online")
 	bool RefreshRooms();
 
@@ -122,6 +122,10 @@ public:
 	UFUNCTION(BlueprintPure, Category="LB|Online")
 	bool IsRoomHost() const;
 
+	/** True only when an editor build fell back from unconfigured EOS to local LAN sessions. */
+	UFUNCTION(BlueprintPure, Category="LB|Online")
+	bool IsUsingEditorLanFallback() const { return bUsingEditorLanFallback; }
+
 	UFUNCTION(BlueprintPure, Category="LB|Online")
 	TArray<FLBRoomSummary> GetRooms() const { return Rooms; }
 
@@ -151,6 +155,9 @@ private:
 
 	UPROPERTY(Transient)
 	FText LastError;
+
+	UPROPERTY(Transient)
+	bool bUsingEditorLanFallback = false;
 
 	TSharedPtr<FLBOnlineSessionRuntime> Runtime;
 

@@ -26,7 +26,43 @@ namespace LBOnlineSessionPolicy
 		return InRaidPhaseValue;
 	}
 
-	void ApplyWaitingPolicy(FOnlineSessionSettings& Settings)
+	ETransportMode ResolveTransportMode(
+		const FName SubsystemName,
+		const bool bAllowEditorLanFallback)
+	{
+		if (SubsystemName == FName(TEXT("EOS")))
+		{
+			return ETransportMode::EOS;
+		}
+
+		if (bAllowEditorLanFallback && SubsystemName == FName(TEXT("NULL")))
+		{
+			return ETransportMode::EditorLan;
+		}
+
+		return ETransportMode::Unsupported;
+	}
+
+	void ApplyTransportPolicy(FOnlineSessionSettings& Settings, const bool bUseLan)
+	{
+		Settings.bIsLANMatch = bUseLan;
+		if (!bUseLan)
+		{
+			return;
+		}
+
+		// The NULL subsystem emulates discovery through LAN beacons. Lobby,
+		// presence, and invite flags belong to EOS and must not leak into the
+		// editor-only fallback session.
+		Settings.bUseLobbiesIfAvailable = false;
+		Settings.bUseLobbiesVoiceChatIfAvailable = false;
+		Settings.bUsesPresence = false;
+		Settings.bAllowJoinViaPresence = false;
+		Settings.bAllowJoinViaPresenceFriendsOnly = false;
+		Settings.bAllowInvites = false;
+	}
+
+	void ApplyWaitingPolicy(FOnlineSessionSettings& Settings, const bool bUseLan)
 	{
 		Settings.NumPublicConnections = MaxPublicConnections;
 		Settings.NumPrivateConnections = 0;
@@ -50,16 +86,20 @@ namespace LBOnlineSessionPolicy
 			SETTING_HOST_MIGRATION,
 			false,
 			EOnlineDataAdvertisementType::DontAdvertise);
+		ApplyTransportPolicy(Settings, bUseLan);
 	}
 
-	FOnlineSessionSettings MakeWaitingRoomSettings()
+	FOnlineSessionSettings MakeWaitingRoomSettings(const bool bUseLan)
 	{
 		FOnlineSessionSettings Settings;
-		ApplyWaitingPolicy(Settings);
+		ApplyWaitingPolicy(Settings, bUseLan);
 		return Settings;
 	}
 
-	void ApplyInRaidPolicy(FOnlineSessionSettings& Settings, const int32 CurrentPlayers)
+	void ApplyInRaidPolicy(
+		FOnlineSessionSettings& Settings,
+		const int32 CurrentPlayers,
+		const bool bUseLan)
 	{
 		Settings.NumPublicConnections = 0;
 		Settings.NumPrivateConnections = FMath::Clamp(CurrentPlayers, 1, MaxPublicConnections);
@@ -80,6 +120,13 @@ namespace LBOnlineSessionPolicy
 			SETTING_HOST_MIGRATION,
 			false,
 			EOnlineDataAdvertisementType::DontAdvertise);
+		ApplyTransportPolicy(Settings, bUseLan);
+		if (bUseLan)
+		{
+			// NULL treats bIsLANMatch as implicitly advertised. Drop the flag
+			// while the raid is locked, then ApplyWaitingPolicy restores it.
+			Settings.bIsLANMatch = false;
+		}
 	}
 
 	bool CanStartExclusiveOperation(
