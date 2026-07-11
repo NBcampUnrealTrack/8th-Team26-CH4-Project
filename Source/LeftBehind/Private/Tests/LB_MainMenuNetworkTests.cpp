@@ -7,8 +7,45 @@
 #include "GameMode/LB_MainMenuGameMode.h"
 #include "GameState/LB_MainMenuGameState.h"
 #include "Player/LB_MainMenuPlayerController.h"
+#include "System/Online/LB_OnlineInvitePolicy.h"
 #include "System/Online/LB_OnlineSessionSubsystem.h"
 #include "UI/MainMenu/LB_MultiplayerHubWidget.h"
+
+namespace
+{
+	class FLBInviteTestSessionInfo final : public FOnlineSessionInfo
+	{
+	public:
+		explicit FLBInviteTestSessionInfo(const FString& InSessionId)
+			: SessionId(FUniqueNetIdString::Create(InSessionId, TEXT("LBInviteTest")))
+		{
+		}
+
+		virtual const uint8* GetBytes() const override { return SessionId->GetBytes(); }
+		virtual int32 GetSize() const override { return SessionId->GetSize(); }
+		virtual bool IsValid() const override { return SessionId->IsValid(); }
+		virtual FString ToString() const override { return SessionId->ToString(); }
+		virtual FString ToDebugString() const override { return SessionId->ToDebugString(); }
+		virtual const FUniqueNetId& GetSessionId() const override { return *SessionId; }
+
+	private:
+		FUniqueNetIdStringRef SessionId;
+	};
+
+	FOnlineSessionSearchResult MakeInviteTestResult(
+		const FString& SessionId,
+		const FString& OwnerId = FString())
+	{
+		FOnlineSessionSearchResult Result;
+		Result.Session.SessionInfo = MakeShared<FLBInviteTestSessionInfo>(SessionId);
+		if (!OwnerId.IsEmpty())
+		{
+			Result.Session.OwningUserId = FUniqueNetIdString::Create(OwnerId, TEXT("LBInviteTest"));
+			Result.Session.OwningUserName = OwnerId;
+		}
+		return Result;
+	}
+}
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FLBMainMenuCodenameValidationTest,
@@ -116,6 +153,63 @@ bool FLBMainMenuNativeDefaultsTest::RunTest(const FString& Parameters)
 	TestNotNull(
 		TEXT("The online subsystem exposes explicit room leave"),
 		ULB_OnlineSessionSubsystem::StaticClass()->FindFunctionByName(TEXT("LeaveRoom")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FLBInviteOwnerResolutionFallbackTest,
+	"LeftBehind.MainMenu.Network.InviteOwnerResolutionFallback",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FLBInviteOwnerResolutionFallbackTest::RunTest(const FString& Parameters)
+{
+	(void)Parameters;
+
+	const FOnlineSessionSearchResult OwnerlessInvite = MakeInviteTestResult(TEXT("Lobby-A"));
+	TestFalse(
+		TEXT("The UE generic validity check rejects an ownerless EOS invite"),
+		OwnerlessInvite.IsValid());
+	TestTrue(
+		TEXT("The invite still contains joinable EOS session info"),
+		OwnerlessInvite.IsSessionInfoValid());
+
+	FOnlineSessionSearchResult PreparedInvite;
+	TestTrue(
+		TEXT("An ownerless invite with session info remains joinable"),
+		LBOnlineInvitePolicy::PrepareAcceptedInvite(OwnerlessInvite, {}, PreparedInvite));
+	TestTrue(
+		TEXT("Preparing the invite preserves its session info"),
+		PreparedInvite.IsSessionInfoValid());
+	TestFalse(
+		TEXT("No owner is invented when there is no matching cached result"),
+		PreparedInvite.Session.OwningUserId.IsValid());
+
+	const FOnlineSessionSearchResult MatchingCachedResult = MakeInviteTestResult(TEXT("Lobby-A"), TEXT("Host-A"));
+	const FOnlineSessionSearchResult OtherCachedResult = MakeInviteTestResult(TEXT("Lobby-B"), TEXT("Host-B"));
+	const TArray<FOnlineSessionSearchResult> CachedResults = {OtherCachedResult, MatchingCachedResult};
+	TestTrue(
+		TEXT("A matching cached room can enrich the accepted invite"),
+		LBOnlineInvitePolicy::PrepareAcceptedInvite(OwnerlessInvite, CachedResults, PreparedInvite));
+	TestTrue(
+		TEXT("The matching cached owner is restored"),
+		PreparedInvite.Session.OwningUserId.IsValid());
+	TestEqual(
+		TEXT("A different lobby owner is never copied"),
+		PreparedInvite.Session.OwningUserName,
+		FString(TEXT("Host-A")));
+	TestEqual(
+		TEXT("The invite keeps its original session id"),
+		PreparedInvite.GetSessionIdStr(),
+		FString(TEXT("Lobby-A")));
+
+	FOnlineSessionSearchResult InvalidInvite;
+	TestFalse(
+		TEXT("An invite without session info is rejected"),
+		LBOnlineInvitePolicy::PrepareAcceptedInvite(InvalidInvite, CachedResults, PreparedInvite));
+	TestFalse(
+		TEXT("A rejected invite clears any previously prepared payload"),
+		PreparedInvite.IsSessionInfoValid());
+
 	return true;
 }
 

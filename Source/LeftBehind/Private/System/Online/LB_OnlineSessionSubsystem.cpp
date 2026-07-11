@@ -1,5 +1,7 @@
 #include "System/Online/LB_OnlineSessionSubsystem.h"
 
+#include "System/Online/LB_OnlineInvitePolicy.h"
+
 #include "Engine/Engine.h"
 #include "Engine/NetDriver.h"
 #include "GameFramework/PlayerController.h"
@@ -1146,10 +1148,40 @@ private:
 		const FOnlineSessionSearchResult& InviteResult)
 	{
 		(void)UserId;
-		if (!bWasSuccessful || ControllerId != LBLocalUserNum || !InviteResult.IsValid())
+		const bool bSessionInfoValid = InviteResult.IsSessionInfoValid();
+		if (!bWasSuccessful || ControllerId != LBLocalUserNum || !bSessionInfoValid)
+		{
+			UE_LOG(
+				LogLBOnlineSession,
+				Warning,
+				TEXT("EOS invite payload rejected. Success=%d ControllerId=%d ExpectedControllerId=%d SessionInfoValid=%d OwnerResolved=%d"),
+				bWasSuccessful ? 1 : 0,
+				ControllerId,
+				LBLocalUserNum,
+				bSessionInfoValid ? 1 : 0,
+				InviteResult.Session.OwningUserId.IsValid() ? 1 : 0);
+			ReportNonFatalError(NSLOCTEXT("LeftBehind", "InvalidInvite", "친구 초대 정보를 불러오지 못했습니다. 새 초대를 받아 다시 시도해 주세요."));
+			return;
+		}
+
+		static const TArray<FOnlineSessionSearchResult> EmptySearchResults;
+		const TArray<FOnlineSessionSearchResult>& CachedSearchResults = ActiveSearch.IsValid()
+			? ActiveSearch->SearchResults
+			: EmptySearchResults;
+		FOnlineSessionSearchResult JoinResult;
+		if (!LBOnlineInvitePolicy::PrepareAcceptedInvite(InviteResult, CachedSearchResults, JoinResult))
 		{
 			ReportNonFatalError(NSLOCTEXT("LeftBehind", "InvalidInvite", "친구 초대 정보를 불러오지 못했습니다. 새 초대를 받아 다시 시도해 주세요."));
 			return;
+		}
+
+		if (!InviteResult.Session.OwningUserId.IsValid())
+		{
+			UE_LOG(
+				LogLBOnlineSession,
+				Warning,
+				TEXT("EOS invite arrived without a resolved owner. CachedOwnerRestored=%d"),
+				JoinResult.Session.OwningUserId.IsValid() ? 1 : 0);
 		}
 
 		ULB_OnlineSessionSubsystem* OwnerSubsystem = Owner.Get();
@@ -1173,8 +1205,8 @@ private:
 		}
 
 		if (!LBOnlineSessionPolicy::CanAcceptInvite(
-			InviteResult.Session.SessionSettings,
-			InviteResult.Session.NumOpenPublicConnections,
+			JoinResult.Session.SessionSettings,
+			JoinResult.Session.NumOpenPublicConnections,
 			GetBuildUniqueId()))
 		{
 			ReportNonFatalError(NSLOCTEXT(
@@ -1185,10 +1217,9 @@ private:
 		}
 
 		OwnerSubsystem->SetState(ELBOnlineState::Ready);
-		FOnlineSessionSearchResult InviteCopy = InviteResult;
-		InviteCopy.Session.SessionSettings.bUsesPresence = true;
-		InviteCopy.Session.SessionSettings.bUseLobbiesIfAvailable = true;
-		BeginJoin(MoveTemp(InviteCopy));
+		JoinResult.Session.SessionSettings.bUsesPresence = true;
+		JoinResult.Session.SessionSettings.bUseLobbiesIfAvailable = true;
+		BeginJoin(MoveTemp(JoinResult));
 	}
 
 	void HandleSessionFailure(const FUniqueNetId& PlayerId, const ESessionFailure::Type FailureType)
