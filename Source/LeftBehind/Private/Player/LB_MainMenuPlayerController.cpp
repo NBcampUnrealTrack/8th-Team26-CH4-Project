@@ -4,6 +4,9 @@
 #include "Engine/AssetManager.h"
 #include "Engine/StreamableManager.h"
 #include "GameMode/LB_MainMenuGameMode.h"
+#include "Player/LB_PlayerState.h"
+#include "System/Online/LB_OnlineSessionSubsystem.h"
+#include "UI/MainMenu/LB_MultiplayerHubWidget.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogLBMainMenuPlayerController, Log, All);
 
@@ -14,6 +17,7 @@ ALB_MainMenuPlayerController::ALB_MainMenuPlayerController()
 	bShowMouseCursor = true;
 	MainMenuWidgetClass = TSoftClassPtr<UUserWidget>(FSoftObjectPath(
 		TEXT("/Game/LeftBehind/UI/MainMenu/WBP_MainMenu.WBP_MainMenu_C")));
+	MultiplayerWidgetClass = ULB_MultiplayerHubWidget::StaticClass();
 	CodenameWidgetClass = TSoftClassPtr<UUserWidget>(FSoftObjectPath(
 		TEXT("/Game/LeftBehind/UI/MainMenu/WBP_CodenameEntry.WBP_CodenameEntry_C")));
 	CharacterSelectWidgetClass = TSoftClassPtr<UUserWidget>(FSoftObjectPath(
@@ -33,13 +37,25 @@ void ALB_MainMenuPlayerController::BeginPlay()
 
 	bMenuUITeardown = false;
 	bShowMouseCursor = true;
-	SetMenuScreen(ELBMainMenuScreen::Main);
+	BindOnlineSubsystem();
+	ShowInitialOnlineRoomScreen();
 }
 
 void ALB_MainMenuPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	UnbindOnlineSubsystem();
 	TeardownMenuUI();
 	Super::EndPlay(EndPlayReason);
+}
+
+void ALB_MainMenuPlayerController::OnRep_PlayerState()
+{
+	Super::OnRep_PlayerState();
+
+	if (IsLocalController() && !bMenuUITeardown)
+	{
+		ShowInitialOnlineRoomScreen();
+	}
 }
 
 void ALB_MainMenuPlayerController::PreClientTravel(
@@ -56,8 +72,59 @@ void ALB_MainMenuPlayerController::PreClientTravel(
 		HasAuthority() ? 1 : 0,
 		bIsSeamlessTravel ? 1 : 0,
 		*PendingURL);
+	UnbindOnlineSubsystem();
 	TeardownMenuUI();
 	Super::PreClientTravel(PendingURL, TravelType, bIsSeamlessTravel);
+}
+
+void ALB_MainMenuPlayerController::BeginOnlinePlay()
+{
+	if (!IsLocalController() || bMenuUITeardown)
+	{
+		return;
+	}
+
+	ULB_OnlineSessionSubsystem* OnlineSubsystem = GetGameInstance()
+		? GetGameInstance()->GetSubsystem<ULB_OnlineSessionSubsystem>()
+		: nullptr;
+	if (!IsValid(OnlineSubsystem))
+	{
+		UE_LOG(LogLBMainMenuPlayerController, Error, TEXT("EOS session subsystem is unavailable."));
+		return;
+	}
+
+	if (OnlineSubsystem->IsInRoom())
+	{
+		ShowInitialOnlineRoomScreen();
+		return;
+	}
+
+	switch (OnlineSubsystem->GetState())
+	{
+	case ELBOnlineState::Ready:
+		bOpenMultiplayerAfterSignIn = false;
+		SetMenuScreen(ELBMainMenuScreen::Multiplayer);
+		break;
+	case ELBOnlineState::SigningIn:
+		bOpenMultiplayerAfterSignIn = true;
+		break;
+	case ELBOnlineState::SignedOut:
+	case ELBOnlineState::Error:
+		bOpenMultiplayerAfterSignIn = true;
+		if (!OnlineSubsystem->SignIn() && OnlineSubsystem->GetState() == ELBOnlineState::Error)
+		{
+			bOpenMultiplayerAfterSignIn = false;
+			SetMenuScreen(ELBMainMenuScreen::Multiplayer);
+		}
+		break;
+	case ELBOnlineState::Searching:
+	case ELBOnlineState::Creating:
+	case ELBOnlineState::Joining:
+		SetMenuScreen(ELBMainMenuScreen::Multiplayer);
+		break;
+	default:
+		break;
+	}
 }
 
 void ALB_MainMenuPlayerController::SetMenuScreen(ELBMainMenuScreen NewScreen)
@@ -140,6 +207,7 @@ void ALB_MainMenuPlayerController::TeardownMenuUI()
 
 	UUserWidget* Widgets[] = {
 		MainMenuWidget.Get(),
+		MultiplayerWidget.Get(),
 		CodenameWidget.Get(),
 		CharacterSelectWidget.Get(),
 		WaitingWidget.Get()
@@ -153,6 +221,7 @@ void ALB_MainMenuPlayerController::TeardownMenuUI()
 	}
 
 	MainMenuWidget = nullptr;
+	MultiplayerWidget = nullptr;
 	CodenameWidget = nullptr;
 	CharacterSelectWidget = nullptr;
 	WaitingWidget = nullptr;
@@ -171,6 +240,7 @@ void ALB_MainMenuPlayerController::ShowDesiredMenuScreen()
 	{
 		UUserWidget* Widgets[] = {
 			MainMenuWidget.Get(),
+			MultiplayerWidget.Get(),
 			CodenameWidget.Get(),
 			CharacterSelectWidget.Get(),
 			WaitingWidget.Get()
@@ -276,6 +346,8 @@ UUserWidget* ALB_MainMenuPlayerController::GetMenuWidget(ELBMainMenuScreen Scree
 	{
 	case ELBMainMenuScreen::Main:
 		return MainMenuWidget;
+	case ELBMainMenuScreen::Multiplayer:
+		return MultiplayerWidget;
 	case ELBMainMenuScreen::Codename:
 		return CodenameWidget;
 	case ELBMainMenuScreen::CharacterSelect:
@@ -293,6 +365,9 @@ void ALB_MainMenuPlayerController::SetMenuWidget(ELBMainMenuScreen Screen, UUser
 	{
 	case ELBMainMenuScreen::Main:
 		MainMenuWidget = Widget;
+		break;
+	case ELBMainMenuScreen::Multiplayer:
+		MultiplayerWidget = Widget;
 		break;
 	case ELBMainMenuScreen::Codename:
 		CodenameWidget = Widget;
@@ -314,6 +389,8 @@ const TSoftClassPtr<UUserWidget>* ALB_MainMenuPlayerController::GetMenuWidgetCla
 	{
 	case ELBMainMenuScreen::Main:
 		return &MainMenuWidgetClass;
+	case ELBMainMenuScreen::Multiplayer:
+		return &MultiplayerWidgetClass;
 	case ELBMainMenuScreen::Codename:
 		return &CodenameWidgetClass;
 	case ELBMainMenuScreen::CharacterSelect:
@@ -332,6 +409,74 @@ void ALB_MainMenuPlayerController::ApplyMenuInputMode(UUserWidget* FocusWidget)
 	FInputModeUIOnly InputMode;
 	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
 	SetInputMode(InputMode);
+}
+
+void ALB_MainMenuPlayerController::BindOnlineSubsystem()
+{
+	if (ULB_OnlineSessionSubsystem* OnlineSubsystem = GetGameInstance()
+		? GetGameInstance()->GetSubsystem<ULB_OnlineSessionSubsystem>()
+		: nullptr)
+	{
+		OnlineSubsystem->OnStateChanged.AddUniqueDynamic(this, &ThisClass::HandleOnlineStateChanged);
+	}
+}
+
+void ALB_MainMenuPlayerController::UnbindOnlineSubsystem()
+{
+	if (ULB_OnlineSessionSubsystem* OnlineSubsystem = GetGameInstance()
+		? GetGameInstance()->GetSubsystem<ULB_OnlineSessionSubsystem>()
+		: nullptr)
+	{
+		OnlineSubsystem->OnStateChanged.RemoveDynamic(this, &ThisClass::HandleOnlineStateChanged);
+	}
+}
+
+void ALB_MainMenuPlayerController::ShowInitialOnlineRoomScreen()
+{
+	ULB_OnlineSessionSubsystem* OnlineSubsystem = GetGameInstance()
+		? GetGameInstance()->GetSubsystem<ULB_OnlineSessionSubsystem>()
+		: nullptr;
+	if (!IsValid(OnlineSubsystem))
+	{
+		SetMenuScreen(ELBMainMenuScreen::Main);
+		return;
+	}
+	if (!OnlineSubsystem->IsInRoom())
+	{
+		SetMenuScreen(OnlineSubsystem->GetState() == ELBOnlineState::Error
+			? ELBMainMenuScreen::Multiplayer
+			: ELBMainMenuScreen::Main);
+		return;
+	}
+
+	const ALB_PlayerState* LBPlayerState = GetPlayerState<ALB_PlayerState>();
+	SetMenuScreen(IsValid(LBPlayerState) && LBPlayerState->IsCodenameConfirmed()
+		? ELBMainMenuScreen::Waiting
+		: ELBMainMenuScreen::Codename);
+}
+
+void ALB_MainMenuPlayerController::HandleOnlineStateChanged(
+	ELBOnlineState NewState,
+	const FText& StatusMessage)
+{
+	(void)StatusMessage;
+	if (NewState == ELBOnlineState::InRoom)
+	{
+		bOpenMultiplayerAfterSignIn = false;
+		ShowInitialOnlineRoomScreen();
+		return;
+	}
+
+	if (bOpenMultiplayerAfterSignIn && NewState == ELBOnlineState::Ready)
+	{
+		bOpenMultiplayerAfterSignIn = false;
+		SetMenuScreen(ELBMainMenuScreen::Multiplayer);
+	}
+	else if (bOpenMultiplayerAfterSignIn && NewState == ELBOnlineState::Error)
+	{
+		bOpenMultiplayerAfterSignIn = false;
+		SetMenuScreen(ELBMainMenuScreen::Multiplayer);
+	}
 }
 
 void ALB_MainMenuPlayerController::HandleCodenameSubmission_ServerOnly(const FString& RawCodename)

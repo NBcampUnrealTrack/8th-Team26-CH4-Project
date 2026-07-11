@@ -43,6 +43,12 @@ TSharedRef<SWidget> ULB_MainMenuWaitingWidget::RebuildWidget()
 			[
 				SAssignNew(PhaseText, STextBlock).Font(BodyFont)
 			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 8.f)
+			[
+				SAssignNew(OnlineStatusText, STextBlock)
+				.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), 15))
+				.AutoWrapText(true)
+			]
 			+ SVerticalBox::Slot().FillHeight(1.f).Padding(0.f, 8.f)
 			[
 				SNew(SBorder)
@@ -52,12 +58,34 @@ TSharedRef<SWidget> ULB_MainMenuWaitingWidget::RebuildWidget()
 					SAssignNew(PlayerListBox, SVerticalBox)
 				]
 			]
-			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Right).Padding(0.f, 18.f, 0.f, 0.f)
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 18.f, 0.f, 0.f)
 			[
-				SAssignNew(StartButton, SButton)
-				.Text(LOCTEXT("Start", "START RAID"))
-				.ContentPadding(FMargin(32.f, 12.f))
-				.OnClicked_UObject(this, &ThisClass::HandleStartClicked)
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(0.f, 0.f, 8.f, 0.f)
+				[
+					SAssignNew(InviteButton, SButton)
+					.Text(LOCTEXT("Invite", "INVITE FRIENDS"))
+					.ContentPadding(FMargin(18.f, 10.f))
+					.OnClicked_UObject(this, &ThisClass::HandleInviteClicked)
+				]
+				+ SHorizontalBox::Slot().AutoWidth()
+				[
+					SAssignNew(LeaveButton, SButton)
+					.Text(LOCTEXT("Leave", "LEAVE ROOM"))
+					.ContentPadding(FMargin(18.f, 10.f))
+					.OnClicked_UObject(this, &ThisClass::HandleLeaveClicked)
+				]
+				+ SHorizontalBox::Slot().FillWidth(1.f)
+				[
+					SNullWidget::NullWidget
+				]
+				+ SHorizontalBox::Slot().AutoWidth()
+				[
+					SAssignNew(StartButton, SButton)
+					.Text(LOCTEXT("Start", "START RAID"))
+					.ContentPadding(FMargin(32.f, 12.f))
+					.OnClicked_UObject(this, &ThisClass::HandleStartClicked)
+				]
 			]
 		];
 }
@@ -66,6 +94,7 @@ void ULB_MainMenuWaitingWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
 	BindGameState();
+	BindOnlineSubsystem();
 }
 
 void ULB_MainMenuWaitingWidget::NativeDestruct()
@@ -74,7 +103,12 @@ void ULB_MainMenuWaitingWidget::NativeDestruct()
 	{
 		BoundGameState->OnMainMenuSnapshotChanged.RemoveDynamic(this, &ThisClass::HandleSnapshotChanged);
 	}
+	if (IsValid(BoundOnlineSubsystem))
+	{
+		BoundOnlineSubsystem->OnStateChanged.RemoveDynamic(this, &ThisClass::HandleOnlineStateChanged);
+	}
 	BoundGameState = nullptr;
+	BoundOnlineSubsystem = nullptr;
 	Super::NativeDestruct();
 }
 
@@ -95,9 +129,72 @@ void ULB_MainMenuWaitingWidget::BindGameState()
 	Refresh(BoundGameState->GetMainMenuSnapshot());
 }
 
+void ULB_MainMenuWaitingWidget::BindOnlineSubsystem()
+{
+	ULB_OnlineSessionSubsystem* NewSubsystem = GetGameInstance()
+		? GetGameInstance()->GetSubsystem<ULB_OnlineSessionSubsystem>()
+		: nullptr;
+	if (BoundOnlineSubsystem == NewSubsystem)
+	{
+		return;
+	}
+
+	if (IsValid(BoundOnlineSubsystem))
+	{
+		BoundOnlineSubsystem->OnStateChanged.RemoveDynamic(this, &ThisClass::HandleOnlineStateChanged);
+	}
+	BoundOnlineSubsystem = NewSubsystem;
+	if (IsValid(BoundOnlineSubsystem))
+	{
+		BoundOnlineSubsystem->OnStateChanged.AddUniqueDynamic(this, &ThisClass::HandleOnlineStateChanged);
+		RefreshOnlineControls(BoundOnlineSubsystem->GetState(), FText::GetEmpty());
+	}
+	else
+	{
+		RefreshOnlineControls(ELBOnlineState::Error, LOCTEXT("OnlineUnavailable", "Online room controls are unavailable."));
+	}
+}
+
 void ULB_MainMenuWaitingWidget::HandleSnapshotChanged(const FLBMainMenuSnapshot& Snapshot)
 {
 	Refresh(Snapshot);
+}
+
+void ULB_MainMenuWaitingWidget::HandleOnlineStateChanged(
+	ELBOnlineState NewState,
+	const FText& StatusMessage)
+{
+	RefreshOnlineControls(NewState, StatusMessage);
+}
+
+void ULB_MainMenuWaitingWidget::RefreshOnlineControls(
+	ELBOnlineState State,
+	const FText& StatusMessage)
+{
+	const bool bInRoom = IsValid(BoundOnlineSubsystem) && BoundOnlineSubsystem->IsInRoom();
+	const bool bRoomControlsEnabled = bInRoom && State == ELBOnlineState::InRoom;
+	if (InviteButton.IsValid())
+	{
+		InviteButton->SetEnabled(bRoomControlsEnabled);
+	}
+	if (LeaveButton.IsValid())
+	{
+		LeaveButton->SetEnabled(bRoomControlsEnabled);
+	}
+	if (OnlineStatusText.IsValid())
+	{
+		FText EffectiveMessage = StatusMessage;
+		if (EffectiveMessage.IsEmpty() && State == ELBOnlineState::Error && IsValid(BoundOnlineSubsystem))
+		{
+			EffectiveMessage = BoundOnlineSubsystem->GetLastError();
+		}
+		OnlineStatusText->SetText(EffectiveMessage);
+		const bool bHasError = State == ELBOnlineState::Error
+			|| (IsValid(BoundOnlineSubsystem) && !BoundOnlineSubsystem->GetLastError().IsEmpty());
+		OnlineStatusText->SetColorAndOpacity(bHasError
+			? FLinearColor(1.f, 0.35f, 0.3f)
+			: FLinearColor(0.72f, 0.78f, 0.82f));
+	}
 }
 
 void ULB_MainMenuWaitingWidget::Refresh(const FLBMainMenuSnapshot& Snapshot)
@@ -175,6 +272,28 @@ FReply ULB_MainMenuWaitingWidget::HandleStartClicked()
 	if (ALB_MainMenuPlayerController* Controller = Cast<ALB_MainMenuPlayerController>(GetOwningPlayer()))
 	{
 		Controller->RequestStartHunt();
+	}
+	return FReply::Handled();
+}
+
+FReply ULB_MainMenuWaitingWidget::HandleInviteClicked()
+{
+	if (!IsValid(BoundOnlineSubsystem) || !BoundOnlineSubsystem->OpenSocialOverlay())
+	{
+		RefreshOnlineControls(
+			IsValid(BoundOnlineSubsystem) ? BoundOnlineSubsystem->GetState() : ELBOnlineState::Error,
+			LOCTEXT("OverlayFailed", "The Epic friends overlay could not be opened."));
+	}
+	return FReply::Handled();
+}
+
+FReply ULB_MainMenuWaitingWidget::HandleLeaveClicked()
+{
+	if (!IsValid(BoundOnlineSubsystem) || !BoundOnlineSubsystem->LeaveRoom())
+	{
+		RefreshOnlineControls(
+			IsValid(BoundOnlineSubsystem) ? BoundOnlineSubsystem->GetState() : ELBOnlineState::Error,
+			LOCTEXT("LeaveFailed", "The room could not be left. Please try again."));
 	}
 	return FReply::Handled();
 }
