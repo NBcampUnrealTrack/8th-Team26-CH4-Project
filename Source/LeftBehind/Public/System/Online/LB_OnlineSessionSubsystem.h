@@ -81,7 +81,7 @@ public:
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 	virtual void Deinitialize() override;
 
-	/** Uses an existing Online PIE login, or starts an EOS Account Portal login. */
+	/** Reuses Online PIE login, consumes AUTH_* credentials, or opens Account Portal. */
 	UFUNCTION(BlueprintCallable, Category="LB|Online")
 	bool SignIn();
 

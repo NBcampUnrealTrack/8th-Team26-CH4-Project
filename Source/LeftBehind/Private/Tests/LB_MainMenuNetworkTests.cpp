@@ -8,6 +8,7 @@
 #include "GameState/LB_MainMenuGameState.h"
 #include "Player/LB_MainMenuPlayerController.h"
 #include "System/Online/LB_OnlineInvitePolicy.h"
+#include "System/Online/LB_OnlineLoginPolicy.h"
 #include "System/Online/LB_OnlineSessionSubsystem.h"
 #include "UI/MainMenu/LB_MultiplayerHubWidget.h"
 
@@ -45,6 +46,41 @@ namespace
 		}
 		return Result;
 	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FLBOnlineLoginPolicyTest,
+	"LeftBehind.MainMenu.Network.LoginPolicy",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FLBOnlineLoginPolicyTest::RunTest(const FString& Parameters)
+{
+	(void)Parameters;
+
+	TestTrue(
+		TEXT("Missing command-line credentials keep the Account Portal fallback"),
+		LBOnlineLoginPolicy::SelectLoginRoute(TEXT("-game -log"))
+			== LBOnlineLoginPolicy::ELoginRoute::AccountPortal);
+	TestTrue(
+		TEXT("Partial command-line credentials are rejected instead of opening a portal"),
+		LBOnlineLoginPolicy::SelectLoginRoute(
+			TEXT("-AUTH_LOGIN=localhost:8081 -AUTH_PASSWORD=Player1"))
+			== LBOnlineLoginPolicy::ELoginRoute::Invalid);
+	TestTrue(
+		TEXT("An explicitly empty auth type is rejected instead of opening a portal"),
+		LBOnlineLoginPolicy::SelectLoginRoute(TEXT("-AUTH_TYPE="))
+			== LBOnlineLoginPolicy::ELoginRoute::Invalid);
+	TestTrue(
+		TEXT("Developer credentials select the engine AutoLogin path"),
+		LBOnlineLoginPolicy::SelectLoginRoute(
+			TEXT("-AUTH_TYPE=developer -AUTH_LOGIN=localhost:8081 -AUTH_PASSWORD=Player1"))
+			== LBOnlineLoginPolicy::ELoginRoute::AutoLogin);
+	TestTrue(
+		TEXT("Any explicit auth type is delegated to the engine"),
+		LBOnlineLoginPolicy::SelectLoginRoute(TEXT("-AUTH_TYPE=accountportal"))
+			== LBOnlineLoginPolicy::ELoginRoute::AutoLogin);
+
+	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(

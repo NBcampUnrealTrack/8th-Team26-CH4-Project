@@ -17,6 +17,9 @@ UCLASS()
 class LEFTBEHIND_API ULB_RaidScoreboardWidget : public ULB_BaseRaidWidget
 {
 	GENERATED_BODY()
+
+public:
+	ULB_RaidScoreboardWidget(const FObjectInitializer& ObjectInitializer);
 	
 protected:
 	
@@ -34,7 +37,7 @@ protected:
 
 	// 플레이어 결과 슬롯 BP
 	UPROPERTY(EditDefaultsOnly, Category="LB|Raid")
-	TSubclassOf<ULB_RaidScoreSlotWidget> RaidScoreSlotClass;
+	TSoftClassPtr<ULB_RaidScoreSlotWidget> RaidScoreSlotClass;
 
 private:
 

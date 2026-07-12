@@ -33,35 +33,6 @@
 
 ---
 
-## EOS 2인 PIE 테스트
-
-### 1. 최초 1회 Artifact 등록
-
-EOS Developer Portal의 Dev 환경에서 Product ID, Sandbox ID, Deployment ID, 런타임 SDK Client ID와 Client Secret을 준비한 뒤 실행합니다.
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\Scripts\SetupEOSDev.ps1
-```
-
-스크립트가 로컬 전용 `Config/GeneratedEngine.ini`에 `LeftBehindDev` Artifact를 등록합니다. 이 파일에는 Client Secret이 있으므로 커밋하거나 공유하지 말고, 생성 후 에디터를 완전히 재시작합니다.
-
-### 2. DevAuth와 Play Credentials 설정
-
-EOS SDK 공식 다운로드본의 `EOS_DevAuthTool`을 포트 `6666`으로 실행합니다. 두 Epic 계정을 Developer Portal에서 이 Product의 테스터로 등록한 뒤, 각각 `Player1`, `Player2`라는 Credential Name으로 로그인합니다. DevAuth Tool은 PIE 테스트 동안 계속 실행해 둡니다. 한 계정의 Account Portal 로그인만 확인할 때는 Dev Auth Tool이 필요하지 않습니다.
-
-에디터의 `Edit > Editor Preferences > Level Editor > Play Credentials`에서 `Enable Logins`를 켜고 다음 두 Credential을 추가합니다.
-
-| 순서 | User Id | Password | Type |
-| --- | --- | --- | --- |
-| 0 | `localhost:6666` | `Player1` | `developer` |
-| 1 | `localhost:6666` | `Player2` | `developer` |
-
-### 3. 2인 PIE 실행
-
-Play 고급 설정에서 `Play Mode=New Editor Window (PIE)`, `Number of Players=2`, `Net Mode=Play Standalone`, `Run Under One Process=true`, `Launch Separate Server=false`로 설정하고 실행합니다. 첫 번째 창에서 세션을 만들고 두 번째 창에서 검색·참가하면 별도 커맨드라인이나 패키징 없이 EOS 흐름을 확인할 수 있습니다.
-
----
-
 ## 세계에 남겨진 사람들
 
 인류 문명이 무너진 뒤, 도시는 더 이상 사람들의 것이 아니게 되었습니다.
@@ -114,3 +85,4 @@ Play 고급 설정에서 `Play Mode=New Editor Window (PIE)`, `Number of Players
 남은 스킬과 자원을 집중하고, 팀원들과 공격 타이밍을 맞춰 최대한 많은 피해를 입히세요.
 
 단 한 번의 완벽한 10초가 승리와 패배를 가릅니다.
+

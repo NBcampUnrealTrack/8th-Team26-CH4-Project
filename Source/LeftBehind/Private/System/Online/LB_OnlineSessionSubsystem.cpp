@@ -1,6 +1,7 @@
 #include "System/Online/LB_OnlineSessionSubsystem.h"
 
 #include "System/Online/LB_OnlineInvitePolicy.h"
+#include "System/Online/LB_OnlineLoginPolicy.h"
 
 #include "Containers/Ticker.h"
 #include "Engine/Engine.h"
@@ -10,6 +11,7 @@
 #include "Interfaces/OnlineIdentityInterface.h"
 #include "Interfaces/OnlineSessionInterface.h"
 #include "Kismet/GameplayStatics.h"
+#include "Misc/CommandLine.h"
 #include "Misc/ConfigCacheIni.h"
 #include "Misc/PackageName.h"
 #include "Online/OnlineSessionNames.h"
@@ -350,18 +352,56 @@ public:
 			FOnLoginCompleteDelegate::CreateSP(
 				AsShared(),
 				&FLBOnlineSessionRuntime::HandleLoginComplete));
-		// Online PIE Play Credentials complete before the game instance is created.
-		// If no stored PIE login exists, use Account Portal without launch arguments.
-		FOnlineAccountCredentials AccountPortalCredentials;
-		AccountPortalCredentials.Type = TEXT("accountportal");
-		const bool bLoginStarted = Identity->Login(LBLocalUserNum, AccountPortalCredentials);
+		// In-process Online PIE can complete login before the game instance exists.
+		// External PIE processes receive Play Credentials through AUTH_* arguments.
+		const LBOnlineLoginPolicy::ELoginRoute LoginRoute =
+			LBOnlineLoginPolicy::SelectLoginRoute(FCommandLine::Get());
+		bool bLoginStarted = false;
+		switch (LoginRoute)
+		{
+		case LBOnlineLoginPolicy::ELoginRoute::AutoLogin:
+			UE_LOG(LogLBOnlineSession, Log, TEXT("Starting EOS AutoLogin from command-line credentials."));
+			bLoginStarted = Identity->AutoLogin(LBLocalUserNum);
+			break;
+		case LBOnlineLoginPolicy::ELoginRoute::AccountPortal:
+		{
+			FOnlineAccountCredentials AccountPortalCredentials;
+			AccountPortalCredentials.Type = TEXT("accountportal");
+			bLoginStarted = Identity->Login(LBLocalUserNum, AccountPortalCredentials);
+			break;
+		}
+		case LBOnlineLoginPolicy::ELoginRoute::Invalid:
+			break;
+		}
 
 		if (!bLoginStarted)
 		{
 			ClearLoginDelegate();
 			PendingOperation = ELBPendingOnlineOperation::None;
+			FText LoginError;
+			switch (LoginRoute)
+			{
+			case LBOnlineLoginPolicy::ELoginRoute::AutoLogin:
+				LoginError = NSLOCTEXT(
+					"LeftBehind",
+					"AutoLoginNotStarted",
+					"EOS 자동 로그인을 시작하지 못했습니다. AUTH_* 실행 인자와 EOS 인증 설정을 확인해 주세요.");
+				break;
+			case LBOnlineLoginPolicy::ELoginRoute::Invalid:
+				LoginError = NSLOCTEXT(
+					"LeftBehind",
+					"InvalidCommandLineAuth",
+					"EOS 명령줄 인증 설정이 불완전합니다. AUTH_TYPE 및 관련 AUTH_* 실행 인자를 확인해 주세요.");
+				break;
+			case LBOnlineLoginPolicy::ELoginRoute::AccountPortal:
+				LoginError = NSLOCTEXT(
+					"LeftBehind",
+					"AccountPortalLoginNotStarted",
+					"EOS Account Portal 로그인을 시작하지 못했습니다. Artifact와 EAS 설정을 확인해 주세요.");
+				break;
+			}
 			ReportError(
-				NSLOCTEXT("LeftBehind", "AccountPortalLoginNotStarted", "EOS Account Portal 로그인을 시작하지 못했습니다. Artifact와 EAS 설정을 확인해 주세요."),
+				LoginError,
 				ELBOnlineState::Error);
 			return false;
 		}
