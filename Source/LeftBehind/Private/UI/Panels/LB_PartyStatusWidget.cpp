@@ -4,14 +4,50 @@
 #include "UI/Panels/LB_PartyStatusWidget.h"
 #include "Components/VerticalBox.h"
 #include "UI/Panels/LB_PartyMemberSlotWidget.h"
-#include "GameFramework/GameStateBase.h"
+#include "GameState/LB_RaidGameState.h"
 #include "Player/LB_PlayerState.h"
 
 void ULB_PartyStatusWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
-	
+
+	BindRaidGameState();
 	RefreshPartyMembers();
+}
+
+void ULB_PartyStatusWidget::NativeDestruct()
+{
+	UnbindRaidGameState();
+
+	Super::NativeDestruct();
+}
+
+void ULB_PartyStatusWidget::BindRaidGameState()
+{
+	UnbindRaidGameState();
+
+	if (UWorld* World = GetWorld())
+	{
+		CachedRaidGameState = Cast<ALB_RaidGameState>(World->GetGameState());
+	}
+
+	if (CachedRaidGameState)
+	{
+		PlayerArrayChangedHandle = CachedRaidGameState->OnRaidPlayerArrayChanged.AddUObject(
+			this,
+			&ThisClass::RefreshPartyMembers);
+	}
+}
+
+void ULB_PartyStatusWidget::UnbindRaidGameState()
+{
+	if (CachedRaidGameState && PlayerArrayChangedHandle.IsValid())
+	{
+		CachedRaidGameState->OnRaidPlayerArrayChanged.Remove(PlayerArrayChangedHandle);
+	}
+
+	PlayerArrayChangedHandle.Reset();
+	CachedRaidGameState = nullptr;
 }
 
 void ULB_PartyStatusWidget::RefreshPartyMembers()
@@ -20,14 +56,18 @@ void ULB_PartyStatusWidget::RefreshPartyMembers()
 	
 	PartyMemberContainer->ClearChildren();
 	
-	AGameStateBase* GS = GetWorld()->GetGameState();
-	if (!GS) return;
-	
-	for (APlayerState* PS : GS->PlayerArray)
+	ALB_RaidGameState* RaidGameState = CachedRaidGameState;
+	if (!RaidGameState && GetWorld())
 	{
-		ALB_PlayerState* LBPS = Cast<ALB_PlayerState>(PS);
-		if (!LBPS) continue;
-		
+		RaidGameState = Cast<ALB_RaidGameState>(GetWorld()->GetGameState());
+	}
+	if (!RaidGameState) return;
+	
+	TArray<ALB_PlayerState*> CurrentRaidPlayerStates;
+	RaidGameState->GetCurrentRaidPlayerStates(CurrentRaidPlayerStates);
+
+	for (ALB_PlayerState* LBPS : CurrentRaidPlayerStates)
+	{
 		ULB_PartyMemberSlotWidget* MemberSlot = CreateWidget<ULB_PartyMemberSlotWidget>(GetOwningPlayer(), PartyMemberSlotClass);
 		if (!MemberSlot) continue;
 		

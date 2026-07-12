@@ -12,7 +12,7 @@
 
 namespace
 {
-	FText GetDefaultOnlineStatus(ELBOnlineState State)
+	FText GetDefaultOnlineStatus(const ELBOnlineState State)
 	{
 		switch (State)
 		{
@@ -297,7 +297,9 @@ void ULB_MultiplayerHubWidget::HandleOnlineStateChanged(
 		{
 			EffectiveMessage = BoundOnlineSubsystem->GetLastError();
 		}
-		StatusText->SetText(EffectiveMessage.IsEmpty() ? GetDefaultOnlineStatus(NewState) : EffectiveMessage);
+		StatusText->SetText(EffectiveMessage.IsEmpty()
+			? GetDefaultOnlineStatus(NewState)
+			: EffectiveMessage);
 		const bool bHasError = NewState == ELBOnlineState::Error
 			|| (IsValid(BoundOnlineSubsystem) && !BoundOnlineSubsystem->GetLastError().IsEmpty());
 		StatusText->SetColorAndOpacity(bHasError
@@ -378,7 +380,7 @@ FReply ULB_MultiplayerHubWidget::HandleBackClicked()
 {
 	if (ALB_MainMenuPlayerController* Controller = Cast<ALB_MainMenuPlayerController>(GetOwningPlayer()))
 	{
-		Controller->SetMenuScreen(ELBMainMenuScreen::Main);
+		Controller->ShowRoomEntryScreen();
 	}
 	return FReply::Handled();
 }

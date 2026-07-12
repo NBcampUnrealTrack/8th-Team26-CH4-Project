@@ -7,10 +7,12 @@ public class LeftBehindEditorTools : ModuleRules
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 		PrivateDependencyModuleNames.AddRange(new string[]
 		{
+			"AssetRegistry",
 			"Core",
 			"CoreUObject",
 			"Engine",
 			"LeftBehind",
+			"SlateCore",
 			"UnrealEd",
 			"Kismet",
 			"BlueprintGraph",

@@ -26,6 +26,7 @@ class LEFTBEHIND_API ALB_RaidGameMode : public AGameModeBase
 
 #if WITH_DEV_AUTOMATION_TESTS
     friend class FLBRaidReturnToMenuContractTest;
+    friend class FLBRaidPausePolicyTest;
 #endif
 
 public:
@@ -59,6 +60,20 @@ public:
 
     // 검증을 통과한 호스트 요청으로 파티 전체를 메인 메뉴에 seamless travel한다.
     bool TryReturnToMainMenu(APlayerController* RequestingController);
+
+    // 활성 레이드에서 로컬 Listen Host(또는 Standalone)가 전역 일시정지를 제어할 수 있는지 검사한다.
+    UFUNCTION(BlueprintPure, Category = "LB|Raid|Pause")
+    bool CanSetHostPause(const APlayerController* RequestingController) const;
+
+    // 방장의 전역 일시정지를 설정한다. 해제는 단계가 바뀐 뒤에도 소유한 Pause를 정리할 수 있다.
+    bool TrySetHostPause(APlayerController* RequestingController, bool bShouldPause);
+
+    // 활성 레이드에서 로컬 Listen Host(또는 Standalone)가 파티 복귀를 요청할 수 있는지 검사한다.
+    UFUNCTION(BlueprintPure, Category = "LB|Raid|Travel")
+    bool CanAbortRaidToRoom(const APlayerController* RequestingController) const;
+
+    // 활성 레이드를 중단하고 파티 전체를 메인 메뉴 방으로 seamless travel한다.
+    bool TryAbortRaidToRoom(APlayerController* RequestingController);
 
     UFUNCTION(BlueprintPure, Category = "LB|Raid|Travel")
     TSoftObjectPtr<UWorld> GetMainMenuMap() const { return MainMenuMap; }
@@ -133,6 +148,12 @@ protected:
 
     // MainMenuMap soft object path를 ServerTravel에 사용할 유효한 long package name으로 변환한다.
     bool GetMainMenuMapPackageName(FString& OutPackageName) const;
+
+    // 요청자가 이 서버 프로세스의 로컬 Listen Host 또는 Standalone 컨트롤러인지 검사한다.
+    bool IsValidLocalHostRequest(const APlayerController* RequestingController) const;
+
+    // 결과 복귀와 활성 레이드 중단이 공유하는 seamless travel 및 중복 실행 가드 경로.
+    bool StartMainMenuTravel(const TCHAR* RequestContext);
 
     // 보스 행의 필수 계약(행/클래스/최대 HP)을 전투 진입 전에 검증한다.
     const FLBBossStatsRow* FindValidatedBossRow(const TCHAR* Context) const;

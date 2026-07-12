@@ -6,6 +6,8 @@
 #include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemComponent.h"
 #include "Blueprint/UserWidget.h"
+#include "Components/InputComponent.h"
+#include "Components/Widget.h"
 #include "Engine/AssetManager.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/StreamableManager.h"
@@ -15,7 +17,9 @@
 #include "GameFramework/Character.h"
 #include "InputAction.h"
 #include "InputActionValue.h"
+#include "InputCoreTypes.h"
 #include "InputMappingContext.h"
+#include "Kismet/KismetSystemLibrary.h"
 
 #include "GameMode/LB_RaidGameMode.h"
 #include "GameState/LB_RaidGameState.h"
@@ -24,6 +28,7 @@
 #include "TimerManager.h"
 #include "Characters/LB_BaseCharacter.h"
 #include "UI/HUD/LB_RaidHUDWidget.h"
+#include "UI/Popup/LB_RaidPauseMenuWidget.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogLBRaidUI, Log, All);
 
@@ -32,6 +37,8 @@ ALB_PlayerController::ALB_PlayerController()
 	// 생성자 FClassFinder의 하드 참조를 제거해 서버/비전투 맵 패키지 로드와 메모리 상주를 피한다.
 	RaidHUDWidgetClass = TSoftClassPtr<ULB_RaidHUDWidget>(FSoftObjectPath(
 		TEXT("/Game/LeftBehind/UI/BattleHUD/HUD/WBP_LB_RaidHUDWidget.WBP_LB_RaidHUDWidget_C")));
+	RaidPauseMenuWidgetClass = TSoftClassPtr<ULB_RaidPauseMenuWidget>(FSoftObjectPath(
+		TEXT("/Game/LeftBehind/UI/BattleHUD/Popup/WBP_LB_RaidPauseMenuWidget.WBP_LB_RaidPauseMenuWidget_C")));
 }
 
 bool ALB_PlayerController::IsLocalListenHost() const
@@ -74,9 +81,129 @@ bool ALB_PlayerController::RequestReturnToMainMenu()
 	return IsValid(RaidGameMode) && RaidGameMode->TryReturnToMainMenu(this);
 }
 
+bool ALB_PlayerController::CanRequestAbortRaidToRoom() const
+{
+	if (!IsLocalListenHost())
+	{
+		return false;
+	}
+
+	const ALB_RaidGameMode* RaidGameMode = GetWorld()
+		? GetWorld()->GetAuthGameMode<ALB_RaidGameMode>()
+		: nullptr;
+	return IsValid(RaidGameMode) && RaidGameMode->CanAbortRaidToRoom(this);
+}
+
+bool ALB_PlayerController::RequestAbortRaidToRoom()
+{
+	if (!CanRequestAbortRaidToRoom())
+	{
+		return false;
+	}
+
+	ALB_RaidGameMode* RaidGameMode = GetWorld()
+		? GetWorld()->GetAuthGameMode<ALB_RaidGameMode>()
+		: nullptr;
+	if (!IsValid(RaidGameMode) || !RaidGameMode->TryAbortRaidToRoom(this))
+	{
+		// GameMode가 즉시 이동 실패 시 전역 Pause를 원래 상태로 복원한다.
+		RefreshPauseOverlay();
+		return false;
+	}
+
+	// ServerTravel이 시작되었으므로 현재 월드의 입력을 다시 켜지 않는다.
+	bOwnsHostPause = false;
+	bPauseMenuOpen = false;
+	bPauseMenuOpenPending = false;
+	if (IsValid(RaidPauseMenuWidget))
+	{
+		RaidPauseMenuWidget->HidePauseOverlay();
+	}
+	return true;
+}
+
+void ALB_PlayerController::TogglePauseMenu()
+{
+	// 첫 ESC가 비동기 로드 완료 후 열기를 예약했다면 두 번째 ESC는 그 예약을 취소한다.
+	// 클래스 프리로드 자체는 유지해 다음 요청을 즉시 처리할 수 있게 한다.
+	if (!bPauseMenuOpen && bPauseMenuOpenPending)
+	{
+		bPauseMenuOpenPending = false;
+		return;
+	}
+
+	if (bPauseMenuOpen)
+	{
+		if (IsValid(RaidPauseMenuWidget) && RaidPauseMenuWidget->IsShowingQuitConfirmation())
+		{
+			RaidPauseMenuWidget->CancelQuitConfirmation();
+			RefreshLocalInputPresentation();
+			return;
+		}
+
+		ClosePauseMenu();
+		return;
+	}
+
+	OpenPauseMenu();
+}
+
+void ALB_PlayerController::ClosePauseMenu()
+{
+	bPauseMenuOpenPending = false;
+	if (!bPauseMenuOpen)
+	{
+		RefreshPauseOverlay();
+		return;
+	}
+
+	// 호스트가 소유한 전역 Pause를 해제하지 못했다면 조작 불능 화면이 되지 않도록 메뉴를 유지한다.
+	if (bOwnsHostPause && !SetOwnedHostPause(false))
+	{
+		UE_LOG(LogLBRaidUI, Error, TEXT("Failed to release the pause-menu owned host pause. Controller=%s"), *GetNameSafe(this));
+		return;
+	}
+
+	bPauseMenuOpen = false;
+	ResumeGameplayInputContexts();
+	RefreshLocalInputPresentation();
+	RefreshPauseOverlay();
+}
+
+void ALB_PlayerController::ConfirmQuitGame()
+{
+	if (!IsLocalController())
+	{
+		return;
+	}
+
+	// 종료 직전에도 서버를 정지 상태로 남기지 않도록 최선의 노력으로 소유 Pause를 해제한다.
+	SetOwnedHostPause(false);
+	bPauseMenuOpen = false;
+	bPauseMenuOpenPending = false;
+	if (IsValid(RaidPauseMenuWidget))
+	{
+		RaidPauseMenuWidget->HidePauseOverlay();
+	}
+
+	UKismetSystemLibrary::QuitGame(this, this, EQuitPreference::Quit, false);
+}
+
 void ALB_PlayerController::SetupInputComponent()
 {
 	Super::SetupInputComponent();
+
+	if (IsValid(InputComponent))
+	{
+		// 정지 키 설정
+		FInputKeyBinding& PauseBinding = InputComponent->BindKey(
+			EKeys::Zero,
+			IE_Pressed,
+			this,
+			&ThisClass::TogglePauseMenu);
+		PauseBinding.bExecuteWhenPaused = true;
+		PauseBinding.bConsumeInput = true;
+	}
 
 	UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(InputComponent);
 	if (!IsValid(EnhancedInputComponent)) return;
@@ -117,16 +244,22 @@ void ALB_PlayerController::BeginPlay()
 
 	ApplyInputMappingContexts();
 	InitializeRaidHUD();
+	InitializePauseMenu();
 }
 
 void ALB_PlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	bRaidHUDInitializationStopped = true;
-	bLocalPrimaryHeld = false;
-	if (HasAuthority())
+	bPauseMenuOpenPending = false;
+	ReleaseHeldGameplayInput();
+
+	// seamless travel/종료 전에 이 메뉴가 건 전역 Pause만 해제한다.
+	if (bOwnsHostPause && !SetOwnedHostPause(false) && HasAuthority() && IsPaused())
 	{
-		StopPrimaryRepeat_ServerOnly();
+		SetPause(false);
+		bOwnsHostPause = false;
 	}
+	bPauseMenuOpen = false;
 
 	if (UWorld* World = GetWorld())
 	{
@@ -134,9 +267,11 @@ void ALB_PlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	}
 
 	CancelRaidHUDClassLoad();
+	CancelPauseMenuClassLoad();
 	UnbindRaidGameState();
 	RemoveAppliedInputMappingContexts();
 	RemoveRaidHUD();
+	RemovePauseMenu();
 
 	Super::EndPlay(EndPlayReason);
 }
@@ -149,6 +284,7 @@ void ALB_PlayerController::ReceivedPlayer()
 	// ReceivedPlayer는 owning client가 확정된 시점이므로 여기서 HUD 초기화를 반드시 재진입한다.
 	ApplyInputMappingContexts();
 	InitializeRaidHUD();
+	InitializePauseMenu();
 }
 
 void ALB_PlayerController::BeginPlayingState()
@@ -157,6 +293,7 @@ void ALB_PlayerController::BeginPlayingState()
 
 	// Pawn 전환이 끝난 시점에도 한 번 더 확인한다. InitializeRaidHUD는 중복 생성에 안전하다.
 	InitializeRaidHUD();
+	InitializePauseMenu();
 }
 
 void ALB_PlayerController::OnRep_PlayerState()
@@ -165,6 +302,7 @@ void ALB_PlayerController::OnRep_PlayerState()
 
 	// 원격 클라이언트의 PlayerState 복제가 늦게 도착하면 이벤트 기반으로 즉시 재확인한다.
 	InitializeRaidHUD();
+	InitializePauseMenu();
 }
 
 void ALB_PlayerController::AcknowledgePossession(APawn* P)
@@ -192,6 +330,8 @@ void ALB_PlayerController::OnUnPossess()
 
 void ALB_PlayerController::Jump()
 {
+	if (bPauseMenuOpen) return;
+
 	// GetCharacter 내부 Cast/조회 결과를 한 번만 사용해 입력 핫패스의 중복 작업을 없앤다.
 	ACharacter* ControlledCharacter = GetCharacter();
 	if (!IsValid(ControlledCharacter)) return;
@@ -210,6 +350,8 @@ void ALB_PlayerController::StopJumping()
 
 void ALB_PlayerController::Move(const FInputActionValue& Value)
 {
+	if (bPauseMenuOpen) return;
+
 	APawn* ControlledPawn = GetPawn();
 	if (!IsValid(ControlledPawn)) return;
 	if (!IsAlive()) return;
@@ -228,6 +370,8 @@ void ALB_PlayerController::Move(const FInputActionValue& Value)
 
 void ALB_PlayerController::Look(const FInputActionValue& Value)
 {
+	if (bPauseMenuOpen) return;
+
 	const FVector2D LookAxisVector = Value.Get<FVector2D>();
 	if (!IsAlive()) return;
 	
@@ -237,6 +381,8 @@ void ALB_PlayerController::Look(const FInputActionValue& Value)
 
 void ALB_PlayerController::PrimaryPressed()
 {
+	if (bPauseMenuOpen) return;
+
 	if (!IsAlive()) return;
 	if (!IsLocalController() || bLocalPrimaryHeld)
 	{
@@ -376,6 +522,11 @@ bool ALB_PlayerController::IsAlive() const
 
 void ALB_PlayerController::RequestPrimaryAttack()
 {
+	if (bPauseMenuOpen)
+	{
+		return;
+	}
+
 	if (HasAuthority())
 	{
 		TryActivatePrimary_ServerOnly();
@@ -387,6 +538,11 @@ void ALB_PlayerController::RequestPrimaryAttack()
 
 void ALB_PlayerController::ApplyInputMappingContexts()
 {
+	if (bGameplayInputContextsSuspended)
+	{
+		return;
+	}
+
 	ULocalPlayer* LocalPlayer = GetLocalPlayer();
 	if (!IsValid(LocalPlayer)) return;
 
@@ -423,6 +579,45 @@ void ALB_PlayerController::RemoveAppliedInputMappingContexts()
 	}
 
 	AppliedInputMappingContexts.Empty();
+}
+
+void ALB_PlayerController::SuspendGameplayInputContexts()
+{
+	if (bGameplayInputContextsSuspended)
+	{
+		return;
+	}
+
+	bGameplayInputContextsSuspended = true;
+	RemoveAppliedInputMappingContexts();
+}
+
+void ALB_PlayerController::ResumeGameplayInputContexts()
+{
+	if (!bGameplayInputContextsSuspended)
+	{
+		return;
+	}
+
+	bGameplayInputContextsSuspended = false;
+	ApplyInputMappingContexts();
+}
+
+void ALB_PlayerController::ReleaseHeldGameplayInput()
+{
+	if (ACharacter* ControlledCharacter = GetCharacter())
+	{
+		ControlledCharacter->StopJumping();
+	}
+
+	if (bLocalPrimaryHeld)
+	{
+		PrimaryReleased();
+	}
+	else if (HasAuthority() && bServerPrimaryHeld)
+	{
+		StopPrimaryRepeat_ServerOnly();
+	}
 }
 
 bool ALB_PlayerController::ActivateAbility(const FGameplayTag& AbilityTag) const
@@ -674,6 +869,300 @@ void ALB_PlayerController::RemoveRaidHUD()
 	}
 }
 
+void ALB_PlayerController::InitializePauseMenu()
+{
+	if (bRaidHUDInitializationStopped || GetNetMode() == NM_DedicatedServer || !IsLocalController())
+	{
+		return;
+	}
+
+	BindRaidGameState();
+	if (IsValid(RaidPauseMenuWidget))
+	{
+		RefreshPauseOverlay();
+		return;
+	}
+
+	if (RaidPauseMenuWidgetClass.IsNull())
+	{
+		UE_LOG(LogLBRaidUI, Warning, TEXT("RaidPauseMenuWidgetClass is not set. Controller=%s"), *GetNameSafe(this));
+		bPauseMenuOpenPending = false;
+		return;
+	}
+
+	UClass* LoadedPauseMenuClass = RaidPauseMenuWidgetClass.Get();
+	if (!IsValid(LoadedPauseMenuClass))
+	{
+		RequestPauseMenuClassAsync();
+		return;
+	}
+
+	RaidPauseMenuWidget = CreateWidget<ULB_RaidPauseMenuWidget>(this, LoadedPauseMenuClass);
+	if (!IsValid(RaidPauseMenuWidget))
+	{
+		UE_LOG(LogLBRaidUI, Warning, TEXT("Failed to create raid pause menu. Controller=%s"), *GetNameSafe(this));
+		bPauseMenuOpenPending = false;
+		return;
+	}
+
+	if (!RaidPauseMenuWidget->AddToPlayerScreen(RaidPauseMenuWidgetZOrder))
+	{
+		UE_LOG(LogLBRaidUI, Warning, TEXT("Failed to attach raid pause menu. Controller=%s"), *GetNameSafe(this));
+		RaidPauseMenuWidget = nullptr;
+		bPauseMenuOpenPending = false;
+		return;
+	}
+
+	RaidPauseMenuWidget->HidePauseOverlay();
+	const bool bShouldOpenWhenReady = bPauseMenuOpenPending;
+	bPauseMenuOpenPending = false;
+	RefreshPauseOverlay();
+	if (bShouldOpenWhenReady)
+	{
+		OpenPauseMenu();
+	}
+}
+
+void ALB_PlayerController::RequestPauseMenuClassAsync()
+{
+	if (bRaidHUDInitializationStopped || RaidPauseMenuLoadHandle.IsValid())
+	{
+		return;
+	}
+
+	const FSoftObjectPath PauseMenuClassPath = RaidPauseMenuWidgetClass.ToSoftObjectPath();
+	if (!PauseMenuClassPath.IsValid())
+	{
+		UE_LOG(LogLBRaidUI, Error, TEXT("Raid pause menu class path is invalid. Path=%s"), *PauseMenuClassPath.ToString());
+		bPauseMenuOpenPending = false;
+		return;
+	}
+
+	RaidPauseMenuLoadHandle = UAssetManager::GetStreamableManager().RequestAsyncLoad(
+		PauseMenuClassPath,
+		FStreamableDelegate::CreateUObject(this, &ThisClass::HandlePauseMenuClassLoaded),
+		FStreamableManager::DefaultAsyncLoadPriority,
+		false,
+		false,
+		TEXT("LB_RaidPauseMenuWidget"));
+
+	if (!RaidPauseMenuLoadHandle.IsValid())
+	{
+		UE_LOG(LogLBRaidUI, Error, TEXT("Failed to request raid pause menu load. Path=%s"), *PauseMenuClassPath.ToString());
+		bPauseMenuOpenPending = false;
+	}
+}
+
+void ALB_PlayerController::HandlePauseMenuClassLoaded()
+{
+	RaidPauseMenuLoadHandle.Reset();
+	if (bRaidHUDInitializationStopped)
+	{
+		return;
+	}
+
+	if (!IsValid(RaidPauseMenuWidgetClass.Get()))
+	{
+		UE_LOG(LogLBRaidUI, Error, TEXT("Raid pause menu async load completed without a valid class. Path=%s"),
+			*RaidPauseMenuWidgetClass.ToSoftObjectPath().ToString());
+		bPauseMenuOpenPending = false;
+		return;
+	}
+
+	InitializePauseMenu();
+}
+
+void ALB_PlayerController::CancelPauseMenuClassLoad()
+{
+	if (!RaidPauseMenuLoadHandle.IsValid())
+	{
+		return;
+	}
+
+	if (!RaidPauseMenuLoadHandle->HasLoadCompleted())
+	{
+		RaidPauseMenuLoadHandle->CancelHandle();
+	}
+	RaidPauseMenuLoadHandle.Reset();
+}
+
+void ALB_PlayerController::RemovePauseMenu()
+{
+	if (IsValid(RaidPauseMenuWidget))
+	{
+		RaidPauseMenuWidget->RemoveFromParent();
+		RaidPauseMenuWidget = nullptr;
+	}
+}
+
+bool ALB_PlayerController::IsPauseMenuAllowed() const
+{
+	if (GetNetMode() == NM_DedicatedServer || !IsLocalController() || !IsValid(BoundRaidGameState))
+	{
+		return false;
+	}
+
+	switch (BoundRaidGameState->RaidState)
+	{
+	case ELBRaidState::Waiting:
+	case ELBRaidState::Countdown:
+	case ELBRaidState::Battle:
+		return true;
+	case ELBRaidState::Result:
+	default:
+		return false;
+	}
+}
+
+bool ALB_PlayerController::SetOwnedHostPause(bool bShouldPause)
+{
+	if (bShouldPause)
+	{
+		if (bOwnsHostPause)
+		{
+			return true;
+		}
+		if (!IsLocalListenHost())
+		{
+			return false;
+		}
+	}
+	else if (!bOwnsHostPause)
+	{
+		return true;
+	}
+
+	ALB_RaidGameMode* RaidGameMode = GetWorld()
+		? GetWorld()->GetAuthGameMode<ALB_RaidGameMode>()
+		: nullptr;
+	bool bSucceeded = IsValid(RaidGameMode)
+		&& RaidGameMode->TrySetHostPause(this, bShouldPause);
+
+	if (!bShouldPause && !bSucceeded && !IsPaused())
+	{
+		// 이동/종료 과정에서 GameMode가 먼저 Pause를 정리한 경우도 성공으로 취급한다.
+		bSucceeded = true;
+	}
+
+	if (bSucceeded)
+	{
+		bOwnsHostPause = bShouldPause;
+	}
+	return bSucceeded;
+}
+
+bool ALB_PlayerController::OpenPauseMenu()
+{
+	if (bPauseMenuOpen || !IsPauseMenuAllowed())
+	{
+		bPauseMenuOpenPending = false;
+		return false;
+	}
+
+	if (!IsValid(RaidPauseMenuWidget))
+	{
+		bPauseMenuOpenPending = true;
+		InitializePauseMenu();
+		return false;
+	}
+
+	ReleaseHeldGameplayInput();
+	if (IsLocalListenHost() && !SetOwnedHostPause(true))
+	{
+		UE_LOG(LogLBRaidUI, Warning, TEXT("Host pause-menu open rejected by GameMode. Controller=%s"), *GetNameSafe(this));
+		return false;
+	}
+
+	bPauseMenuOpenPending = false;
+	bPauseMenuOpen = true;
+	SuspendGameplayInputContexts();
+	RaidPauseMenuWidget->ShowActionMenu(CanRequestAbortRaidToRoom());
+	RefreshLocalInputPresentation();
+	return true;
+}
+
+void ALB_PlayerController::RefreshLocalInputPresentation()
+{
+	if (GetNetMode() == NM_DedicatedServer || !IsLocalController())
+	{
+		return;
+	}
+
+	const ELBRaidState CurrentState = IsValid(BoundRaidGameState)
+		? BoundRaidGameState->RaidState
+		: ELBRaidState::Waiting;
+	if (CurrentState == ELBRaidState::Result)
+	{
+		bShowMouseCursor = true;
+		FInputModeUIOnly InputMode;
+		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+		SetInputMode(InputMode);
+
+		if (IsValid(RaidHUDWidget))
+		{
+			RaidHUDWidget->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+		}
+		return;
+	}
+
+	if (bPauseMenuOpen && IsValid(RaidPauseMenuWidget))
+	{
+		bShowMouseCursor = true;
+		FInputModeGameAndUI InputMode;
+		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+		InputMode.SetHideCursorDuringCapture(false);
+		if (UWidget* FocusTarget = RaidPauseMenuWidget->GetPreferredFocusTarget())
+		{
+			InputMode.SetWidgetToFocus(FocusTarget->TakeWidget());
+		}
+		SetInputMode(InputMode);
+
+		if (IsValid(RaidHUDWidget))
+		{
+			RaidHUDWidget->SetVisibility(ESlateVisibility::HitTestInvisible);
+		}
+		return;
+	}
+
+	bShowMouseCursor = false;
+	FInputModeGameOnly InputMode;
+	SetInputMode(InputMode);
+
+	if (IsValid(RaidHUDWidget))
+	{
+		RaidHUDWidget->SetVisibility(ESlateVisibility::HitTestInvisible);
+	}
+}
+
+void ALB_PlayerController::RefreshPauseOverlay()
+{
+	if (!IsValid(RaidPauseMenuWidget))
+	{
+		return;
+	}
+
+	if (bPauseMenuOpen)
+	{
+		RaidPauseMenuWidget->SetCanReturnToRoom(CanRequestAbortRaidToRoom());
+		return;
+	}
+
+	const bool bResultState = IsValid(BoundRaidGameState)
+		&& BoundRaidGameState->RaidState == ELBRaidState::Result;
+	const bool bShowRemoteHostNotice = !bResultState
+		&& IsValid(BoundRaidGameState)
+		&& BoundRaidGameState->bHostPauseActive
+		&& !IsLocalListenHost();
+	if (bShowRemoteHostNotice)
+	{
+		RaidPauseMenuWidget->ShowHostPauseNotice();
+	}
+	else
+	{
+		RaidPauseMenuWidget->HidePauseOverlay();
+	}
+}
+
 void ALB_PlayerController::BindRaidGameState()
 {
 	ALB_RaidGameState* CurrentRaidGameState = GetWorld()
@@ -694,6 +1183,9 @@ void ALB_PlayerController::BindRaidGameState()
 	BoundRaidGameState->OnRaidStateChanged.AddUniqueDynamic(
 		this,
 		&ThisClass::HandleRaidStateChanged);
+	BoundRaidGameState->OnHostPauseChanged.AddUniqueDynamic(
+		this,
+		&ThisClass::HandleHostPauseChanged);
 }
 
 void ALB_PlayerController::UnbindRaidGameState()
@@ -703,6 +1195,9 @@ void ALB_PlayerController::UnbindRaidGameState()
 		BoundRaidGameState->OnRaidStateChanged.RemoveDynamic(
 			this,
 			&ThisClass::HandleRaidStateChanged);
+		BoundRaidGameState->OnHostPauseChanged.RemoveDynamic(
+			this,
+			&ThisClass::HandleHostPauseChanged);
 		BoundRaidGameState = nullptr;
 	}
 }
@@ -712,12 +1207,22 @@ void ALB_PlayerController::SyncCurrentRaidState()
 	if (IsValid(BoundRaidGameState))
 	{
 		ApplyRaidStatePresentation(BoundRaidGameState->RaidState);
+		return;
 	}
+
+	RefreshLocalInputPresentation();
+	RefreshPauseOverlay();
 }
 
 void ALB_PlayerController::HandleRaidStateChanged(ELBRaidState NewState)
 {
 	ApplyRaidStatePresentation(NewState);
+}
+
+void ALB_PlayerController::HandleHostPauseChanged(bool bPaused)
+{
+	(void)bPaused;
+	RefreshPauseOverlay();
 }
 
 void ALB_PlayerController::ApplyRaidStatePresentation(ELBRaidState NewState)
@@ -729,35 +1234,15 @@ void ALB_PlayerController::ApplyRaidStatePresentation(ELBRaidState NewState)
 
 	if (NewState == ELBRaidState::Result)
 	{
-		// UIOnly 전환 뒤에는 Completed/Canceled 입력이 오지 않을 수 있으므로 먼저 hold를 해제한다.
-		if (bLocalPrimaryHeld)
+		// Result UI가 항상 최우선이다. 메뉴가 소유한 Pause와 입력 차단을 먼저 정리한다.
+		ReleaseHeldGameplayInput();
+		if (bPauseMenuOpen)
 		{
-			PrimaryReleased();
+			ClosePauseMenu();
 		}
-		else if (HasAuthority() && bServerPrimaryHeld)
-		{
-			StopPrimaryRepeat_ServerOnly();
-		}
-
-		bShowMouseCursor = true;
-		FInputModeUIOnly InputMode;
-		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
-		SetInputMode(InputMode);
-
-		if (IsValid(RaidHUDWidget))
-		{
-			// HUD 루트는 입력을 가로채지 않고 자식 버튼만 hit-test를 받게 한다.
-			RaidHUDWidget->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
-		}
-		return;
+		bPauseMenuOpenPending = false;
 	}
 
-	bShowMouseCursor = false;
-	FInputModeGameOnly InputMode;
-	SetInputMode(InputMode);
-
-	if (IsValid(RaidHUDWidget))
-	{
-		RaidHUDWidget->SetVisibility(ESlateVisibility::HitTestInvisible);
-	}
+	RefreshLocalInputPresentation();
+	RefreshPauseOverlay();
 }
