@@ -2,6 +2,7 @@
 
 #include "System/Online/LB_OnlineInvitePolicy.h"
 
+#include "Containers/Ticker.h"
 #include "Engine/Engine.h"
 #include "Engine/NetDriver.h"
 #include "GameFramework/PlayerController.h"
@@ -22,6 +23,8 @@ DEFINE_LOG_CATEGORY_STATIC(LogLBOnlineSession, Log, All);
 namespace
 {
 	constexpr int32 LBLocalUserNum = 0;
+	constexpr int32 LBAutomaticWaitingPhaseMaxAttempts = 4;
+	constexpr float LBAutomaticWaitingPhaseRetryBaseDelaySec = 1.0f;
 	const FName LBMainMenuMap(TEXT("/Game/LeftBehind/Maps/L_MainMenu"));
 
 	namespace LBOnlineSessionPolicy
@@ -278,6 +281,7 @@ public:
 
 	void Shutdown()
 	{
+		StopAutomaticWaitingPhaseRecovery();
 		ClearOperationDelegates();
 
 		if (Sessions.IsValid())
@@ -642,6 +646,9 @@ private:
 	FDelegateHandle PostLoadMapHandle;
 	FDelegateHandle NetworkFailureHandle;
 	FDelegateHandle TravelFailureHandle;
+	FTSTicker::FDelegateHandle AutomaticWaitingPhaseRetryHandle;
+	int32 AutomaticWaitingPhaseAttempt = 0;
+	bool bAutomaticWaitingPhaseRecoveryActive = false;
 
 	bool IsLoggedIn() const
 	{
@@ -1033,6 +1040,111 @@ private:
 		OwnerSubsystem->SetState(IsLoggedIn() ? ELBOnlineState::Ready : ELBOnlineState::SignedOut);
 	}
 
+	void CancelAutomaticWaitingPhaseRetryTicker()
+	{
+		if (AutomaticWaitingPhaseRetryHandle.IsValid())
+		{
+			FTSTicker::GetCoreTicker().RemoveTicker(AutomaticWaitingPhaseRetryHandle);
+			AutomaticWaitingPhaseRetryHandle.Reset();
+		}
+	}
+
+	void StopAutomaticWaitingPhaseRecovery()
+	{
+		CancelAutomaticWaitingPhaseRetryTicker();
+		bAutomaticWaitingPhaseRecoveryActive = false;
+		AutomaticWaitingPhaseAttempt = 0;
+	}
+
+	bool ShouldRecoverWaitingPhaseAutomatically() const
+	{
+		const FNamedOnlineSession* NamedSession = Sessions.IsValid()
+			? Sessions->GetNamedSession(NAME_GameSession)
+			: nullptr;
+		return bInRoom
+			&& bRoomHost
+			&& CurrentRoomPhase == ELBRoomPhase::InRaid
+			&& NamedSession
+			&& NamedSession->bHosting;
+	}
+
+	void ScheduleAutomaticWaitingPhaseRetry()
+	{
+		if (!bAutomaticWaitingPhaseRecoveryActive)
+		{
+			return;
+		}
+
+		CancelAutomaticWaitingPhaseRetryTicker();
+		if (AutomaticWaitingPhaseAttempt >= LBAutomaticWaitingPhaseMaxAttempts)
+		{
+			UE_LOG(
+				LogLBOnlineSession,
+				Error,
+				TEXT("EOS room remained InRaid after %d automatic Waiting-phase attempts."),
+				AutomaticWaitingPhaseAttempt);
+			StopAutomaticWaitingPhaseRecovery();
+			return;
+		}
+
+		const float RetryDelay = LBAutomaticWaitingPhaseRetryBaseDelaySec
+			* static_cast<float>(1 << FMath::Max(0, AutomaticWaitingPhaseAttempt - 1));
+		AutomaticWaitingPhaseRetryHandle = FTSTicker::GetCoreTicker().AddTicker(
+			FTickerDelegate::CreateSP(
+				AsShared(),
+				&FLBOnlineSessionRuntime::HandleAutomaticWaitingPhaseRetry),
+			RetryDelay);
+		UE_LOG(
+			LogLBOnlineSession,
+			Warning,
+			TEXT("Retrying EOS room Waiting phase in %.1f seconds (attempt %d/%d completed)."),
+			RetryDelay,
+			AutomaticWaitingPhaseAttempt,
+			LBAutomaticWaitingPhaseMaxAttempts);
+	}
+
+	void TryAutomaticWaitingPhaseRecovery()
+	{
+		if (!bAutomaticWaitingPhaseRecoveryActive || !ShouldRecoverWaitingPhaseAutomatically())
+		{
+			StopAutomaticWaitingPhaseRecovery();
+			return;
+		}
+
+		++AutomaticWaitingPhaseAttempt;
+		UE_LOG(
+			LogLBOnlineSession,
+			Log,
+			TEXT("Starting automatic EOS room Waiting-phase recovery (attempt %d/%d)."),
+			AutomaticWaitingPhaseAttempt,
+			LBAutomaticWaitingPhaseMaxAttempts);
+
+		if (!BeginPhaseUpdate(ELBRoomPhase::Waiting, true))
+		{
+			ScheduleAutomaticWaitingPhaseRetry();
+		}
+	}
+
+	bool HandleAutomaticWaitingPhaseRetry(float DeltaTime)
+	{
+		(void)DeltaTime;
+		AutomaticWaitingPhaseRetryHandle.Reset();
+		TryAutomaticWaitingPhaseRecovery();
+		return false;
+	}
+
+	void StartAutomaticWaitingPhaseRecovery()
+	{
+		StopAutomaticWaitingPhaseRecovery();
+		if (!ShouldRecoverWaitingPhaseAutomatically())
+		{
+			return;
+		}
+
+		bAutomaticWaitingPhaseRecoveryActive = true;
+		TryAutomaticWaitingPhaseRecovery();
+	}
+
 	bool BeginPhaseUpdate(const ELBRoomPhase NewPhase, const bool bAutomatic)
 	{
 		ULB_OnlineSessionSubsystem* OwnerSubsystem = Owner.Get();
@@ -1117,6 +1229,9 @@ private:
 
 	void HandleUpdateComplete(const FName SessionName, const bool bWasSuccessful)
 	{
+		const ELBRoomPhase CompletedRoomPhase = PendingRoomPhase;
+		const bool bWasAutomaticWaitingRecovery = bAutomaticWaitingPhaseRecoveryActive
+			&& CompletedRoomPhase == ELBRoomPhase::Waiting;
 		ClearUpdateDelegate();
 		PendingOperation = ELBPendingOnlineOperation::None;
 		ULB_OnlineSessionSubsystem* OwnerSubsystem = Owner.Get();
@@ -1129,16 +1244,29 @@ private:
 		{
 			const FText Error = MakeOnlineError(NSLOCTEXT("LeftBehind", "UpdateRoomAction", "방 상태 변경"), FString());
 			ReportError(Error, ELBOnlineState::InRoom);
-			OwnerSubsystem->OnRoomPhaseUpdateComplete.Broadcast(false, PendingRoomPhase, Error);
+			OwnerSubsystem->OnRoomPhaseUpdateComplete.Broadcast(false, CompletedRoomPhase, Error);
+			if (bWasAutomaticWaitingRecovery)
+			{
+				ScheduleAutomaticWaitingPhaseRetry();
+			}
 			return;
 		}
 
-		CurrentRoomPhase = PendingRoomPhase;
+		CurrentRoomPhase = CompletedRoomPhase;
 		ClearLastError();
 		OwnerSubsystem->SetState(CurrentRoomPhase == ELBRoomPhase::InRaid
 			? ELBOnlineState::Traveling
 			: ELBOnlineState::InRoom);
 		OwnerSubsystem->OnRoomPhaseUpdateComplete.Broadcast(true, CurrentRoomPhase, FText::GetEmpty());
+		if (bWasAutomaticWaitingRecovery)
+		{
+			UE_LOG(
+				LogLBOnlineSession,
+				Log,
+				TEXT("EOS room phase returned to Waiting after %d automatic attempt(s)."),
+				AutomaticWaitingPhaseAttempt);
+			StopAutomaticWaitingPhaseRecovery();
+		}
 	}
 
 	void HandleInviteAccepted(
@@ -1408,7 +1536,10 @@ private:
 			&& CurrentRoomPhase == ELBRoomPhase::InRaid
 			&& LoadedMapName == FPackageName::GetShortName(LBMainMenuMap.ToString()))
 		{
-			BeginPhaseUpdate(ELBRoomPhase::Waiting, true);
+			// EOS may briefly report another operation as busy immediately after
+			// seamless travel. Retry with bounded exponential backoff so the room
+			// does not remain hidden in the InRaid policy after returning to lobby.
+			StartAutomaticWaitingPhaseRecovery();
 		}
 	}
 
