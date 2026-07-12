@@ -16,6 +16,7 @@ class UAbilitySystemComponent;
 class UInputAction;
 class UInputMappingContext;
 class ULB_RaidHUDWidget;
+class ULB_RaidPauseMenuWidget;
 
 /**
  * 
@@ -27,6 +28,7 @@ class LEFTBEHIND_API ALB_PlayerController : public APlayerController
 
 #if WITH_DEV_AUTOMATION_TESTS
 	friend class FLBRaidReturnToMenuContractTest;
+	friend class FLBRaidPauseMenuContractTest;
 #endif
 
 public:
@@ -42,6 +44,28 @@ public:
 	// 결과 버튼이 실패 시 다시 활성화할 수 있도록 실제 이동 시작 여부를 반환한다.
 	UFUNCTION(BlueprintCallable, Category = "LB|Raid|Travel")
 	bool RequestReturnToMainMenu();
+
+	// Waiting/Countdown/Battle에서 로컬 ESC 메뉴를 열거나 닫는다.
+	UFUNCTION(BlueprintCallable, Category = "LB|Raid|Pause")
+	void TogglePauseMenu();
+
+	// 계속하기 버튼과 Result 전환이 공유하는 단일 닫기 경로다.
+	UFUNCTION(BlueprintCallable, Category = "LB|Raid|Pause")
+	void ClosePauseMenu();
+
+	UFUNCTION(BlueprintPure, Category = "LB|Raid|Pause")
+	bool IsPauseMenuOpen() const { return bPauseMenuOpen; }
+
+	// 활성 레이드를 중단하고 기존 EOS 파티와 함께 대기실로 돌아갈 수 있는지 확인한다.
+	UFUNCTION(BlueprintPure, Category = "LB|Raid|Travel")
+	bool CanRequestAbortRaidToRoom() const;
+
+	UFUNCTION(BlueprintCallable, Category = "LB|Raid|Travel")
+	bool RequestAbortRaidToRoom();
+
+	// 종료 확인 UI를 통과한 뒤에만 호출되는 실제 프로세스 종료 경로다.
+	UFUNCTION(BlueprintCallable, Category = "LB|Raid|Pause")
+	void ConfirmQuitGame();
 	
 protected:
 	virtual void SetupInputComponent() override;
@@ -95,6 +119,16 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<ULB_RaidHUDWidget> RaidHUDWidget;
 
+	// 전투 HUD와 독립된 전체 화면 액션 메뉴다. 작은 UI만 로컬 클라이언트에서 비동기 로드한다.
+	UPROPERTY(EditDefaultsOnly, Category = "LB|UI|Raid|Pause")
+	TSoftClassPtr<ULB_RaidPauseMenuWidget> RaidPauseMenuWidgetClass;
+
+	UPROPERTY(EditDefaultsOnly, Category = "LB|UI|Raid|Pause")
+	int32 RaidPauseMenuWidgetZOrder = 100;
+
+	UPROPERTY(Transient)
+	TObjectPtr<ULB_RaidPauseMenuWidget> RaidPauseMenuWidget;
+
 	// 입력 모드도 RaidState에 반응해야 하므로 로컬 컨트롤러가 구독 중인 GameState를 보관한다.
 	UPROPERTY(Transient)
 	TObjectPtr<ALB_RaidGameState> BoundRaidGameState;
@@ -105,8 +139,13 @@ private:
 
 	FTimerHandle RaidHUDInitRetryTimerHandle;
 	TSharedPtr<FStreamableHandle> RaidHUDLoadHandle;
+	TSharedPtr<FStreamableHandle> RaidPauseMenuLoadHandle;
 	bool bRaidHUDInitializationStopped = false;
 	bool bRaidHUDDependencyWaitLogged = false;
+	bool bPauseMenuOpen = false;
+	bool bPauseMenuOpenPending = false;
+	bool bGameplayInputContextsSuspended = false;
+	bool bOwnsHostPause = false;
 	
 	void Jump();
 	void StopJumping();
@@ -123,6 +162,9 @@ private:
 
 	void ApplyInputMappingContexts();
 	void RemoveAppliedInputMappingContexts();
+	void SuspendGameplayInputContexts();
+	void ResumeGameplayInputContexts();
+	void ReleaseHeldGameplayInput();
 	bool ActivateAbility(const FGameplayTag& AbilityTag) const;
 	void LogAbilityActivationFailure(const FGameplayTag& AbilityTag, const UAbilitySystemComponent* ASC) const;
 	
@@ -133,6 +175,16 @@ private:
 	void HandleRaidHUDClassLoaded();
 	void CancelRaidHUDClassLoad();
 	void RemoveRaidHUD();
+	void InitializePauseMenu();
+	void RequestPauseMenuClassAsync();
+	void HandlePauseMenuClassLoaded();
+	void CancelPauseMenuClassLoad();
+	void RemovePauseMenu();
+	bool OpenPauseMenu();
+	bool IsPauseMenuAllowed() const;
+	bool SetOwnedHostPause(bool bShouldPause);
+	void RefreshLocalInputPresentation();
+	void RefreshPauseOverlay();
 	void BindRaidGameState();
 	void UnbindRaidGameState();
 	void SyncCurrentRaidState();
@@ -140,6 +192,9 @@ private:
 
 	UFUNCTION()
 	void HandleRaidStateChanged(ELBRaidState NewState);
+
+	UFUNCTION()
+	void HandleHostPauseChanged(bool bPaused);
 	
 	// 눌림/뗌 두 번만 전송하고 연사 주기는 서버 타이머가 담당해 프레임 기반 RPC 폭증을 막는다.
 	UFUNCTION(Server, Reliable)

@@ -11,6 +11,7 @@
 
 class UVerticalBox;
 class ULB_PartyMemberSlotWidget;
+class ALB_RaidGameState;
 
 UCLASS()
 class LEFTBEHIND_API ULB_PartyStatusWidget : public ULB_BaseUserWidget
@@ -20,6 +21,10 @@ class LEFTBEHIND_API ULB_PartyStatusWidget : public ULB_BaseUserWidget
 protected:
 
 	virtual void NativeConstruct() override;
+	virtual void NativeDestruct() override;
+
+	void BindRaidGameState();
+	void UnbindRaidGameState();
 
 	// 현재 PlayerArray를 기준으로 파티 슬롯 다시 생성
 	void RefreshPartyMembers();
@@ -33,4 +38,10 @@ protected:
 	// 파티원 슬롯 BP
 	UPROPERTY(EditDefaultsOnly, Category="LB|Party")
 	TSubclassOf<ULB_PartyMemberSlotWidget> PartyMemberSlotClass;
+
+private:
+	UPROPERTY()
+	TObjectPtr<ALB_RaidGameState> CachedRaidGameState;
+
+	FDelegateHandle PlayerArrayChangedHandle;
 };

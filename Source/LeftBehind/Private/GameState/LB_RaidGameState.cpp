@@ -4,6 +4,7 @@
 
 #include "DrawDebugHelpers.h"
 #include "Net/UnrealNetwork.h"
+#include "Player/LB_PlayerState.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogLBRaidGameState, Log, All);
 
@@ -109,6 +110,7 @@ void ALB_RaidGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 
     // 결과/스코어보드는 late join 복구에 필요해 COND_InitialOnly로 제한하지 않는다.
     DOREPLIFETIME_CONDITION_NOTIFY(ALB_RaidGameState, RaidState, COND_None, REPNOTIFY_OnChanged);
+    DOREPLIFETIME_CONDITION_NOTIFY(ALB_RaidGameState, bHostPauseActive, COND_None, REPNOTIFY_OnChanged);
     DOREPLIFETIME_CONDITION(ALB_RaidGameState, CountdownEndServerTime, COND_None);
     DOREPLIFETIME_CONDITION(ALB_RaidGameState, BattleStartServerTime, COND_None);
     DOREPLIFETIME_CONDITION(ALB_RaidGameState, TimeLimitSec, COND_None);
@@ -116,6 +118,43 @@ void ALB_RaidGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
     DOREPLIFETIME_CONDITION_NOTIFY(ALB_RaidGameState, BossMaxHP, COND_None, REPNOTIFY_OnChanged);
     DOREPLIFETIME_CONDITION_NOTIFY(ALB_RaidGameState, RaidResult, COND_None, REPNOTIFY_OnChanged);
     DOREPLIFETIME_CONDITION_NOTIFY(ALB_RaidGameState, RaidScoreboardData, COND_None, REPNOTIFY_OnChanged);
+}
+
+void ALB_RaidGameState::AddPlayerState(APlayerState* PlayerState)
+{
+    const int32 PreviousCount = PlayerArray.Num();
+    Super::AddPlayerState(PlayerState);
+
+    if (PlayerArray.Num() != PreviousCount)
+    {
+        OnRaidPlayerArrayChanged.Broadcast();
+    }
+}
+
+void ALB_RaidGameState::RemovePlayerState(APlayerState* PlayerState)
+{
+    const int32 PreviousCount = PlayerArray.Num();
+    Super::RemovePlayerState(PlayerState);
+
+    if (PlayerArray.Num() != PreviousCount)
+    {
+        OnRaidPlayerArrayChanged.Broadcast();
+    }
+}
+
+void ALB_RaidGameState::GetCurrentRaidPlayerStates(TArray<ALB_PlayerState*>& OutPlayerStates) const
+{
+    OutPlayerStates.Reset();
+    OutPlayerStates.Reserve(PlayerArray.Num());
+
+    for (APlayerState* PlayerState : PlayerArray)
+    {
+        ALB_PlayerState* RaidPlayerState = Cast<ALB_PlayerState>(PlayerState);
+        if (RaidPlayerState && !RaidPlayerState->IsFromPreviousLevel())
+        {
+            OutPlayerStates.Add(RaidPlayerState);
+        }
+    }
 }
 
 float ALB_RaidGameState::GetCountdownRemaining() const
@@ -179,6 +218,20 @@ void ALB_RaidGameState::SetRaidState_ServerOnly(ELBRaidState NewState)
     RaidState = NewState;
     // 서버에서도 클라이언트와 같은 변경 이벤트/디버그 경로를 타도록 직접 호출한다.
     OnRep_RaidState();
+    ForceNetUpdate();
+}
+
+void ALB_RaidGameState::SetHostPauseActive_ServerOnly(const bool bNewHostPauseActive)
+{
+    if (!HasAuthority() || bHostPauseActive == bNewHostPauseActive)
+    {
+        return;
+    }
+
+    bHostPauseActive = bNewHostPauseActive;
+
+    // Listen Host도 원격 클라이언트와 동일한 UI 이벤트 경로를 사용한다.
+    OnRep_HostPauseActive();
     ForceNetUpdate();
 }
 
@@ -318,6 +371,17 @@ void ALB_RaidGameState::OnRep_RaidState()
         Log,
         TEXT("[RaidGS] RaidState = %s"),
         *LBRaidStateToString(RaidState));
+}
+
+void ALB_RaidGameState::OnRep_HostPauseActive()
+{
+    OnHostPauseChanged.Broadcast(bHostPauseActive);
+
+    UE_LOG(
+        LogLBRaidGameState,
+        Log,
+        TEXT("[RaidGS] HostPauseActive = %d"),
+        bHostPauseActive ? 1 : 0);
 }
 
 void ALB_RaidGameState::OnRep_BossHP()

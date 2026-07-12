@@ -32,7 +32,7 @@ struct LEFTBEHIND_API FLBRoomSummary
 {
 	GENERATED_BODY()
 
-	/** Opaque EOS lobby/session id. UI code should never parse this value. */
+	/** Opaque online room id. UI code should never parse this value. */
 	UPROPERTY(BlueprintReadOnly, Category="LB|Online")
 	FString RoomId;
 
@@ -81,15 +81,15 @@ public:
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 	virtual void Deinitialize() override;
 
-	/** Starts EOS AutoLogin (including Dev Auth Tool command-line credentials). */
+	/** Reuses Online PIE login, consumes AUTH_* credentials, or opens Account Portal. */
 	UFUNCTION(BlueprintCallable, Category="LB|Online")
 	bool SignIn();
 
-	/** Creates the fixed-policy public four-player lobby. */
+	/** Creates the fixed-policy four-player EOS lobby. */
 	UFUNCTION(BlueprintCallable, Category="LB|Online")
 	bool CreateRoom();
 
-	/** Replaces the current room snapshot with a fresh EOS lobby search. */
+	/** Replaces the current room snapshot with a fresh online room search. */
 	UFUNCTION(BlueprintCallable, Category="LB|Online")
 	bool RefreshRooms();
 
@@ -104,6 +104,9 @@ public:
 	/** Opens the EOS friends overlay, from which a presence invite can be sent. */
 	UFUNCTION(BlueprintCallable, Category="LB|Online")
 	bool OpenSocialOverlay();
+
+	/** Returns whether this process can open the EOS friends overlay and why not. */
+	bool CanOpenSocialOverlay(FText* OutUnavailableReason = nullptr) const;
 
 	/**
 	 * Host-only async update performed before ServerTravel to the raid.

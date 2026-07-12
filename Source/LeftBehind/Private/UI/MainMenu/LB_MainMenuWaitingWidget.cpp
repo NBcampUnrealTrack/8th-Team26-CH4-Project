@@ -173,9 +173,14 @@ void ULB_MainMenuWaitingWidget::RefreshOnlineControls(
 {
 	const bool bInRoom = IsValid(BoundOnlineSubsystem) && BoundOnlineSubsystem->IsInRoom();
 	const bool bRoomControlsEnabled = bInRoom && State == ELBOnlineState::InRoom;
+	FText InviteUnavailableReason;
+	const bool bCanInvite = bRoomControlsEnabled
+		&& BoundOnlineSubsystem->CanOpenSocialOverlay(&InviteUnavailableReason);
 	if (InviteButton.IsValid())
 	{
-		InviteButton->SetEnabled(bRoomControlsEnabled);
+		InviteButton->SetVisibility(EVisibility::Visible);
+		InviteButton->SetEnabled(bCanInvite);
+		InviteButton->SetToolTipText(bCanInvite ? FText::GetEmpty() : InviteUnavailableReason);
 	}
 	if (LeaveButton.IsValid())
 	{
@@ -187,6 +192,10 @@ void ULB_MainMenuWaitingWidget::RefreshOnlineControls(
 		if (EffectiveMessage.IsEmpty() && State == ELBOnlineState::Error && IsValid(BoundOnlineSubsystem))
 		{
 			EffectiveMessage = BoundOnlineSubsystem->GetLastError();
+		}
+		if (EffectiveMessage.IsEmpty() && bRoomControlsEnabled && !bCanInvite)
+		{
+			EffectiveMessage = InviteUnavailableReason;
 		}
 		OnlineStatusText->SetText(EffectiveMessage);
 		const bool bHasError = State == ELBOnlineState::Error
@@ -280,9 +289,18 @@ FReply ULB_MainMenuWaitingWidget::HandleInviteClicked()
 {
 	if (!IsValid(BoundOnlineSubsystem) || !BoundOnlineSubsystem->OpenSocialOverlay())
 	{
+		FText ErrorMessage = IsValid(BoundOnlineSubsystem)
+			? BoundOnlineSubsystem->GetLastError()
+			: FText::GetEmpty();
+		if (ErrorMessage.IsEmpty() && IsValid(BoundOnlineSubsystem))
+		{
+			BoundOnlineSubsystem->CanOpenSocialOverlay(&ErrorMessage);
+		}
 		RefreshOnlineControls(
 			IsValid(BoundOnlineSubsystem) ? BoundOnlineSubsystem->GetState() : ELBOnlineState::Error,
-			LOCTEXT("OverlayFailed", "The Epic friends overlay could not be opened."));
+			ErrorMessage.IsEmpty()
+				? LOCTEXT("OverlayFailed", "The Epic friends overlay could not be opened.")
+				: ErrorMessage);
 	}
 	return FReply::Handled();
 }

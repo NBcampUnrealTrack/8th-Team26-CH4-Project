@@ -32,6 +32,29 @@ void ULB_GameInstance::Shutdown()
 	Super::Shutdown();
 }
 
+bool ULB_GameInstance::EnableListenServer(bool bEnable, int32 PortOverride)
+{
+#if WITH_EDITOR
+	UWorld* World = GetWorld();
+	if (bEnable && IsValid(World) && World->WorldType == EWorldType::PIE)
+	{
+		if (FWorldContext* PIEWorldContext = GetWorldContext())
+		{
+			if (!PIEWorldContext->LastURL.HasOption(TEXT("bUseIPSockets")))
+			{
+				PIEWorldContext->LastURL.AddOption(TEXT("bUseIPSockets"));
+			}
+			UE_LOG(
+				LogLBGameInstance,
+				Log,
+				TEXT("PIE listen server will use IP socket passthrough instead of EOS P2P."));
+		}
+	}
+#endif
+
+	return Super::EnableListenServer(bEnable, PortOverride);
+}
+
 void ULB_GameInstance::HandleNetworkFailure(
 	UWorld* World,
 	UNetDriver* NetDriver,

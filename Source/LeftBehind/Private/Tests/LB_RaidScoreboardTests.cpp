@@ -9,6 +9,8 @@
 #include "Player/LB_PlayerState.h"
 #include "System/Raid/LBRaidDataRows.h"
 #include "System/Raid/LBRaidTypes.h"
+#include "UI/Result/LB_RaidScoreboardWidget.h"
+#include "UI/Result/LB_RaidScoreSlotWidget.h"
 #include "UObject/UnrealType.h"
 
 #include <limits>
@@ -155,6 +157,49 @@ namespace
 				ExpectedPropertyNames[Index]);
 		}
 	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FLBRaidScoreboardWidgetClassContractTest,
+	"LeftBehind.Raid.Scoreboard.WidgetClassContract",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FLBRaidScoreboardWidgetClassContractTest::RunTest(const FString& Parameters)
+{
+	(void)Parameters;
+
+	const TCHAR* ScoreboardWidgetClassPath =
+		TEXT("/Game/LeftBehind/UI/BattleHUD/Result/WBP_LB_RaidScoreboardWidget.WBP_LB_RaidScoreboardWidget_C");
+	UClass* ScoreboardWidgetClass = LoadClass<ULB_RaidScoreboardWidget>(nullptr, ScoreboardWidgetClassPath);
+	TestNotNull(TEXT("The raid scoreboard Widget Blueprint class loads"), ScoreboardWidgetClass);
+	if (!ScoreboardWidgetClass)
+	{
+		return false;
+	}
+
+	const UObject* ScoreboardCDO = ScoreboardWidgetClass->GetDefaultObject();
+	const FSoftClassProperty* SlotClassProperty = FindFProperty<FSoftClassProperty>(
+		ScoreboardWidgetClass,
+		TEXT("RaidScoreSlotClass"));
+	TestNotNull(TEXT("The raid scoreboard exposes its soft slot class property"), SlotClassProperty);
+	if (!SlotClassProperty || !ScoreboardCDO)
+	{
+		return false;
+	}
+
+	const FSoftObjectPath SlotClassPath =
+		SlotClassProperty->GetPropertyValue_InContainer(ScoreboardCDO).ToSoftObjectPath();
+	TestFalse(TEXT("The raid score slot class path is configured"), SlotClassPath.IsNull());
+	UClass* LoadedSlotClass = Cast<UClass>(SlotClassPath.TryLoad());
+	TestNotNull(TEXT("The configured raid score slot Widget Blueprint class loads"), LoadedSlotClass);
+	if (LoadedSlotClass)
+	{
+		TestTrue(
+			TEXT("The configured slot class uses the native raid score slot base"),
+			LoadedSlotClass->IsChildOf(ULB_RaidScoreSlotWidget::StaticClass()));
+	}
+
+	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
