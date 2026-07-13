@@ -9,6 +9,7 @@ namespace LBTags
 		UE_DEFINE_GAMEPLAY_TAG_COMMENT(ActivateOnGiven,"LBTags.LBAbilities.ActivateOnGiven","Tag for the Abilities that sould activate immediately");
 		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Death,"LBTags.LBAbilities.Death","Tag for the Abilities that should die");
 		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Primary, "LBTags.LBAbilities.Primary", "Tag for the Primary Ability");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Secondary, "LBTags.LBAbilities.Secondary", "Tag for the Secondary Ability");
 		namespace Enemy
 		{
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Attack, "LBTags.LBAbilities.Enemy.Attack", "Enemy Attack Tag");
