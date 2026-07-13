@@ -8,6 +8,7 @@
 
 class USkeletalMesh;
 class UTexture2D;
+class UAnimInstance;
 
 // 직렬화된 DataTable/Blueprint 값의 호환성을 보장하기 위해 enum ordinal을 명시적으로 고정한다.
 UENUM(BlueprintType)
@@ -87,6 +88,9 @@ struct FLBCharacterData : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	TObjectPtr<USkeletalMesh> PreviewMesh;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	TSubclassOf<UAnimInstance> PreviewAnimClass;
+	
 	// true면 캐릭터 선택창에서 선택 불가 상태로 표시
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	bool bLocked = false;
@@ -119,4 +123,14 @@ struct FLBCharacterData : public FTableRowBase
 	// 렌더 타깃을 UI Image에 표시하기 위한 머티리얼 인스턴스
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	TObjectPtr<UMaterialInstance> PreviewMaterialInstance;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	FVector MeshOffset;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	FRotator MeshRotation;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	FVector MeshScale;
+	
 };
