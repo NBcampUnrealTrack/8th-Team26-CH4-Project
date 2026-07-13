@@ -56,13 +56,22 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Attack")
 	float HitBoxForwardOffset = 170.f;
 
-	// 바닥보다 조금 위에서 판정하도록 높이를 올려 보스 캡슐과 안정적으로 겹치게 한다.
+	// 바닥보다 조금 위에서 판정하도록 높이를 올려 캐릭터 캡슐과 안정적으로 겹치게 한다.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Attack")
 	float HitBoxElevationOffset = 80.f;
 
 	// true면 공격 범위는 빨간 구체, 맞은 대상은 초록 구체로 보여 디버깅하기 쉽다.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Debug")
 	bool bDrawHitDebug = false;
+	
+
+	//밀쳐내는 수평 힘
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Attack")
+	float KnockbackForce;
+	
+	//밀쳐내는 수직 힘
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Attack")
+	float KnockbackForceV;
 
 private:
 	// InstancedPerActor Ability라서 플레이어마다 A/B 순서를 따로 기억한다.
