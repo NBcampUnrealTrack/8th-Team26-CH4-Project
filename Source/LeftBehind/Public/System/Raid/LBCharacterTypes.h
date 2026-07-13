@@ -2,6 +2,8 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DataTable.h"
+#include "Engine/TextureRenderTarget2D.h"
+#include "Materials/MaterialInstance.h"
 #include "LBCharacterTypes.generated.h"
 
 class USkeletalMesh;
@@ -71,11 +73,11 @@ struct FLBCharacterData : public FTableRowBase
 	// 캐릭터 선택창 카드에 표시할 초상화 이미지.
 	// 선택 화면 진입 전까지 고해상도 이미지를 상주시킬 필요가 없어 Soft reference를 유지한다.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	TSoftObjectPtr<UTexture2D> CardPortraitImage;
+	TObjectPtr<UTexture2D> CardPortraitImage;
 
 	// 결과 화면 카드에 표시할 전신 이미지
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	TSoftObjectPtr<UTexture2D> HUDPortraitImage;
+	TObjectPtr<UTexture2D> HUDPortraitImage;
 
 	// 캐릭터 선택창에서 역할별 분류에 사용
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
@@ -83,7 +85,7 @@ struct FLBCharacterData : public FTableRowBase
 
 	// 캐릭터 선택창에서 3D 프리뷰로 보여줄 스켈레탈 메시
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	TSoftObjectPtr<USkeletalMesh> PreviewMesh;
+	TObjectPtr<USkeletalMesh> PreviewMesh;
 
 	// true면 캐릭터 선택창에서 선택 불가 상태로 표시
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
@@ -109,4 +111,12 @@ struct FLBCharacterData : public FTableRowBase
 	// 이동속도 (예: "느림", "보통", "빠름")
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	FText MoveSpeed;
+	
+	// 캐릭터 3D 프리뷰를 UI에 표시하기 위한 렌더 타깃
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	TObjectPtr<UTextureRenderTarget2D> PreviewRenderTarget;
+
+	// 렌더 타깃을 UI Image에 표시하기 위한 머티리얼 인스턴스
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	TObjectPtr<UMaterialInstance> PreviewMaterialInstance;
 };
