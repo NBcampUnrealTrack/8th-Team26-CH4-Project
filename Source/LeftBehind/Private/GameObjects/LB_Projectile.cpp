@@ -18,10 +18,18 @@ ALB_Projectile::ALB_Projectile()
 
 void ALB_Projectile::NotifyActorBeginOverlap(AActor* OtherActor)
 {
+	
 	Super::NotifyActorBeginOverlap(OtherActor);
 	
 	ALB_PlayerCharacter* PlayerCharacter = Cast<ALB_PlayerCharacter>(OtherActor);
 	if (!IsValid(PlayerCharacter) || !PlayerCharacter->IsAlive()) return;
+	
+	if (!HealEffect)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[LB Projectile] HealEffect is not set. Actor=%s"), *GetNameSafe(this));
+		Destroy();
+		return;
+	}
 	
 	UAbilitySystemComponent* AbilitySystemComponent = PlayerCharacter->GetAbilitySystemComponent();
 	if (!IsValid(AbilitySystemComponent) || !HasAuthority()) return;
@@ -29,13 +37,22 @@ void ALB_Projectile::NotifyActorBeginOverlap(AActor* OtherActor)
 	FGameplayEffectContextHandle ContextHandle = AbilitySystemComponent->MakeEffectContext();
 	FGameplayEffectSpecHandle SpecHandle = AbilitySystemComponent->MakeOutgoingSpec(HealEffect, 1.f, ContextHandle);
 	
+	
+	if (!SpecHandle.IsValid())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[LB Projectile] Invalid GameplayEffect spec. Actor=%s"), *GetNameSafe(this));
+		Destroy();
+		return;
+	}
+	
 	AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
 	
 	if (ALB_PlayerState* PS = Cast<ALB_PlayerState>(PlayerCharacter->GetPlayerState()))
 	{
 		PS->AddTotalHealingDone_ServerOnly(Heal);
 	}
-	Destroy();}
+	Destroy();
+}
 
 
 
