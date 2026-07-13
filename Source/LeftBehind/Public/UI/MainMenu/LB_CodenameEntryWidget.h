@@ -18,7 +18,26 @@ class LEFTBEHIND_API ULB_CodenameEntryWidget : public UUserWidget
 protected:
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
+	
+	
+	UFUNCTION(BlueprintImplementableEvent, Category="LB|UI")
+	void BP_OnConfirmClicked();
 
+	UFUNCTION(BlueprintImplementableEvent, Category="LB|UI")
+	void BP_OnBackClicked();
+
+	UFUNCTION(BlueprintImplementableEvent, Category="LB|UI")
+	void BP_OnSubmissionResult(ELBCodenameSubmitResult Result);
+	
+	UFUNCTION(BlueprintImplementableEvent, Category="LB|UI")
+	void BP_OnTextChanged(const FText& Text, bool bIsValid);
+	
+	UFUNCTION(BlueprintCallable, Category="LB|UI")
+	void SubmitCurrentText();
+	
+	UFUNCTION(BlueprintImplementableEvent, Category="LB|UI")
+	void BP_OnWidgetShown();
+	
 private:
 	UPROPERTY(Transient)
 	TObjectPtr<UWidget> ConfirmButton;
@@ -47,7 +66,7 @@ private:
 	UFUNCTION()
 	void HandleSubmissionResult(ELBCodenameSubmitResult Result, const FString& SanitizedCodename);
 
-	void SubmitCurrentText();
+	
 	void SetErrorText(const FText& Message);
 	FText SubmissionErrorText(ELBCodenameSubmitResult Result) const;
 };
