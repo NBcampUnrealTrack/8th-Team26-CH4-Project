@@ -15,14 +15,11 @@ class LEFTBEHIND_API ULB_BTD_IsInAttackRange : public UBTDecorator
 	GENERATED_BODY()
 	
 public:
-	//Target과 자기 자신의 거리를 측정하기 위한 함수
 	virtual bool CalculateRawConditionValue(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory) const override;
 	
-	//목표 설정을 위한 변수
 	UPROPERTY(EditAnywhere, Category = "Blackboard")
 	FBlackboardKeySelector TargetKey;
 
-	//거리 조절을 위한 함수
 	UPROPERTY(EditAnywhere, Category = "Blackboard")
 	FBlackboardKeySelector RangeKey;
 	

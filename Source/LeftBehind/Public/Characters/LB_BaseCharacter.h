@@ -33,10 +33,6 @@ public:
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastPlayCosmeticMontage(UAnimMontage* Montage, float PlayRate = 1.f);
 	
-	//서버 호출 시에 클라이언트의 
-	UFUNCTION(NetMulticast, Unreliable, BlueprintCallable, Category = "LeftBehind|Animation")
-	void MulticastFreezePose();
-	
 	UPROPERTY(BlueprintAssignable)
 	FASCInitialized OnAscInitialized;
 	

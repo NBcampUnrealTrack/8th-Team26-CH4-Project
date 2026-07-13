@@ -9,9 +9,7 @@
 
 // 캐릭터 선택창에서 캐릭터 하나를 표시하는 카드 위젯
 
-class UButton;
-
-// 카드 클릭 시 OnCardClicked 디스패처를 통해 캐릭터ID를 선택창에 알림
+// BP에서 카드 클릭 시 OnCardClicked 디스패처를 통해 캐릭터ID를 선택창에 알림
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCharacterCardClicked, ELBCharacterID, ClickedCharacterID);
 
 UCLASS()
@@ -37,16 +35,8 @@ public:
 	UFUNCTION(BlueprintPure, Category="LB|CharacterSelect")
 	ELBCharacterID GetCharacterID() const { return CharacterID; }
 
-	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UButton> BTN_CardButton;
-	
 protected:
 
-	virtual void NativeConstruct() override;
-	
-	UFUNCTION()
-	void HandleCardButtonClicked();
-	
 	// BP에서 카드 UI 갱신 -- 카드 생성 시 1회만 호출
 	UFUNCTION(BlueprintImplementableEvent, Category="LB|CharacterSelect")
 	void BP_OnDataSet(ELBCharacterID InCharacterID, const FLBCharacterData& InData);
