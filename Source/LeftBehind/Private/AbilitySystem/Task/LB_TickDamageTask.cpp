@@ -10,7 +10,7 @@
 
 
 ULB_TickDamageTask* ULB_TickDamageTask::CreateTickDamageTask(UGameplayAbility* OwningAbility,
-	TSubclassOf<UGameplayEffect> DE, FVector TargetLocation, float ChargingSpeed, float MaxDuration,
+	 FVector TargetLocation, float ChargingSpeed, float MaxDuration,
 	FLB_AttackConfig AC)
 {
 	ULB_TickDamageTask* TickDamageTask = NewAbilityTask<ULB_TickDamageTask>(OwningAbility);
@@ -34,7 +34,7 @@ ULB_TickDamageTask* ULB_TickDamageTask::CreateTickDamageTask(UGameplayAbility* O
 void ULB_TickDamageTask::Activate()
 {
 	Super::Activate();
-	
+
 	StartLocation = GetAvatarActor()->GetActorLocation();
 	CurrentTime = 0.f;
 	
@@ -44,14 +44,14 @@ void ULB_TickDamageTask::Activate()
 void ULB_TickDamageTask::TickTask(float DeltaTime)
 {
 	Super::TickTask(DeltaTime);
-	
+	UE_LOG(LogTemp, Warning, TEXT("ULB_TickDamageTask Tick Activate"));
 	StartLocation = GetAvatarActor()->GetActorLocation();
 	FVector Direction = (Destination- StartLocation).GetSafeNormal();
 	float RemainingDistance = FVector::Dist(Destination,StartLocation);
 	
 	FVector MoveDelta = Direction* TaskCharingSpeed *DeltaTime;
 	FHitResult HitResult;
-	GetAvatarActor()->SetActorLocation(StartLocation+ MoveDelta,true, &HitResult);
+	GetAvatarActor()->SetActorLocation(StartLocation+ MoveDelta,false, &HitResult);
 	
 	HandleDamageableActorsInHitBox();
 	
@@ -80,7 +80,15 @@ void ULB_TickDamageTask::OnDestroy(bool bInOwnerFinished)
 
 void ULB_TickDamageTask::HandleDamageableActorsInHitBox()
 {
-	TArray<AActor*> HitActors = ULB_BlueprintLibrary::FindDamageableActorsInHitBox(
+	
+	UE_LOG(LogTemp, Warning,
+	TEXT("[LB ChargingAttack] AttackConfig. HBR : %f, HBFO : %f, HBEO : %f, bDrawHitDebug : %d"),
+	AttackConfig.HitBoxRadius,
+	AttackConfig.HitBoxForwardOffset,
+	AttackConfig.HitBoxElevationOffset,
+	AttackConfig.bDrawHitDebug);
+	
+		TArray<AActor*> HitActors = ULB_BlueprintLibrary::FindDamageableActorsInHitBox(
 GetAvatarActor(),
 AttackConfig.HitBoxRadius,
 AttackConfig.HitBoxForwardOffset,
@@ -90,7 +98,8 @@ AttackConfig.bDrawHitDebug
 
 	if (HitActors.IsEmpty())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[LB BossAttack] No damageable target. Avatar=%s"), *GetNameSafe(GetAvatarActor()));
+		UE_LOG(LogTemp, Warning, TEXT("[LB ChargingAttack] No damageable target. Avatar=%s"), *GetNameSafe(GetAvatarActor()));
+		return;
 	}
 
 	FGameplayEventData DamagePayload;

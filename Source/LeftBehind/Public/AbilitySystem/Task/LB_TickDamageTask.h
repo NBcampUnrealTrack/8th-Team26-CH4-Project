@@ -22,7 +22,6 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Ability|Tasks")
 	static ULB_TickDamageTask* CreateTickDamageTask(
 	UGameplayAbility* OwningAbility, 
-	TSubclassOf<UGameplayEffect> DE,
 	FVector TargetLocation,
 	 float ChargingSpeed, 
 	 float MaxDuration, 

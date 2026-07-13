@@ -3,7 +3,9 @@
 
 #include "AbilitySystem/Ability/Enemy/LB_BossChargeAbility.h"
 
+#include "SNegativeActionButton.h"
 #include "AbilitySystem/Task/LB_TelegraphAbilityTask.h"
+#include "AbilitySystem/Task/LB_TickDamageTask.h"
 #include "Characters/LB_BaseCharacter.h"
 #include "GameplayTags/LBTags.h"
 #include "Utils/LB_BlueprintLibrary.h"
@@ -14,6 +16,13 @@ ULB_BossChargeAbility::ULB_BossChargeAbility()
 	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::ServerOnly;
 	InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
 	
+
+}
+
+void ULB_BossChargeAbility::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
+                                            const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo,
+                                            const FGameplayEventData* TriggerEventData)
+{
 	AttackConfig.DamageEffect = DamageEffect;
 	AttackConfig.Damage = Damage;
 	AttackConfig.HitBoxElevationOffset = HitBoxElevationOffset;
@@ -22,12 +31,7 @@ ULB_BossChargeAbility::ULB_BossChargeAbility()
 	AttackConfig.bDrawHitDebug = bDrawHitDebug;
 	AttackConfig.KnockbackForce = KnockbackForce;
 	AttackConfig.KnockbackForceV = KnockbackForceV;
-}
-
-void ULB_BossChargeAbility::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
-                                            const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo,
-                                            const FGameplayEventData* TriggerEventData)
-{
+	
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
 	if (!ActorInfo || !ActorInfo->AvatarActor.IsValid())
 	{
@@ -47,7 +51,8 @@ void ULB_BossChargeAbility::ActivateAbility(const FGameplayAbilitySpecHandle Han
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 		return;
 	}
-
+	
+	
 	if (!DamageEffect)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[LB BossAttack] DamageEffect is not set. GA=%s"), *GetName());
@@ -63,35 +68,48 @@ void ULB_BossChargeAbility::ActivateAbility(const FGameplayAbilitySpecHandle Han
 			TelegraphMontage,
 			LBTags::LBAbilities::Enemy::Telegraph,
 			LBTags::LBCues::Enemy::TelegraphCue);
+		if (IsValid(TelegraphAbilityTask))
+		{
+			TelegraphAbilityTask->OnTaskCompleted.AddDynamic(this,&ULB_BossChargeAbility::OnAbilityActivated);
+			TelegraphAbilityTask->OnTaskCancelled.AddDynamic(this,&ULB_BossChargeAbility::OnAbilityCancelled);
+			TelegraphAbilityTask->ReadyForActivation();
+		}
 		
-		TelegraphAbilityTask->OnTaskCompleted.AddDynamic(this,&ULB_BossChargeAbility::OnAbilityActivated);
-		TelegraphAbilityTask->OnTaskCancelled.AddDynamic(this,&ULB_BossChargeAbility::OnAbilityCancelled);
-		TelegraphAbilityTask->ReadyForActivation();
+
 	}
 	else
 	{
 		HandleActivateAbility(Handle,ActorInfo,ActivationInfo,TriggerEventData);
 	}
+	
+
+
 }
 
 void ULB_BossChargeAbility::OnAbilityActivated()
 {
-	HandleActivateAbility(
-	GetCurrentAbilitySpecHandle(),
-	GetCurrentActorInfo(),
-	GetCurrentActivationInfo(),
-	nullptr);
+	AActor* AvatarActor = GetAvatarActorFromActorInfo();
+	PlayMontage(AvatarActor);
+	StartCharge();
+	
+	
 }
 
 void ULB_BossChargeAbility::HandleActivateAbility(const FGameplayAbilitySpecHandle Handle,
 	const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo,
 	const FGameplayEventData* TriggerEventData)
 {
-	AActor* AvatarActor = ActorInfo->AvatarActor.Get();
-	PlayMontage(AvatarActor);
-
-
+	
 	EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
+}
+
+void ULB_BossChargeAbility::OnChargeCompleted()
+{
+	HandleActivateAbility(
+GetCurrentAbilitySpecHandle(),
+GetCurrentActorInfo(),
+GetCurrentActivationInfo(),
+nullptr);
 }
 
 void ULB_BossChargeAbility::OnAbilityCancelled()
@@ -102,6 +120,33 @@ void ULB_BossChargeAbility::OnAbilityCancelled()
 		,GetCurrentActivationInfo()
 		,true
 		,true);
+}
+
+void ULB_BossChargeAbility::StartCharge()
+{
+	AActor* AvatarActor = GetAvatarActorFromActorInfo();
+	
+	if (!IsValid(AvatarActor))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[LB Chargnig Ability] AvavtorActor is nullptr"));
+		OnAbilityCancelled();
+	}
+	
+	float MaxChargingTime = IsValid(PrimaryMontage) ? PrimaryMontage->GetPlayLength() : 3.0f;
+	
+	FVector Destination = AvatarActor->GetActorLocation() + AvatarActor->GetActorForwardVector()* ChargingDistance;
+	ULB_TickDamageTask* TickDamageTask = ULB_TickDamageTask::CreateTickDamageTask(this,Destination, ChargingSpeed,MaxChargingTime,AttackConfig);
+	if (IsValid(TickDamageTask))
+	{
+		TickDamageTask->OnTaskCompleted.AddDynamic(this,&ULB_BossChargeAbility::OnChargeCompleted);
+		TickDamageTask->OnTimeOut.AddDynamic(this,&ULB_BossChargeAbility::OnAbilityCancelled);
+		TickDamageTask->ReadyForActivation();
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("TickDamageTask is not Generated it is not Valid"));
+		OnAbilityCancelled();
+	}
 }
 
 void ULB_BossChargeAbility::PlayMontage(AActor* AvatarActor)

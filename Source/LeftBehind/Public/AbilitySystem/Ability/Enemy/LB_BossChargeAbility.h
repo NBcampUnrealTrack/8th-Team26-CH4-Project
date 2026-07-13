@@ -21,7 +21,7 @@ struct FLB_AttackConfig
 
 	float HitBoxElevationOffset = 0.f;
 
-	bool bDrawHitDebug = false;
+	bool bDrawHitDebug;
 	
 	float KnockbackForce;
 	
@@ -45,7 +45,7 @@ public:
 		const FGameplayAbilityActivationInfo ActivationInfo, 
 		const FGameplayEventData* TriggerEventData) override;
 	
-	
+	//전조 행동 Task가 끝난 이후에 작동시키기 위한 델리게이트 함수
 	UFUNCTION()
 	virtual void OnAbilityActivated();
 	
@@ -55,8 +55,17 @@ public:
 		const FGameplayAbilityActivationInfo ActivationInfo,
 		const FGameplayEventData* TriggerEventData
 		);
+	
+	//Charge Task가 끝난 이후에 작동시키기 위한 델리게이트 함순
+	UFUNCTION()
+	virtual void OnChargeCompleted();
+	
+	//전조 행동 Task가 비정상적으로 종료될 때 작동시키기 위한 델리게이트 함수
 	UFUNCTION()
 	virtual void OnAbilityCancelled();
+	
+	//Charge Task를 작동시키기 위한 함수
+	void StartCharge();
 	
 	virtual void PlayMontage(AActor* AvatarActor);
 	
