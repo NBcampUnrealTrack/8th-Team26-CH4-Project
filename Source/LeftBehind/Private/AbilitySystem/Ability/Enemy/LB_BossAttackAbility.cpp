@@ -4,6 +4,7 @@
 #include "AbilitySystem/Ability/Enemy/LB_BossAttackAbility.h"
 
 #include "Abilities/GameplayAbilityTypes.h"
+#include "AbilitySystem/Task/LB_TelegraphAbilityTask.h"
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
 #include "Characters/LB_BaseCharacter.h"
@@ -24,20 +25,9 @@ ULB_BossAttackAbility::ULB_BossAttackAbility()
 	DefaultAbilityTags.AddTag(LBTags::LBAbilities::Primary);
 	SetAssetTags(DefaultAbilityTags);
 
-	// 기본 프로젝트 에셋을 코드 기본값으로 잡아두고, 에디터 Class Defaults에서 언제든 교체할 수 있게 한다.
-	static ConstructorHelpers::FObjectFinder<UAnimMontage> MontageAAsset(
-		TEXT("/Game/LeftBehind/Characters/Animations/LB_AM_Primary_A.LB_AM_Primary_A"));
-	if (MontageAAsset.Succeeded())
-	{
-		PrimaryMontageA = MontageAAsset.Object;
-	}
+	
+	
 
-	static ConstructorHelpers::FObjectFinder<UAnimMontage> MontageBAsset(
-		TEXT("/Game/LeftBehind/Characters/Animations/LB_AM_Primary_B.LB_AM_Primary_B"));
-	if (MontageBAsset.Succeeded())
-	{
-		PrimaryMontageB = MontageBAsset.Object;
-	}
 }
 
 void ULB_BossAttackAbility::ActivateAbility(
@@ -74,6 +64,44 @@ void ULB_BossAttackAbility::ActivateAbility(
 		return;
 	}
 
+	//전조 증상 여부에 따른 Task 생성 추가
+	if (bIsTelegraph)
+	{
+		ULB_TelegraphAbilityTask* TelegraphAbilityTask = ULB_TelegraphAbilityTask::PlayTelegraph(
+			this,
+			TelegraphMontage,
+			LBTags::LBAbilities::Enemy::Telegraph,
+			LBTags::LBCues::Enemy::TelegraphCue);
+		
+		TelegraphAbilityTask->OnTaskCompleted.AddDynamic(this,&ULB_BossAttackAbility::OnAbilityActivated);
+		TelegraphAbilityTask->OnTaskCancelled.AddDynamic(this,&ULB_BossAttackAbility::OnAbilityCancelled);
+		TelegraphAbilityTask->ReadyForActivation();
+	}
+	else
+	{
+		HandleActivateAbility(Handle,ActorInfo,ActivationInfo,TriggerEventData);
+	}
+	
+	
+	
+	
+
+}
+
+void ULB_BossAttackAbility::OnAbilityActivated()
+{
+	HandleActivateAbility(
+		GetCurrentAbilitySpecHandle(),
+		GetCurrentActorInfo(),
+		GetCurrentActivationInfo(),
+		nullptr);
+}
+
+void ULB_BossAttackAbility::HandleActivateAbility(const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo,
+	const FGameplayEventData* TriggerEventData)
+{
+	AActor* AvatarActor = ActorInfo->AvatarActor.Get();
 	PlayPrimaryMontage(AvatarActor);
 
 	TArray<AActor*> HitActors = ULB_BlueprintLibrary::FindDamageableActorsInHitBox(
@@ -126,6 +154,16 @@ void ULB_BossAttackAbility::ActivateAbility(
 
 	UE_LOG(LogTemp, Log, TEXT("[LB BossAttack] %s hit %d actor(s). Damage=%.1f"), *GetNameSafe(AvatarActor), AppliedCount, Damage);
 	EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
+}
+
+void ULB_BossAttackAbility::OnAbilityCancelled()
+{
+	//CancellAbility는 다른 객체에 의해서 종료시킬 때 사용한다.
+	EndAbility(GetCurrentAbilitySpecHandle()
+		,GetCurrentActorInfo()
+		,GetCurrentActivationInfo()
+		,true
+		,true);
 }
 
 UAnimMontage* ULB_BossAttackAbility::SelectNextPrimaryMontage()

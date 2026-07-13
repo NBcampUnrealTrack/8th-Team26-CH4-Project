@@ -4,28 +4,47 @@
 
 #include "CoreMinimal.h"
 #include "Abilities/GameplayAbility.h"
-#include "LB_BossAttackAbility.generated.h"
+#include "LB_BossChargeAbility.generated.h"
 
+USTRUCT(BlueprintType)
+struct FLB_AttackConfig
+{
+	GENERATED_BODY()
+	
+	TSubclassOf<UGameplayEffect> DamageEffect;
+	
+	float Damage = 0.f;
+	
+	float HitBoxRadius = 0.f;
+	
+	float HitBoxForwardOffset = 0.f;
 
-class UAnimMontage;
-class UGameplayEffect;
+	float HitBoxElevationOffset = 0.f;
+
+	bool bDrawHitDebug = false;
+	
+	float KnockbackForce;
+	
+	float KnockbackForceV;
+};
+
 /**
  * 
  */
 UCLASS()
-class LEFTBEHIND_API ULB_BossAttackAbility : public UGameplayAbility
+class LEFTBEHIND_API ULB_BossChargeAbility : public UGameplayAbility
 {
 	GENERATED_BODY()
 	
 public:
-	ULB_BossAttackAbility();
-
+	ULB_BossChargeAbility();
+	
 	virtual void ActivateAbility(
-		const FGameplayAbilitySpecHandle Handle,
-		const FGameplayAbilityActorInfo* ActorInfo,
-		const FGameplayAbilityActivationInfo ActivationInfo,
-		const FGameplayEventData* TriggerEventData
-	) override;
+		const FGameplayAbilitySpecHandle Handle, 
+		const FGameplayAbilityActorInfo* ActorInfo, 
+		const FGameplayAbilityActivationInfo ActivationInfo, 
+		const FGameplayEventData* TriggerEventData) override;
+	
 	
 	UFUNCTION()
 	virtual void OnAbilityActivated();
@@ -39,24 +58,38 @@ public:
 	UFUNCTION()
 	virtual void OnAbilityCancelled();
 	
-
-protected:
-	// 실제 HP를 줄이는 GameplayEffect다. 에디터에서는 GE_Damage를 넣으면 된다.
+	virtual void PlayMontage(AActor* AvatarActor);
+	
+	//Task 생성을 위해서 필요한 Montage
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Attack")
+	TObjectPtr<UAnimMontage> TelegraphMontage;
+	
+	//GA에서 재생된 Montage
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Attack")
+	TObjectPtr<UAnimMontage> PrimaryMontage;
+	
+	//돌진 거리
+	UPROPERTY(EditDefaultsOnly,BlueprintReadOnly,Category="LB|Attack")
+	float ChargingDistance;
+	
+	//넉백 시 밀려나는 수직 파워
+	UPROPERTY(EditDefaultsOnly,BlueprintReadOnly,Category="LB|Attack")
+	float ChargingSpeed;
+	
+	//넉백 시 밀려나는 파워
+	UPROPERTY(EditDefaultsOnly,BlueprintReadOnly,Category="LB|Attack")
+	float KnockbackForce;
+	
+	//넉백 시 밀려나는 수직 파워
+	UPROPERTY(EditDefaultsOnly,BlueprintReadOnly,Category="LB|Attack")
+	float KnockbackForceV;
+	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Attack")
 	TSubclassOf<UGameplayEffect> DamageEffect;
 
-	// 첫 번째 클릭에 재생할 기본 공격 몽타주다.
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Animation")
-	TObjectPtr<UAnimMontage> PrimaryMontageA;
-
-	// 두 번째 클릭에 재생할 기본 공격 몽타주다. 이후 A/B가 반복된다.
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Animation")
-	TObjectPtr<UAnimMontage> PrimaryMontageB;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Attack")
+	bool bIsTelegraph;
 	
-	// 전조 애니메이션을 재생한다.
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Animation")
-	TObjectPtr<UAnimMontage> TelegraphMontage;
-
 	// 공격 몽타주 재생 속도다.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Animation", meta = (ClampMin = "0.01"))
 	float MontagePlayRate = 1.f;
@@ -81,25 +114,8 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Debug")
 	bool bDrawHitDebug = false;
 	
-
-	//밀쳐내는 수평 힘
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Attack")
-	float KnockbackForce;
-	
-	//밀쳐내는 수직 힘
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Attack")
-	float KnockbackForceV;
-	
-	
-	UPROPERTY(EditDefaultsOnly,BlueprintReadOnly,Category = "LB|Attack")
-	bool bIsTelegraph;
-	
-
 private:
-	// InstancedPerActor Ability라서 플레이어마다 A/B 순서를 따로 기억한다.
-	UPROPERTY(Transient)
-	int32 NextMontageIndex = 0;
-
-	UAnimMontage* SelectNextPrimaryMontage();
-	void PlayPrimaryMontage(AActor* AvatarActor);
+	FLB_AttackConfig AttackConfig;
+	
+	
 };

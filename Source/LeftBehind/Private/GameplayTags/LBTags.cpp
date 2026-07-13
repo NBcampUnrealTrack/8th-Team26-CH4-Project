@@ -11,6 +11,7 @@ namespace LBTags
 		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Primary, "LBTags.LBAbilities.Primary", "Tag for the Primary Ability");
 		namespace Enemy
 		{
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Telegraph, "LBTags.LBAbilities.Enemy.Telegraph", "Enemy Telegraph Skill");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Attack, "LBTags.LBAbilities.Enemy.Attack", "Enemy Attack Tag");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(WideAttack, "LBTags.LBAbilities.Enemy.WideAttack", "Enemy Wide Attack Tag");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Charge, "LBTags.LBAbilities.Enemy.Charge", "Enemy Charge Attack Tag");
@@ -47,6 +48,14 @@ namespace LBTags
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Phase2,"LBTags.Events.Enemy.Phase2","Phase2 for BOSS");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Phase3,"LBTags.Events.Enemy.Phase3","Phase3 for BOSS");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Death, "LBTags.Events.Enemy.Death", "Boss death event");
+		}
+	}
+	
+	namespace LBCues
+	{
+		namespace Enemy
+		{
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(TelegraphCue,"LBTags.LBCues.Enemy.TelegraphCue","TelegraphCue for Enemy");
 		}
 	}
 }
