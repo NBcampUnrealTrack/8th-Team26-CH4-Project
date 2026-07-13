@@ -558,7 +558,11 @@ bool FLBRaidDataTableSerializationContractTest::RunTest(const FString& Parameter
 	const FName RolePropertyNames[] = {TEXT("RoleName"), TEXT("RoleSubtitle"), TEXT("RoleIcon"), TEXT("RoleColor"), TEXT("RoleType")};
 	TestStructPropertyOrder(*this, FLBRoleData::StaticStruct(), MakeArrayView(RolePropertyNames));
 	const FName CharacterPropertyNames[] = {
-		TEXT("DisplayName"), TEXT("CardPortraitImage"), TEXT("HUDPortraitImage"), TEXT("RoleType"), TEXT("PreviewMesh"), TEXT("bLocked")
+		TEXT("DisplayName"), TEXT("CardPortraitImage"), TEXT("HUDPortraitImage"), TEXT("RoleType"),
+		TEXT("PreviewMesh"), TEXT("PreviewAnimClass"), TEXT("bLocked"), TEXT("HuntingGrade"),
+		TEXT("AttackPower"), TEXT("Defense"), TEXT("CriticalRate"), TEXT("MoveSpeed"),
+		TEXT("PreviewRenderTarget"), TEXT("PreviewMaterialInstance"), TEXT("MeshOffset"),
+		TEXT("MeshRotation"), TEXT("MeshScale")
 	};
 	TestStructPropertyOrder(*this, FLBCharacterData::StaticStruct(), MakeArrayView(CharacterPropertyNames));
 	return true;

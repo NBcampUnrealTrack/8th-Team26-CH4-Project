@@ -81,8 +81,6 @@ void ULB_CodenameEntryWidget::NativeConstruct()
 	{
 		Controller->OnCodenameSubmissionResult.AddUniqueDynamic(this, &ThisClass::HandleSubmissionResult);
 	}
-	
-	BP_OnWidgetShown();
 }
 
 void ULB_CodenameEntryWidget::NativeDestruct()
@@ -114,25 +112,15 @@ void ULB_CodenameEntryWidget::NativeDestruct()
 
 void ULB_CodenameEntryWidget::HandleConfirmClicked()
 {
-	BP_OnConfirmClicked();
-	//SubmitCurrentText();
+	SubmitCurrentText();
 }
 
 void ULB_CodenameEntryWidget::HandleBackClicked()
 {
-	if (IsValid(NameInput))
-	{
-		NameInput->SetUserFocus(GetOwningPlayer());
-	}
-	
 	if (ALB_MainMenuPlayerController* Controller = Cast<ALB_MainMenuPlayerController>(GetOwningPlayer()))
 	{
-		FInputModeGameAndUI InputMode;
-		Controller->SetInputMode(InputMode);
-		//Controller->SetMenuScreen(ELBMainMenuScreen::Main);
+		Controller->SetMenuScreen(ELBMainMenuScreen::Main);
 	}
-	
-	BP_OnBackClicked();
 }
 
 void ULB_CodenameEntryWidget::HandleTextChanged(const FText& Text)
@@ -145,7 +133,6 @@ void ULB_CodenameEntryWidget::HandleTextChanged(const FText& Text)
 		ConfirmButton->SetIsEnabled(bLocallyValid);
 	}
 	SetErrorText(FText::GetEmpty());
-	BP_OnTextChanged(Text, bLocallyValid);
 }
 
 void ULB_CodenameEntryWidget::HandleTextCommitted(const FText& Text, ETextCommit::Type CommitMethod)
@@ -169,7 +156,6 @@ void ULB_CodenameEntryWidget::HandleSubmissionResult(
 			NameInput->SetKeyboardFocus();
 		}
 	}
-	BP_OnSubmissionResult(Result);
 }
 
 void ULB_CodenameEntryWidget::SubmitCurrentText()

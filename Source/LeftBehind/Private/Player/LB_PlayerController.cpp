@@ -418,6 +418,7 @@ void ALB_PlayerController::SecondaryPressed()
 	}
 	ServerActivateSecondary();
 }
+
 void ALB_PlayerController::PrimaryReleased()
 {
 	// Completed와 Canceled가 같은 프레임에 들어와도 release RPC는 한 번만 전송한다.

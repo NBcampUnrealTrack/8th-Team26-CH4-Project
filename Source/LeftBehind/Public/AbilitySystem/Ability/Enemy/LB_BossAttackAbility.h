@@ -73,7 +73,7 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Attack")
 	float HitBoxForwardOffset = 170.f;
 
-	// 바닥보다 조금 위에서 판정하도록 높이를 올려 캐릭터 캡슐과 안정적으로 겹치게 한다.
+	// 바닥보다 조금 위에서 판정하도록 높이를 올려 보스 캡슐과 안정적으로 겹치게 한다.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Attack")
 	float HitBoxElevationOffset = 80.f;
 
@@ -81,7 +81,6 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Debug")
 	bool bDrawHitDebug = false;
 	
-
 	//밀쳐내는 수평 힘
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Attack")
 	float KnockbackForce;
@@ -90,7 +89,7 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Attack")
 	float KnockbackForceV;
 	
-	
+
 	UPROPERTY(EditDefaultsOnly,BlueprintReadOnly,Category = "LB|Attack")
 	bool bIsTelegraph;
 	
