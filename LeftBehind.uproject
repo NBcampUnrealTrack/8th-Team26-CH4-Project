@@ -38,6 +38,13 @@
 			]
 		},
 		{
+			"Name": "XRBase",
+			"Enabled": true,
+			"PlatformAllowList": [
+				"Win64"
+			]
+		},
+		{
 			"Name": "FabLauncher",
 			"Enabled": false,
 			"SupportedTargetPlatforms": [

@@ -1,0 +1,45 @@
+name: EOS repository hygiene
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  eos-repository-hygiene:
+    name: Reject tracked EOS credentials
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Test EOS repository hygiene
+        shell: pwsh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if ($env:EVENT_NAME -eq 'pull_request') {
+            $commitRange = "$env:PR_BASE_SHA..$env:PR_HEAD_SHA"
+          }
+          elseif ($env:EVENT_NAME -eq 'push' -and
+                  $env:BEFORE_SHA -match '^[0-9a-f]{40}$' -and
+                  $env:BEFORE_SHA -notmatch '^0{40}$') {
+            $commitRange = "$env:BEFORE_SHA..$env:GITHUB_SHA"
+          }
+          else {
+            # Manual runs and first/new-branch pushes scan all history reachable from the tip.
+            $commitRange = $env:GITHUB_SHA
+          }
+
+          & .\Scripts\TestEOSRepositoryHygiene.ps1 -CommitRange $commitRange

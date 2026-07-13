@@ -12,6 +12,10 @@ class LEFTBEHIND_API ULB_MainMenuRootWidget : public UUserWidget
 {
 	GENERATED_BODY()
 
+public:
+	/** Opens the existing Start/room-entry panel in WBP_MainMenu. */
+	void ShowRoomEntryPanel();
+
 protected:
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
@@ -20,6 +24,16 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UWidget> StartButton;
 
+	UPROPERTY(Transient)
+	TObjectPtr<UWidget> BackButton;
+
 	UFUNCTION()
 	void HandleStartClicked();
+
+	UFUNCTION()
+	void HandleBackClicked();
+
+	bool RunBlueprintTransition(FName FunctionName);
+	void ShowRootPanelFallback();
+	void ShowRoomEntryPanelFallback();
 };

@@ -29,6 +29,13 @@ namespace
 {
     constexpr float LBFallbackRaidTimeLimitSec = 300.f;
 
+    bool LBIsActiveRaidState(const ELBRaidState RaidState)
+    {
+        return RaidState == ELBRaidState::Waiting
+            || RaidState == ELBRaidState::Countdown
+            || RaidState == ELBRaidState::Battle;
+    }
+
     void LBRaidDebug(UWorld* World, const FString& Message, const FColor Color = FColor::Yellow, const float Duration = 5.f)
     {
         (void)World;
@@ -149,18 +156,7 @@ void ALB_RaidGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 bool ALB_RaidGameMode::CanReturnToMainMenu(const APlayerController* RequestingController) const
 {
-    if (!HasAuthority()
-        || bReturnTravelInProgress
-        || !IsValid(RequestingController)
-        || RequestingController->GetWorld() != GetWorld()
-        || !RequestingController->HasAuthority()
-        || !RequestingController->IsLocalController())
-    {
-        return false;
-    }
-
-    const ENetMode NetMode = GetNetMode();
-    if (NetMode != NM_ListenServer && NetMode != NM_Standalone)
+    if (!IsValidLocalHostRequest(RequestingController) || bReturnTravelInProgress)
     {
         return false;
     }
@@ -193,34 +189,136 @@ bool ALB_RaidGameMode::TryReturnToMainMenu(APlayerController* RequestingControll
         return false;
     }
 
-    FString MainMenuPackageName;
-    if (!GetMainMenuMapPackageName(MainMenuPackageName))
+    return StartMainMenuTravel(TEXT("ResultReturn"));
+}
+
+bool ALB_RaidGameMode::CanSetHostPause(const APlayerController* RequestingController) const
+{
+    if (!IsValidLocalHostRequest(RequestingController) || bReturnTravelInProgress)
     {
         return false;
     }
 
-    bReturnTravelInProgress = true;
-    // Blueprint defaults가 바뀌어도 기존 EOS 파티/PlayerState 선택을 유지하도록 seamless로 고정한다.
-    bUseSeamlessTravel = true;
+    const ALB_RaidGameState* RaidGameState = GetGameState<ALB_RaidGameState>();
+    return IsValid(RaidGameState) && LBIsActiveRaidState(RaidGameState->RaidState);
+}
 
-    UWorld* World = GetWorld();
-    if (!IsValid(World) || !World->ServerTravel(MainMenuPackageName, false))
+bool ALB_RaidGameMode::TrySetHostPause(APlayerController* RequestingController, const bool bShouldPause)
+{
+    ALB_RaidGameState* RaidGameState = GetGameState<ALB_RaidGameState>();
+    if (!IsValidLocalHostRequest(RequestingController) || !IsValid(RaidGameState))
     {
-        bReturnTravelInProgress = false;
+        return false;
+    }
+
+    if (!bShouldPause)
+    {
+        // 소유한 Pause는 Result 전환이나 travel 시작 뒤에도 반드시 해제할 수 있어야 한다.
+        if (!RaidGameState->bHostPauseActive)
+        {
+            return true;
+        }
+
+        if (RequestingController->IsPaused() && !RequestingController->SetPause(false))
+        {
+            UE_LOG(
+                LogLBRaidGameMode,
+                Error,
+                TEXT("[RaidGM] Failed to release host-owned world pause. Requester=%s"),
+                *GetNameSafe(RequestingController));
+            return false;
+        }
+
+        RaidGameState->SetHostPauseActive_ServerOnly(false);
+        return true;
+    }
+
+    if (!CanSetHostPause(RequestingController))
+    {
+        UE_LOG(
+            LogLBRaidGameMode,
+            Verbose,
+            TEXT("[RaidGM] Host pause rejected. Requester=%s State=%d Travel=%d"),
+            *GetNameSafe(RequestingController),
+            static_cast<int32>(RaidGameState->RaidState),
+            bReturnTravelInProgress ? 1 : 0);
+        return false;
+    }
+
+    if (RaidGameState->bHostPauseActive)
+    {
+        return RequestingController->IsPaused();
+    }
+
+    if (!RequestingController->SetPause(true))
+    {
         UE_LOG(
             LogLBRaidGameMode,
             Error,
-            TEXT("[RaidGM] Return ServerTravel failed immediately. URL=%s"),
-            *MainMenuPackageName);
+            TEXT("[RaidGM] Failed to acquire world pause. Requester=%s"),
+            *GetNameSafe(RequestingController));
         return false;
     }
 
-    UE_LOG(
-        LogLBRaidGameMode,
-        Log,
-        TEXT("[RaidGM] Starting seamless ServerTravel to main menu. URL=%s"),
-        *MainMenuPackageName);
+    RaidGameState->SetHostPauseActive_ServerOnly(true);
     return true;
+}
+
+bool ALB_RaidGameMode::CanAbortRaidToRoom(const APlayerController* RequestingController) const
+{
+    if (!IsValidLocalHostRequest(RequestingController) || bReturnTravelInProgress)
+    {
+        return false;
+    }
+
+    const ALB_RaidGameState* RaidGameState = GetGameState<ALB_RaidGameState>();
+    if (!IsValid(RaidGameState) || !LBIsActiveRaidState(RaidGameState->RaidState))
+    {
+        return false;
+    }
+
+    FString MainMenuPackageName;
+    return GetMainMenuMapPackageName(MainMenuPackageName);
+}
+
+bool ALB_RaidGameMode::TryAbortRaidToRoom(APlayerController* RequestingController)
+{
+    if (!CanAbortRaidToRoom(RequestingController))
+    {
+        UE_LOG(
+            LogLBRaidGameMode,
+            Verbose,
+            TEXT("[RaidGM] Active raid abort rejected. Requester=%s State=%d Travel=%d"),
+            *GetNameSafe(RequestingController),
+            GetGameState<ALB_RaidGameState>()
+                ? static_cast<int32>(GetGameState<ALB_RaidGameState>()->RaidState)
+                : INDEX_NONE,
+            bReturnTravelInProgress ? 1 : 0);
+        return false;
+    }
+
+    ALB_RaidGameState* RaidGameState = GetGameState<ALB_RaidGameState>();
+    const bool bRestoreHostPauseOnFailure = IsValid(RaidGameState) && RaidGameState->bHostPauseActive;
+    if (bRestoreHostPauseOnFailure && !TrySetHostPause(RequestingController, false))
+    {
+        return false;
+    }
+
+    if (StartMainMenuTravel(TEXT("ActiveRaidAbort")))
+    {
+        return true;
+    }
+
+    // ServerTravel이 즉시 실패했다면 플레이를 재개시키지 않도록 이전 Pause 소유권을 복원한다.
+    if (bRestoreHostPauseOnFailure && !TrySetHostPause(RequestingController, true))
+    {
+        UE_LOG(
+            LogLBRaidGameMode,
+            Error,
+            TEXT("[RaidGM] Failed to restore host pause after immediate travel failure."));
+    }
+
+    return false;
 }
 
 ALB_RaidGameState* ALB_RaidGameMode::GetLBRaidGameState()
@@ -275,6 +373,74 @@ bool ALB_RaidGameMode::GetMainMenuMapPackageName(FString& OutPackageName) const
         return false;
     }
 
+    return true;
+}
+
+bool ALB_RaidGameMode::IsValidLocalHostRequest(const APlayerController* RequestingController) const
+{
+    if (!HasAuthority()
+        || !IsValid(RequestingController)
+        || RequestingController->GetWorld() != GetWorld()
+        || !RequestingController->HasAuthority()
+        || !RequestingController->IsLocalController())
+    {
+        return false;
+    }
+
+    const ENetMode NetMode = GetNetMode();
+    return NetMode == NM_ListenServer || NetMode == NM_Standalone;
+}
+
+bool ALB_RaidGameMode::StartMainMenuTravel(const TCHAR* RequestContext)
+{
+    if (bReturnTravelInProgress)
+    {
+        return false;
+    }
+
+    FString MainMenuPackageName;
+    if (!GetMainMenuMapPackageName(MainMenuPackageName))
+    {
+        return false;
+    }
+
+    UWorld* World = GetWorld();
+    // UWorld::ServerTravel은 이미 다른 NextURL이 잡혀 있을 때 새 요청을 시작하지 않고도 true를
+    // 반환할 수 있다. 그 경우 메뉴/Pause 복구 경로를 타도록 명시적인 시작 실패로 취급한다.
+    if (!IsValid(World) || !World->NextURL.IsEmpty() || World->IsInSeamlessTravel())
+    {
+        UE_LOG(
+            LogLBRaidGameMode,
+            Warning,
+            TEXT("[RaidGM] ServerTravel start rejected by an existing travel. Context=%s NextURL=%s Seamless=%d"),
+            RequestContext,
+            IsValid(World) ? *World->NextURL : TEXT("<invalid world>"),
+            IsValid(World) && World->IsInSeamlessTravel() ? 1 : 0);
+        return false;
+    }
+
+    bReturnTravelInProgress = true;
+    // Blueprint defaults가 바뀌어도 기존 EOS 파티/PlayerState 선택을 유지하도록 seamless로 고정한다.
+    bUseSeamlessTravel = true;
+
+    if (!World->ServerTravel(MainMenuPackageName, false))
+    {
+        bReturnTravelInProgress = false;
+        UE_LOG(
+            LogLBRaidGameMode,
+            Error,
+            TEXT("[RaidGM] ServerTravel failed immediately. Context=%s URL=%s"),
+            RequestContext,
+            *MainMenuPackageName);
+        return false;
+    }
+
+    UE_LOG(
+        LogLBRaidGameMode,
+        Log,
+        TEXT("[RaidGM] Starting seamless ServerTravel to main menu. Context=%s URL=%s"),
+        RequestContext,
+        *MainMenuPackageName);
     return true;
 }
 

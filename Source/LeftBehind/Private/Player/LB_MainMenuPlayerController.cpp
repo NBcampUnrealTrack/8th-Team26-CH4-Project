@@ -6,6 +6,7 @@
 #include "GameMode/LB_MainMenuGameMode.h"
 #include "Player/LB_PlayerState.h"
 #include "System/Online/LB_OnlineSessionSubsystem.h"
+#include "UI/MainMenu/LB_MainMenuRootWidget.h"
 #include "UI/MainMenu/LB_MultiplayerHubWidget.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogLBMainMenuPlayerController, Log, All);
@@ -21,7 +22,7 @@ ALB_MainMenuPlayerController::ALB_MainMenuPlayerController()
 	CodenameWidgetClass = TSoftClassPtr<UUserWidget>(FSoftObjectPath(
 		TEXT("/Game/LeftBehind/UI/MainMenu/WBP_CodenameEntry.WBP_CodenameEntry_C")));
 	CharacterSelectWidgetClass = TSoftClassPtr<UUserWidget>(FSoftObjectPath(
-		TEXT("/Game/LeftBehind/UI/MainMenu/WBP_CharacterSelect.WBP_CharacterSelect_C")));
+		TEXT("/Game/LeftBehind/UI/CharacterSelect/WBP_LB_CharacterSelectWidget.WBP_LB_CharacterSelectWidget_C")));
 	WaitingWidgetClass = TSoftClassPtr<UUserWidget>(FSoftObjectPath(
 		TEXT("/Game/LeftBehind/UI/MainMenu/WBP_WaitingRoom.WBP_WaitingRoom_C")));
 }
@@ -83,6 +84,11 @@ void ALB_MainMenuPlayerController::BeginOnlinePlay()
 	{
 		return;
 	}
+	if (IsLocalNetworkPIE())
+	{
+		ShowInitialOnlineRoomScreen();
+		return;
+	}
 
 	ULB_OnlineSessionSubsystem* OnlineSubsystem = GetGameInstance()
 		? GetGameInstance()->GetSubsystem<ULB_OnlineSessionSubsystem>()
@@ -137,8 +143,23 @@ void ALB_MainMenuPlayerController::SetMenuScreen(ELBMainMenuScreen NewScreen)
 		return;
 	}
 
+	if (NewScreen != ELBMainMenuScreen::Main)
+	{
+		bShowRoomEntryAfterMainLoad = false;
+	}
 	DesiredScreen = NewScreen;
 	ShowDesiredMenuScreen();
+}
+
+void ALB_MainMenuPlayerController::ShowRoomEntryScreen()
+{
+	if (bMenuUITeardown || GetNetMode() == NM_DedicatedServer || !IsLocalController())
+	{
+		return;
+	}
+
+	bShowRoomEntryAfterMainLoad = true;
+	SetMenuScreen(ELBMainMenuScreen::Main);
 }
 
 void ALB_MainMenuPlayerController::SubmitCodename(const FText& RawCodename)
@@ -227,6 +248,7 @@ void ALB_MainMenuPlayerController::TeardownMenuUI()
 	WaitingWidget = nullptr;
 	DesiredScreen = ELBMainMenuScreen::None;
 	VisibleScreen = ELBMainMenuScreen::None;
+	bShowRoomEntryAfterMainLoad = false;
 }
 
 void ALB_MainMenuPlayerController::ShowDesiredMenuScreen()
@@ -259,6 +281,18 @@ void ALB_MainMenuPlayerController::ShowDesiredMenuScreen()
 		}
 		ExistingWidget->SetVisibility(ESlateVisibility::Visible);
 		VisibleScreen = DesiredScreen;
+		if (VisibleScreen == ELBMainMenuScreen::Main && bShowRoomEntryAfterMainLoad)
+		{
+			bShowRoomEntryAfterMainLoad = false;
+			if (ULB_MainMenuRootWidget* MainMenuRoot = Cast<ULB_MainMenuRootWidget>(ExistingWidget))
+			{
+				MainMenuRoot->ShowRoomEntryPanel();
+			}
+			else
+			{
+				UE_LOG(LogLBMainMenuPlayerController, Error, TEXT("Main menu widget does not use ULB_MainMenuRootWidget."));
+			}
+		}
 		ApplyMenuInputMode(ExistingWidget);
 		return;
 	}
@@ -433,6 +467,15 @@ void ALB_MainMenuPlayerController::UnbindOnlineSubsystem()
 
 void ALB_MainMenuPlayerController::ShowInitialOnlineRoomScreen()
 {
+	if (IsLocalNetworkPIE())
+	{
+		const ALB_PlayerState* LBPlayerState = GetPlayerState<ALB_PlayerState>();
+		SetMenuScreen(IsValid(LBPlayerState) && LBPlayerState->IsCodenameConfirmed()
+			? ELBMainMenuScreen::Waiting
+			: ELBMainMenuScreen::Codename);
+		return;
+	}
+
 	ULB_OnlineSessionSubsystem* OnlineSubsystem = GetGameInstance()
 		? GetGameInstance()->GetSubsystem<ULB_OnlineSessionSubsystem>()
 		: nullptr;
@@ -453,6 +496,18 @@ void ALB_MainMenuPlayerController::ShowInitialOnlineRoomScreen()
 	SetMenuScreen(IsValid(LBPlayerState) && LBPlayerState->IsCodenameConfirmed()
 		? ELBMainMenuScreen::Waiting
 		: ELBMainMenuScreen::Codename);
+}
+
+bool ALB_MainMenuPlayerController::IsLocalNetworkPIE() const
+{
+#if WITH_EDITOR
+	const UWorld* World = GetWorld();
+	return IsValid(World)
+		&& World->WorldType == EWorldType::PIE
+		&& GetNetMode() != NM_Standalone;
+#else
+	return false;
+#endif
 }
 
 void ALB_MainMenuPlayerController::HandleOnlineStateChanged(

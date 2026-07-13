@@ -1,7 +1,9 @@
 #include "System/Online/LB_OnlineSessionSubsystem.h"
 
-#include "System/Online/LB_OnlineSessionPolicy.h"
+#include "System/Online/LB_OnlineInvitePolicy.h"
+#include "System/Online/LB_OnlineLoginPolicy.h"
 
+#include "Containers/Ticker.h"
 #include "Engine/Engine.h"
 #include "Engine/NetDriver.h"
 #include "GameFramework/PlayerController.h"
@@ -10,8 +12,8 @@
 #include "Interfaces/OnlineSessionInterface.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/CommandLine.h"
+#include "Misc/ConfigCacheIni.h"
 #include "Misc/PackageName.h"
-#include "Misc/Parse.h"
 #include "Online/OnlineSessionNames.h"
 #include "OnlineSessionSettings.h"
 #include "OnlineSubsystem.h"
@@ -23,8 +25,131 @@ DEFINE_LOG_CATEGORY_STATIC(LogLBOnlineSession, Log, All);
 namespace
 {
 	constexpr int32 LBLocalUserNum = 0;
-	const FName LBExpectedSubsystemName(TEXT("EOS"));
+	constexpr int32 LBAutomaticWaitingPhaseMaxAttempts = 4;
+	constexpr float LBAutomaticWaitingPhaseRetryBaseDelaySec = 1.0f;
 	const FName LBMainMenuMap(TEXT("/Game/LeftBehind/Maps/L_MainMenu"));
+
+	namespace LBOnlineSessionPolicy
+	{
+		constexpr int32 MaxPublicConnections = 4;
+		constexpr int32 MaxSearchResults = 50;
+		const FName RoomPhaseKey(TEXT("ROOM_PHASE"));
+		const FString WaitingPhaseValue(TEXT("Waiting"));
+		const FString InRaidPhaseValue(TEXT("InRaid"));
+
+		FName GetRoomPhaseKey()
+		{
+			return RoomPhaseKey;
+		}
+
+		const FString& GetWaitingPhaseValue()
+		{
+			return WaitingPhaseValue;
+		}
+
+		const FString& GetInRaidPhaseValue()
+		{
+			return InRaidPhaseValue;
+		}
+
+		void ApplyWaitingPolicy(FOnlineSessionSettings& Settings)
+		{
+			Settings.NumPublicConnections = MaxPublicConnections;
+			Settings.NumPrivateConnections = 0;
+			Settings.bShouldAdvertise = true;
+			Settings.bAllowJoinInProgress = true;
+			Settings.bIsLANMatch = false;
+			Settings.bIsDedicated = false;
+			Settings.bUsesStats = false;
+			Settings.bAllowInvites = true;
+			Settings.bUsesPresence = true;
+			Settings.bAllowJoinViaPresence = true;
+			Settings.bAllowJoinViaPresenceFriendsOnly = false;
+			Settings.bAntiCheatProtected = false;
+			Settings.bUseLobbiesIfAvailable = true;
+			Settings.bUseLobbiesVoiceChatIfAvailable = false;
+			Settings.Set(
+				GetRoomPhaseKey(),
+				GetWaitingPhaseValue(),
+				EOnlineDataAdvertisementType::ViaOnlineService);
+			Settings.Set(
+				SETTING_HOST_MIGRATION,
+				false,
+				EOnlineDataAdvertisementType::DontAdvertise);
+		}
+
+		FOnlineSessionSettings MakeWaitingRoomSettings()
+		{
+			FOnlineSessionSettings Settings;
+			ApplyWaitingPolicy(Settings);
+			return Settings;
+		}
+
+		void ApplyInRaidPolicy(FOnlineSessionSettings& Settings, const int32 CurrentPlayers)
+		{
+			Settings.NumPublicConnections = 0;
+			Settings.NumPrivateConnections = FMath::Clamp(CurrentPlayers, 1, MaxPublicConnections);
+			Settings.bShouldAdvertise = false;
+			Settings.bAllowJoinInProgress = false;
+			Settings.bAllowInvites = false;
+			Settings.bUsesPresence = true;
+			Settings.bAllowJoinViaPresence = false;
+			Settings.bAllowJoinViaPresenceFriendsOnly = false;
+			Settings.bIsLANMatch = false;
+			Settings.bUseLobbiesIfAvailable = true;
+			Settings.bUseLobbiesVoiceChatIfAvailable = false;
+			Settings.Set(
+				GetRoomPhaseKey(),
+				GetInRaidPhaseValue(),
+				EOnlineDataAdvertisementType::ViaOnlineService);
+			Settings.Set(
+				SETTING_HOST_MIGRATION,
+				false,
+				EOnlineDataAdvertisementType::DontAdvertise);
+		}
+
+		bool CanStartExclusiveOperation(
+			const bool bHasPendingOperation,
+			const bool bConnectionTravelPending,
+			const bool bMenuTravelPending)
+		{
+			return !bHasPendingOperation && !bConnectionTravelPending && !bMenuTravelPending;
+		}
+
+		bool CanAcceptInvite(
+			const FOnlineSessionSettings& InviteSettings,
+			const int32 NumOpenPublicConnections,
+			const int32 ExpectedBuildUniqueId)
+		{
+			FString Phase;
+			return InviteSettings.BuildUniqueId == ExpectedBuildUniqueId
+				&& InviteSettings.Get(GetRoomPhaseKey(), Phase)
+				&& Phase == GetWaitingPhaseValue()
+				&& InviteSettings.NumPublicConnections > 0
+				&& NumOpenPublicConnections > 0;
+		}
+
+		bool IsCurrentJoinSelection(const TArray<FLBRoomSummary>& Rooms, const FString& RoomId)
+		{
+			if (RoomId.IsEmpty())
+			{
+				return false;
+			}
+
+			int32 MatchingRooms = 0;
+			bool bMatchingRoomCanJoin = false;
+			for (const FLBRoomSummary& Room : Rooms)
+			{
+				if (Room.RoomId == RoomId)
+				{
+					++MatchingRooms;
+					bMatchingRoomCanJoin = Room.bCanJoin;
+				}
+			}
+
+			return MatchingRooms == 1 && bMatchingRoomCanJoin;
+		}
+	}
 
 	enum class ELBPendingOnlineOperation : uint8
 	{
@@ -50,6 +175,14 @@ namespace
 			NSLOCTEXT("LeftBehind", "OnlineActionFailedWithDetail", "{0}에 실패했습니다: {1}"),
 			Action,
 			FText::FromString(Detail));
+	}
+
+	FText MakeEOSUnavailableError()
+	{
+		return NSLOCTEXT(
+			"LeftBehind",
+			"EOSUnavailable",
+			"EOS를 초기화하지 못했습니다. DefaultEngine.ini의 EOS 기본값과 Config/GeneratedEngine.ini의 LeftBehindDev Artifact를 확인한 뒤 Unreal Editor를 완전히 다시 시작해 주세요.");
 	}
 }
 
@@ -82,20 +215,20 @@ public:
 				&FLBOnlineSessionRuntime::HandleTravelFailure);
 		}
 
-		OnlineSubsystem = Online::GetSubsystem(OwnerSubsystem->GetWorld());
+		OnlineSubsystem = Online::GetSubsystem(
+			OwnerSubsystem->GetWorld(),
+			FName(TEXT("EOS")));
 		if (!OnlineSubsystem)
 		{
-			ReportError(
-				NSLOCTEXT("LeftBehind", "OnlineSubsystemMissing", "온라인 서비스가 시작되지 않았습니다. EOS 설정을 확인해 주세요."),
-				ELBOnlineState::Error);
+			ReportError(MakeEOSUnavailableError(), ELBOnlineState::Error);
 			return;
 		}
 
-		if (OnlineSubsystem->GetSubsystemName() != LBExpectedSubsystemName)
+		if (OnlineSubsystem->GetSubsystemName() != FName(TEXT("EOS")))
 		{
 			ReportError(
 				FText::Format(
-					NSLOCTEXT("LeftBehind", "WrongOnlineSubsystem", "EOS 대신 {0} 온라인 서비스가 선택되었습니다. EOS 설정을 확인해 주세요."),
+					NSLOCTEXT("LeftBehind", "WrongOnlineSubsystem", "EOS 대신 {0} 온라인 서비스가 선택되었습니다. DefaultEngine.ini를 확인해 주세요."),
 					FText::FromName(OnlineSubsystem->GetSubsystemName())),
 				ELBOnlineState::Error);
 			return;
@@ -107,7 +240,7 @@ public:
 		if (!Identity.IsValid() || !Sessions.IsValid())
 		{
 			ReportError(
-				NSLOCTEXT("LeftBehind", "OnlineInterfacesMissing", "EOS 로그인 또는 방 기능을 불러오지 못했습니다. 프로젝트 플러그인 설정을 확인해 주세요."),
+				NSLOCTEXT("LeftBehind", "OnlineInterfacesMissing", "EOS 로그인 또는 방 기능을 불러오지 못했습니다. 프로젝트 플러그인과 Artifact 설정을 확인해 주세요."),
 				ELBOnlineState::Error);
 			return;
 		}
@@ -150,6 +283,7 @@ public:
 
 	void Shutdown()
 	{
+		StopAutomaticWaitingPhaseRecovery();
 		ClearOperationDelegates();
 
 		if (Sessions.IsValid())
@@ -218,29 +352,56 @@ public:
 			FOnLoginCompleteDelegate::CreateSP(
 				AsShared(),
 				&FLBOnlineSessionRuntime::HandleLoginComplete));
-		FString CommandLineAuthType;
-		FParse::Value(FCommandLine::Get(), TEXT("AUTH_TYPE="), CommandLineAuthType);
+		// In-process Online PIE can complete login before the game instance exists.
+		// External PIE processes receive Play Credentials through AUTH_* arguments.
+		const LBOnlineLoginPolicy::ELoginRoute LoginRoute =
+			LBOnlineLoginPolicy::SelectLoginRoute(FCommandLine::Get());
 		bool bLoginStarted = false;
-		if (!CommandLineAuthType.IsEmpty())
+		switch (LoginRoute)
 		{
-			// AutoLogin is the OSSv1 path that consumes Dev Auth Tool command-line credentials.
+		case LBOnlineLoginPolicy::ELoginRoute::AutoLogin:
+			UE_LOG(LogLBOnlineSession, Log, TEXT("Starting EOS AutoLogin from command-line credentials."));
 			bLoginStarted = Identity->AutoLogin(LBLocalUserNum);
-		}
-		else
+			break;
+		case LBOnlineLoginPolicy::ELoginRoute::AccountPortal:
 		{
-			// UE 5.7 binary builds do not persist EOS auth tokens. Calling accountportal
-			// directly avoids the non-callback persistent-auth branch in OnlineSubsystemEOS.
 			FOnlineAccountCredentials AccountPortalCredentials;
 			AccountPortalCredentials.Type = TEXT("accountportal");
 			bLoginStarted = Identity->Login(LBLocalUserNum, AccountPortalCredentials);
+			break;
+		}
+		case LBOnlineLoginPolicy::ELoginRoute::Invalid:
+			break;
 		}
 
 		if (!bLoginStarted)
 		{
 			ClearLoginDelegate();
 			PendingOperation = ELBPendingOnlineOperation::None;
+			FText LoginError;
+			switch (LoginRoute)
+			{
+			case LBOnlineLoginPolicy::ELoginRoute::AutoLogin:
+				LoginError = NSLOCTEXT(
+					"LeftBehind",
+					"AutoLoginNotStarted",
+					"EOS 자동 로그인을 시작하지 못했습니다. AUTH_* 실행 인자와 EOS 인증 설정을 확인해 주세요.");
+				break;
+			case LBOnlineLoginPolicy::ELoginRoute::Invalid:
+				LoginError = NSLOCTEXT(
+					"LeftBehind",
+					"InvalidCommandLineAuth",
+					"EOS 명령줄 인증 설정이 불완전합니다. AUTH_TYPE 및 관련 AUTH_* 실행 인자를 확인해 주세요.");
+				break;
+			case LBOnlineLoginPolicy::ELoginRoute::AccountPortal:
+				LoginError = NSLOCTEXT(
+					"LeftBehind",
+					"AccountPortalLoginNotStarted",
+					"EOS Account Portal 로그인을 시작하지 못했습니다. Artifact와 EAS 설정을 확인해 주세요.");
+				break;
+			}
 			ReportError(
-				NSLOCTEXT("LeftBehind", "AutoLoginNotStarted", "EOS 로그인을 시작하지 못했습니다. Dev Auth Tool 또는 로그인 설정을 확인해 주세요."),
+				LoginError,
 				ELBOnlineState::Error);
 			return false;
 		}
@@ -396,23 +557,78 @@ public:
 
 	bool OpenSocialOverlay()
 	{
-		if (!bInRoom)
+		FText UnavailableReason;
+		if (!CanOpenSocialOverlay(&UnavailableReason))
 		{
-			ReportNonFatalError(NSLOCTEXT("LeftBehind", "InviteOutsideRoom", "친구를 초대하려면 먼저 방에 들어가야 합니다."));
+			ReportNonFatalError(UnavailableReason);
 			return false;
 		}
 
-		if (!ExternalUI.IsValid())
-		{
-			ReportNonFatalError(NSLOCTEXT("LeftBehind", "OverlayUnavailable", "EOS 소셜 오버레이를 사용할 수 없습니다. Overlay Redistributable 설치를 확인해 주세요."));
-			return false;
-		}
-
+		ClearLastError();
 		if (!ExternalUI->ShowFriendsUI(LBLocalUserNum))
 		{
 			ReportNonFatalError(NSLOCTEXT("LeftBehind", "OverlayOpenFailed", "EOS 친구 창을 열지 못했습니다. 오버레이 설치와 친구 권한을 확인해 주세요."));
 			return false;
 		}
+
+		return true;
+	}
+
+	bool CanOpenSocialOverlay(FText* OutUnavailableReason = nullptr) const
+	{
+		if (OutUnavailableReason)
+		{
+			*OutUnavailableReason = FText::GetEmpty();
+		}
+
+		const auto Reject = [OutUnavailableReason](const FText& Reason)
+		{
+			if (OutUnavailableReason)
+			{
+				*OutUnavailableReason = Reason;
+			}
+			return false;
+		};
+
+		if (!bInRoom)
+		{
+			return Reject(NSLOCTEXT("LeftBehind", "InviteOutsideRoom", "친구를 초대하려면 먼저 방에 들어가야 합니다."));
+		}
+		if (!IsLoggedIn())
+		{
+			return Reject(NSLOCTEXT("LeftBehind", "InviteRequiresLogin", "친구를 초대하려면 EOS 로그인이 필요합니다."));
+		}
+		if (!ExternalUI.IsValid())
+		{
+			return Reject(NSLOCTEXT("LeftBehind", "OverlayUnavailable", "EOS 소셜 오버레이를 사용할 수 없습니다. Overlay Redistributable 설치를 확인해 주세요."));
+		}
+
+		bool bOverlayEnabled = false;
+		bool bSocialOverlayEnabled = false;
+		const TCHAR* EOSSettingsSection = TEXT("/Script/OnlineSubsystemEOS.EOSSettings");
+		if (!GConfig
+			|| !GConfig->GetBool(EOSSettingsSection, TEXT("bEnableOverlay"), bOverlayEnabled, GEngineIni)
+			|| !GConfig->GetBool(EOSSettingsSection, TEXT("bEnableSocialOverlay"), bSocialOverlayEnabled, GEngineIni)
+			|| !bOverlayEnabled
+			|| !bSocialOverlayEnabled)
+		{
+			return Reject(NSLOCTEXT(
+				"LeftBehind",
+				"SocialOverlayDisabled",
+				"EOS 친구 오버레이가 꺼져 있습니다. 게임과 에디터를 완전히 종료한 뒤 다시 실행해 주세요."));
+		}
+
+#if WITH_EDITOR
+		const ULB_OnlineSessionSubsystem* OwnerSubsystem = Owner.Get();
+		const UWorld* World = IsValid(OwnerSubsystem) ? OwnerSubsystem->GetWorld() : nullptr;
+		if (IsValid(World) && World->WorldType == EWorldType::PIE)
+		{
+			return Reject(NSLOCTEXT(
+				"LeftBehind",
+				"SocialOverlayUnavailableInPIE",
+				"UE 5.7의 PIE에서는 Epic 친구 오버레이를 열 수 없습니다. 별도 게임 창이나 패키지에서 사용해 주세요."));
+		}
+#endif
 
 		return true;
 	}
@@ -470,6 +686,9 @@ private:
 	FDelegateHandle PostLoadMapHandle;
 	FDelegateHandle NetworkFailureHandle;
 	FDelegateHandle TravelFailureHandle;
+	FTSTicker::FDelegateHandle AutomaticWaitingPhaseRetryHandle;
+	int32 AutomaticWaitingPhaseAttempt = 0;
+	bool bAutomaticWaitingPhaseRecoveryActive = false;
 
 	bool IsLoggedIn() const
 	{
@@ -635,6 +854,7 @@ private:
 			return;
 		}
 
+		const int32 RawSearchResultCount = ActiveSearch->SearchResults.Num();
 		TArray<FLBRoomSummary> NewRooms;
 		RoomResultIndices.Reset();
 		for (int32 Index = 0; Index < ActiveSearch->SearchResults.Num(); ++Index)
@@ -680,6 +900,12 @@ private:
 			const int32 NameOrder = Left.HostDisplayName.Compare(Right.HostDisplayName, ESearchCase::IgnoreCase);
 			return NameOrder == 0 ? Left.RoomId < Right.RoomId : NameOrder < 0;
 		});
+		UE_LOG(
+			LogLBOnlineSession,
+			Log,
+			TEXT("EOS lobby search completed. RawResults=%d PublishedRooms=%d"),
+			RawSearchResultCount,
+			NewRooms.Num());
 
 		ClearLastError();
 		OwnerSubsystem->SetRooms(MoveTemp(NewRooms));
@@ -688,14 +914,14 @@ private:
 
 	bool BeginJoin(FOnlineSessionSearchResult DesiredSession)
 	{
-		// 별도 프로세스라도 같은 Epic 계정이면 EOS P2P 목적지가 자기 자신이 되어
+		// 서로 다른 PIE 인스턴스라도 같은 Epic 계정이면 EOS P2P 목적지가 자기 자신이 되어
 		// handshake가 응답 없이 timeout된다. 네트워크 이동 전에 명확하게 차단한다.
 		if (IsSessionOwnedByLocalUser(DesiredSession))
 		{
 			ReportNonFatalError(NSLOCTEXT(
 				"LeftBehind",
 				"JoinOwnEOSAccountRoom",
-				"같은 Epic 계정으로 만든 방에는 입장할 수 없습니다. 두 번째 프로세스는 Dev Auth Tool의 Player2로 실행하세요."));
+				"같은 Epic 계정으로 만든 방에는 입장할 수 없습니다. 두 번째 PIE 인스턴스가 Play Credentials의 Player2를 사용하게 설정하세요."));
 			return false;
 		}
 
@@ -704,7 +930,7 @@ private:
 			return false;
 		}
 
-		// EOS requires this bit on invite-derived results before JoinSession.
+		// EOS does not restore these bits when it copies lobby search/invite data.
 		DesiredSession.Session.SessionSettings.bUsesPresence = true;
 		DesiredSession.Session.SessionSettings.bUseLobbiesIfAvailable = true;
 		JoinCompleteHandle = Sessions->AddOnJoinSessionCompleteDelegate_Handle(
@@ -749,7 +975,6 @@ private:
 				NSLOCTEXT("LeftBehind", "ConnectStringMissing", "방에는 참가했지만 호스트의 접속 주소를 받지 못했습니다. 다시 시도해 주세요."));
 			return;
 		}
-
 		ULB_OnlineSessionSubsystem* OwnerSubsystem = Owner.Get();
 		APlayerController* PlayerController = OwnerSubsystem && OwnerSubsystem->GetWorld()
 			? OwnerSubsystem->GetWorld()->GetFirstPlayerController()
@@ -855,6 +1080,111 @@ private:
 		OwnerSubsystem->SetState(IsLoggedIn() ? ELBOnlineState::Ready : ELBOnlineState::SignedOut);
 	}
 
+	void CancelAutomaticWaitingPhaseRetryTicker()
+	{
+		if (AutomaticWaitingPhaseRetryHandle.IsValid())
+		{
+			FTSTicker::GetCoreTicker().RemoveTicker(AutomaticWaitingPhaseRetryHandle);
+			AutomaticWaitingPhaseRetryHandle.Reset();
+		}
+	}
+
+	void StopAutomaticWaitingPhaseRecovery()
+	{
+		CancelAutomaticWaitingPhaseRetryTicker();
+		bAutomaticWaitingPhaseRecoveryActive = false;
+		AutomaticWaitingPhaseAttempt = 0;
+	}
+
+	bool ShouldRecoverWaitingPhaseAutomatically() const
+	{
+		const FNamedOnlineSession* NamedSession = Sessions.IsValid()
+			? Sessions->GetNamedSession(NAME_GameSession)
+			: nullptr;
+		return bInRoom
+			&& bRoomHost
+			&& CurrentRoomPhase == ELBRoomPhase::InRaid
+			&& NamedSession
+			&& NamedSession->bHosting;
+	}
+
+	void ScheduleAutomaticWaitingPhaseRetry()
+	{
+		if (!bAutomaticWaitingPhaseRecoveryActive)
+		{
+			return;
+		}
+
+		CancelAutomaticWaitingPhaseRetryTicker();
+		if (AutomaticWaitingPhaseAttempt >= LBAutomaticWaitingPhaseMaxAttempts)
+		{
+			UE_LOG(
+				LogLBOnlineSession,
+				Error,
+				TEXT("EOS room remained InRaid after %d automatic Waiting-phase attempts."),
+				AutomaticWaitingPhaseAttempt);
+			StopAutomaticWaitingPhaseRecovery();
+			return;
+		}
+
+		const float RetryDelay = LBAutomaticWaitingPhaseRetryBaseDelaySec
+			* static_cast<float>(1 << FMath::Max(0, AutomaticWaitingPhaseAttempt - 1));
+		AutomaticWaitingPhaseRetryHandle = FTSTicker::GetCoreTicker().AddTicker(
+			FTickerDelegate::CreateSP(
+				AsShared(),
+				&FLBOnlineSessionRuntime::HandleAutomaticWaitingPhaseRetry),
+			RetryDelay);
+		UE_LOG(
+			LogLBOnlineSession,
+			Warning,
+			TEXT("Retrying EOS room Waiting phase in %.1f seconds (attempt %d/%d completed)."),
+			RetryDelay,
+			AutomaticWaitingPhaseAttempt,
+			LBAutomaticWaitingPhaseMaxAttempts);
+	}
+
+	void TryAutomaticWaitingPhaseRecovery()
+	{
+		if (!bAutomaticWaitingPhaseRecoveryActive || !ShouldRecoverWaitingPhaseAutomatically())
+		{
+			StopAutomaticWaitingPhaseRecovery();
+			return;
+		}
+
+		++AutomaticWaitingPhaseAttempt;
+		UE_LOG(
+			LogLBOnlineSession,
+			Log,
+			TEXT("Starting automatic EOS room Waiting-phase recovery (attempt %d/%d)."),
+			AutomaticWaitingPhaseAttempt,
+			LBAutomaticWaitingPhaseMaxAttempts);
+
+		if (!BeginPhaseUpdate(ELBRoomPhase::Waiting, true))
+		{
+			ScheduleAutomaticWaitingPhaseRetry();
+		}
+	}
+
+	bool HandleAutomaticWaitingPhaseRetry(float DeltaTime)
+	{
+		(void)DeltaTime;
+		AutomaticWaitingPhaseRetryHandle.Reset();
+		TryAutomaticWaitingPhaseRecovery();
+		return false;
+	}
+
+	void StartAutomaticWaitingPhaseRecovery()
+	{
+		StopAutomaticWaitingPhaseRecovery();
+		if (!ShouldRecoverWaitingPhaseAutomatically())
+		{
+			return;
+		}
+
+		bAutomaticWaitingPhaseRecoveryActive = true;
+		TryAutomaticWaitingPhaseRecovery();
+	}
+
 	bool BeginPhaseUpdate(const ELBRoomPhase NewPhase, const bool bAutomatic)
 	{
 		ULB_OnlineSessionSubsystem* OwnerSubsystem = Owner.Get();
@@ -939,6 +1269,9 @@ private:
 
 	void HandleUpdateComplete(const FName SessionName, const bool bWasSuccessful)
 	{
+		const ELBRoomPhase CompletedRoomPhase = PendingRoomPhase;
+		const bool bWasAutomaticWaitingRecovery = bAutomaticWaitingPhaseRecoveryActive
+			&& CompletedRoomPhase == ELBRoomPhase::Waiting;
 		ClearUpdateDelegate();
 		PendingOperation = ELBPendingOnlineOperation::None;
 		ULB_OnlineSessionSubsystem* OwnerSubsystem = Owner.Get();
@@ -951,16 +1284,29 @@ private:
 		{
 			const FText Error = MakeOnlineError(NSLOCTEXT("LeftBehind", "UpdateRoomAction", "방 상태 변경"), FString());
 			ReportError(Error, ELBOnlineState::InRoom);
-			OwnerSubsystem->OnRoomPhaseUpdateComplete.Broadcast(false, PendingRoomPhase, Error);
+			OwnerSubsystem->OnRoomPhaseUpdateComplete.Broadcast(false, CompletedRoomPhase, Error);
+			if (bWasAutomaticWaitingRecovery)
+			{
+				ScheduleAutomaticWaitingPhaseRetry();
+			}
 			return;
 		}
 
-		CurrentRoomPhase = PendingRoomPhase;
+		CurrentRoomPhase = CompletedRoomPhase;
 		ClearLastError();
 		OwnerSubsystem->SetState(CurrentRoomPhase == ELBRoomPhase::InRaid
 			? ELBOnlineState::Traveling
 			: ELBOnlineState::InRoom);
 		OwnerSubsystem->OnRoomPhaseUpdateComplete.Broadcast(true, CurrentRoomPhase, FText::GetEmpty());
+		if (bWasAutomaticWaitingRecovery)
+		{
+			UE_LOG(
+				LogLBOnlineSession,
+				Log,
+				TEXT("EOS room phase returned to Waiting after %d automatic attempt(s)."),
+				AutomaticWaitingPhaseAttempt);
+			StopAutomaticWaitingPhaseRecovery();
+		}
 	}
 
 	void HandleInviteAccepted(
@@ -970,10 +1316,40 @@ private:
 		const FOnlineSessionSearchResult& InviteResult)
 	{
 		(void)UserId;
-		if (!bWasSuccessful || ControllerId != LBLocalUserNum || !InviteResult.IsValid())
+		const bool bSessionInfoValid = InviteResult.IsSessionInfoValid();
+		if (!bWasSuccessful || ControllerId != LBLocalUserNum || !bSessionInfoValid)
+		{
+			UE_LOG(
+				LogLBOnlineSession,
+				Warning,
+				TEXT("EOS invite payload rejected. Success=%d ControllerId=%d ExpectedControllerId=%d SessionInfoValid=%d OwnerResolved=%d"),
+				bWasSuccessful ? 1 : 0,
+				ControllerId,
+				LBLocalUserNum,
+				bSessionInfoValid ? 1 : 0,
+				InviteResult.Session.OwningUserId.IsValid() ? 1 : 0);
+			ReportNonFatalError(NSLOCTEXT("LeftBehind", "InvalidInvite", "친구 초대 정보를 불러오지 못했습니다. 새 초대를 받아 다시 시도해 주세요."));
+			return;
+		}
+
+		static const TArray<FOnlineSessionSearchResult> EmptySearchResults;
+		const TArray<FOnlineSessionSearchResult>& CachedSearchResults = ActiveSearch.IsValid()
+			? ActiveSearch->SearchResults
+			: EmptySearchResults;
+		FOnlineSessionSearchResult JoinResult;
+		if (!LBOnlineInvitePolicy::PrepareAcceptedInvite(InviteResult, CachedSearchResults, JoinResult))
 		{
 			ReportNonFatalError(NSLOCTEXT("LeftBehind", "InvalidInvite", "친구 초대 정보를 불러오지 못했습니다. 새 초대를 받아 다시 시도해 주세요."));
 			return;
+		}
+
+		if (!InviteResult.Session.OwningUserId.IsValid())
+		{
+			UE_LOG(
+				LogLBOnlineSession,
+				Warning,
+				TEXT("EOS invite arrived without a resolved owner. CachedOwnerRestored=%d"),
+				JoinResult.Session.OwningUserId.IsValid() ? 1 : 0);
 		}
 
 		ULB_OnlineSessionSubsystem* OwnerSubsystem = Owner.Get();
@@ -997,8 +1373,8 @@ private:
 		}
 
 		if (!LBOnlineSessionPolicy::CanAcceptInvite(
-			InviteResult.Session.SessionSettings,
-			InviteResult.Session.NumOpenPublicConnections,
+			JoinResult.Session.SessionSettings,
+			JoinResult.Session.NumOpenPublicConnections,
 			GetBuildUniqueId()))
 		{
 			ReportNonFatalError(NSLOCTEXT(
@@ -1009,10 +1385,9 @@ private:
 		}
 
 		OwnerSubsystem->SetState(ELBOnlineState::Ready);
-		FOnlineSessionSearchResult InviteCopy = InviteResult;
-		InviteCopy.Session.SessionSettings.bUsesPresence = true;
-		InviteCopy.Session.SessionSettings.bUseLobbiesIfAvailable = true;
-		BeginJoin(MoveTemp(InviteCopy));
+		JoinResult.Session.SessionSettings.bUsesPresence = true;
+		JoinResult.Session.SessionSettings.bUseLobbiesIfAvailable = true;
+		BeginJoin(MoveTemp(JoinResult));
 	}
 
 	void HandleSessionFailure(const FUniqueNetId& PlayerId, const ESessionFailure::Type FailureType)
@@ -1201,7 +1576,10 @@ private:
 			&& CurrentRoomPhase == ELBRoomPhase::InRaid
 			&& LoadedMapName == FPackageName::GetShortName(LBMainMenuMap.ToString()))
 		{
-			BeginPhaseUpdate(ELBRoomPhase::Waiting, true);
+			// EOS may briefly report another operation as busy immediately after
+			// seamless travel. Retry with bounded exponential backoff so the room
+			// does not remain hidden in the InRaid policy after returning to lobby.
+			StartAutomaticWaitingPhaseRecovery();
 		}
 	}
 
@@ -1317,6 +1695,23 @@ bool ULB_OnlineSessionSubsystem::LeaveRoom()
 bool ULB_OnlineSessionSubsystem::OpenSocialOverlay()
 {
 	return Runtime.IsValid() && Runtime->OpenSocialOverlay();
+}
+
+bool ULB_OnlineSessionSubsystem::CanOpenSocialOverlay(FText* OutUnavailableReason) const
+{
+	if (Runtime.IsValid())
+	{
+		return Runtime->CanOpenSocialOverlay(OutUnavailableReason);
+	}
+
+	if (OutUnavailableReason)
+	{
+		*OutUnavailableReason = NSLOCTEXT(
+			"LeftBehind",
+			"SocialOverlayRuntimeUnavailable",
+			"EOS 친구 오버레이가 아직 준비되지 않았습니다.");
+	}
+	return false;
 }
 
 bool ULB_OnlineSessionSubsystem::LockRoomForRaid()

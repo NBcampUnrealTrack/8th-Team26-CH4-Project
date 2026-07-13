@@ -7,14 +7,19 @@
 #include "System/Raid/LBRaidTypes.h"
 #include "LB_RaidGameState.generated.h"
 
+class ALB_PlayerState;
+
 // 레이드 상태가 Waiting/Countdown/Battle/Result로 바뀔 때 UI가 반응할 수 있게 한다.
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLBRaidStateChanged, ELBRaidState, NewState);
+// Listen Host가 전역 일시정지를 소유하는지 모든 클라이언트 UI에 알린다.
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLBHostPauseChanged, bool, bIsPaused);
 // 보스 HP 표시용 이벤트. GameMode가 BossBase의 HP 변경을 받아 GameState에 기록하면 이 이벤트가 흐른다.
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnLBBossHPChanged, float, CurrentHP, float, MaxHP);
 // 레이드 결과가 확정되었을 때 결과 화면이 구독하는 이벤트.
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLBRaidResultChanged, const FLBRaidResultData&, ResultData);
 // 레이드 종료 후 플레이어별 최종 성과 데이터가 준비되었을 때 UI에 알린다.
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLBRaidScoreboardChanged, const FLBRaidScoreboardData&, ScoreboardData);
+DECLARE_MULTICAST_DELEGATE(FOnLBRaidPlayerArrayChanged);
 
 // 모든 클라이언트가 읽어야 하는 레이드 진행 상태를 복제하는 GameState.
 UCLASS()
@@ -28,9 +33,22 @@ public:
     // 레이드 상태, 시간, 보스 HP, 결과 데이터를 복제 대상으로 등록한다.
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
+    // seamless travel 및 late join으로 유효한 PlayerState 목록이 바뀌면 파티 UI에 알린다.
+    virtual void AddPlayerState(APlayerState* PlayerState) override;
+    virtual void RemovePlayerState(APlayerState* PlayerState) override;
+
+    FOnLBRaidPlayerArrayChanged OnRaidPlayerArrayChanged;
+
+    // seamless travel 중 이전 맵 PlayerState를 제외한 현재 레이드 명단을 반환한다.
+    void GetCurrentRaidPlayerStates(TArray<ALB_PlayerState*>& OutPlayerStates) const;
+
     // 상태 변경을 블루프린트/UI에 전달한다.
     UPROPERTY(BlueprintAssignable)
     FOnLBRaidStateChanged OnRaidStateChanged;
+
+    // 방장의 전역 일시정지 상태 변경을 블루프린트/UI에 전달한다.
+    UPROPERTY(BlueprintAssignable, Category="LB|Raid|Pause")
+    FOnLBHostPauseChanged OnHostPauseChanged;
 
     // 보스 HP 변경을 블루프린트/UI에 전달한다.
     UPROPERTY(BlueprintAssignable)
@@ -47,6 +65,10 @@ public:
     // 현재 레이드 단계. RepNotify로 상태 변경 이벤트와 디버그 표시를 실행한다.
     UPROPERTY(ReplicatedUsing=OnRep_RaidState, BlueprintReadOnly, Category="LB|Raid")
     ELBRaidState RaidState = ELBRaidState::Waiting;
+
+    // true면 Listen Host가 레이드 월드의 전역 일시정지를 소유하고 있다.
+    UPROPERTY(ReplicatedUsing=OnRep_HostPauseActive, BlueprintReadOnly, Category="LB|Raid|Pause")
+    bool bHostPauseActive = false;
 
     // 서버 시간 기준 카운트다운 종료 시각. 클라이언트가 남은 시간을 동일하게 계산한다.
     UPROPERTY(Replicated, BlueprintReadOnly, Category="LB|Raid")
@@ -94,6 +116,8 @@ public:
 
     // 서버에서 레이드 상태를 바꾸고 변경 이벤트를 즉시 발생시킨다.
     void SetRaidState_ServerOnly(ELBRaidState NewState);
+    // 서버에서 방장 전역 일시정지 상태를 바꾸고 모든 관찰자에게 즉시 알린다.
+    void SetHostPauseActive_ServerOnly(bool bNewHostPauseActive);
     // 서버에서 보스 HP 표시 값을 갱신한다.
     void SetBossHP_ServerOnly(float CurrentHP, float MaxHP);
     // 서버에서 최종 결과 데이터를 확정한다.
@@ -117,6 +141,10 @@ protected:
     // RaidState 복제 후 상태 변경 이벤트와 디버그 로그를 실행한다.
     UFUNCTION()
     void OnRep_RaidState();
+
+    // 방장 전역 일시정지 상태가 복제된 직후 UI 갱신 이벤트를 방송한다.
+    UFUNCTION()
+    void OnRep_HostPauseActive();
 
     // BossCurrentHP/BossMaxHP 복제 후 HP 변경 이벤트와 디버그 로그를 실행한다.
     UFUNCTION()
