@@ -63,6 +63,15 @@ protected:
 	// true면 공격 범위는 빨간 구체, 맞은 대상은 초록 구체로 보여 디버깅하기 쉽다.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Debug")
 	bool bDrawHitDebug = false;
+	
+
+	//밀쳐내는 수평 힘
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Attack")
+	float KnockbackForce;
+	
+	//밀쳐내는 수직 힘
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Attack")
+	float KnockbackForceV;
 
 private:
 	// InstancedPerActor Ability라서 플레이어마다 A/B 순서를 따로 기억한다.
