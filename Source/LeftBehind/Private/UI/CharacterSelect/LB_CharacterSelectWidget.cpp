@@ -51,7 +51,8 @@ void ULB_CharacterSelectWidget::BuildCharacterCards()
 		if (!Data) continue;
 		
 		// [2] Row Name으로 숫자값 조회
-		int64 EnumValue = CharEnum->GetValueByName(RowName);
+		FString FullEnumName = FString::Printf(TEXT("ELBCharacterID::%s"), *RowName.ToString());
+		int64 EnumValue = CharEnum->GetValueByName(FName(*FullEnumName));
 		
 		// 매칭되는 Enum이 없으면 INDEX_NONE(-1) 반환
 		if (EnumValue == INDEX_NONE) continue;
@@ -88,6 +89,8 @@ void ULB_CharacterSelectWidget::BuildCharacterCards()
 
 void ULB_CharacterSelectWidget::OnCharacterCardClicked(ELBCharacterID ClickedID)
 {
+	UE_LOG(LogTemp, Log, TEXT("[SelectWidget] OnCharacterCardClicked: %d"),
+		static_cast<int32>(ClickedID));
 	if (IsValid(PreviousSelectedCard))
 	{
 		PreviousSelectedCard->SetSelected(false);
@@ -105,19 +108,29 @@ void ULB_CharacterSelectWidget::OnCharacterCardClicked(ELBCharacterID ClickedID)
 	
 	SelectedCharacterID = ClickedID;
 	
-	if (!CharacterDataTable) return;
+	if (!CharacterDataTable)
+	{
+		return;
+	}
 	
 	// ELBCharacterID -> DT_CharacterData의 RowName (FName) 변환 과정
 	// [1] ELBCharacterID Enum 정보를 가져옴
 	const UEnum* CharEnum = StaticEnum<ELBCharacterID>();
-	if (!CharEnum) return;
+	if (!CharEnum)
+	{
+		return;
+	}
 	
-	// [2] 숫자값으로 Row Name 조회
-	FName RowName = CharEnum->GetNameByValue(static_cast<int64>(ClickedID));
+	// DataTable의 내부 행 순서에 의존하지 않고 enum 이름으로 직접 조회한다.
+	const FName RowName(*CharEnum->GetNameStringByValue(static_cast<int64>(ClickedID)));
+	FLBCharacterData* Data = CharacterDataTable->FindRow<FLBCharacterData>(
+		RowName, TEXT("OnCharacterCardClicked"));
 	
-	FLBCharacterData* Data = CharacterDataTable->FindRow<FLBCharacterData>(RowName, TEXT("OnCharacterCardClicked"));
-	
-	if (!Data) return;
+	if (!Data)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[SelectWidget] Data 없음 RowName: %s"), *RowName.ToString());
+		return;
+	}
 	
 	BP_OnCharacterSelected(SelectedCharacterID, *Data);
 }
