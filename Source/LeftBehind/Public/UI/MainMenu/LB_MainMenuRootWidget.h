@@ -20,15 +20,6 @@ protected:
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
 
-	UFUNCTION(BlueprintImplementableEvent, Category="LB|UI")
-	void BP_OnStartClicked();
-
-	UFUNCTION(BlueprintCallable, Category="LB|UI")
-	void ExecuteOnlinePlay();
-	
-	UFUNCTION(BlueprintCallable, Category="LB|UI")
-	void ResetOnlinePlayFlag();
-	
 private:
 	UPROPERTY(Transient)
 	TObjectPtr<UWidget> StartButton;
@@ -45,6 +36,4 @@ private:
 	bool RunBlueprintTransition(FName FunctionName);
 	void ShowRootPanelFallback();
 	void ShowRoomEntryPanelFallback();
-	
-	bool bOnlinePlayRequested = false;
 };

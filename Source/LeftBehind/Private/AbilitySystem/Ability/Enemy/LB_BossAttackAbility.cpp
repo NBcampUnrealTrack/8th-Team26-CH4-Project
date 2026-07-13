@@ -110,18 +110,6 @@ void ULB_BossAttackAbility::ActivateAbility(
 		{
 			++AppliedCount;
 		}
-		
-		if (ACharacter* HitCharacter = Cast<ACharacter>(HitActor))
-		{
-			FVector LaunchDir = HitCharacter->GetActorLocation() - AvatarActor->GetActorLocation();
-			LaunchDir.Z = 0;
-			LaunchDir.Normalize();
-			
-			FVector LaunchForce = LaunchDir * KnockbackForce + FVector(0.f,0.f,KnockbackForceV);
-			HitCharacter->LaunchCharacter(LaunchForce,true,true);
-		}
-		
-	
 	}
 
 	UE_LOG(LogTemp, Log, TEXT("[LB BossAttack] %s hit %d actor(s). Damage=%.1f"), *GetNameSafe(AvatarActor), AppliedCount, Damage);
