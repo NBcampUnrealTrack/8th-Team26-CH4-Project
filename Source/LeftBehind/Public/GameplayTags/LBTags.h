@@ -17,6 +17,7 @@ namespace LBTags
 		
 		namespace Enemy
 		{
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Telegraph);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Attack);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(WideAttack);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Charge);
@@ -47,6 +48,14 @@ namespace LBTags
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Phase1);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Phase2);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Phase3);
+		}
+	}
+	
+	namespace LBCues
+	{
+		namespace Enemy
+		{
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(TelegraphCue);
 		}
 	}
 	
