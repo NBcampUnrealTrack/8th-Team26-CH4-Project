@@ -5,7 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerState.h"
 #include "AbilitySystemInterface.h"
-#include "System/Raid/LBCharacterTypes.h"
+#include "System/Character/LBCharacterTypes.h"
 #include "LB_PlayerState.generated.h"
 
 class UAbilitySystemComponent;
@@ -22,6 +22,9 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLBDeadStateChanged, bool, bNewIsD
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLBCharacterIDChanged, ELBCharacterID, NewCharacterID);
 // 코드네임 확정 여부가 바뀌면 대기실 UI가 PlayerState 폴링 없이 반응한다.
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLBCodenameConfirmedChanged, bool, bConfirmed);
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCharacterReadyChanged, bool, bReady);
+
 
 // 플레이어별 레이드 진행 정보와 GAS AbilitySystemComponent를 보관하는 PlayerState.
 UCLASS()
@@ -70,6 +73,9 @@ public:
     UPROPERTY(BlueprintAssignable)
     FOnLBCodenameConfirmedChanged OnCodenameConfirmedChanged;
 
+    UPROPERTY(BlueprintAssignable, Category="LB|Character")
+    FOnCharacterReadyChanged OnCharacterReadyChanged;
+    
     // 레이드 시작/재시작 시 서버에서만 사망 정보, 누적 전투 통계, MVP 여부를 초기화한다.
     UFUNCTION(BlueprintCallable, Category="LB|PlayerState")
     void ResetRaidStats_ServerOnly();
@@ -81,6 +87,12 @@ public:
     // 서버 권한으로 선택한 캐릭터 ID를 지정한다. (호출 위치: 캐릭터 선택창에서 확정 시)
     UFUNCTION(BlueprintCallable, Category="LB|PlayerState")
     void SetCharacterID_ServerOnly(ELBCharacterID NewCharacterID);
+    
+    UFUNCTION(BlueprintCallable, Category="LB|PlayerState")
+    void SetCharacterReady_ServerOnly(bool bNewReady);
+    
+    UFUNCTION(BlueprintCallable, Category="LB|PlayerState")
+    void ResetCharacterSelection_ServerOnly();
     
     // 서버 권한으로 현재 사망 상태를 갱신한다.
     UFUNCTION(BlueprintCallable, Category="LB|PlayerState")
@@ -140,6 +152,10 @@ public:
     UFUNCTION(BlueprintPure, Category="LB|Stats")
     bool GetIsMVP() const { return bIsMVP; }
 
+    UFUNCTION(BlueprintPure, Category="LB|Character")
+    bool IsCharacterReady() const { return bCharacterReady; }
+    
+    
 protected:
     // PlayerState에 붙는 ASC. Pawn 교체/리스폰이 있어도 능력 상태를 유지하기 쉽다.
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GAS")
@@ -165,6 +181,9 @@ protected:
     UPROPERTY(ReplicatedUsing=OnRep_CharacterID, BlueprintReadOnly, Category="LB|Raid")
     ELBCharacterID CharacterID = ELBCharacterID::None;
 
+    UPROPERTY(ReplicatedUsing=OnRep_CharacterReady)
+    bool bCharacterReady = false;
+    
     UPROPERTY(ReplicatedUsing=OnRep_CodenameConfirmed, BlueprintReadOnly, Category="LB|MainMenu")
     bool bCodenameConfirmed = false;
     
@@ -198,4 +217,7 @@ protected:
 
     UFUNCTION()
     void OnRep_CodenameConfirmed();
+    
+    UFUNCTION()
+    void OnRep_CharacterReady();
 };

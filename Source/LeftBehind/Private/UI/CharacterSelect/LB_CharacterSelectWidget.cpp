@@ -6,12 +6,31 @@
 #include "Components/WrapBox.h"
 #include "UI/CharacterSelect/LB_CharacterCardWidget.h"
 #include "Engine/DataTable.h"
+#include "Player/LB_MainMenuPlayerController.h"
 #include "Player/LB_PlayerState.h"
 
 void ULB_CharacterSelectWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
 	BuildCharacterCards();
+	
+	ALB_MainMenuPlayerController* PC =
+	Cast<ALB_MainMenuPlayerController>(CachedPlayerController.Get());
+	
+	UE_LOG(LogTemp, Warning, TEXT("CachedPC = %s"),
+	*GetNameSafe(CachedPlayerController.Get()));
+
+	UE_LOG(LogTemp, Warning, TEXT("Cast = %s"),
+		*GetNameSafe(Cast<ALB_MainMenuPlayerController>(CachedPlayerController.Get())));
+
+	if (!IsValid(PC))
+	{
+		return;
+	}
+
+	PC->OnCharacterSelectResult.AddDynamic(
+		this,
+		&ThisClass::HandleCharacterSelectResult);
 }
 
 void ULB_CharacterSelectWidget::NativeDestruct()
@@ -26,6 +45,14 @@ void ULB_CharacterSelectWidget::NativeDestruct()
 			// RemoveDynamic은 바인딩되지 않은 델리게이트에 호출해도 에러 없이 무시됨
 			Card->OnCardClicked.RemoveDynamic(this, &ThisClass::OnCharacterCardClicked);
 		}
+	}
+	
+	if (ALB_MainMenuPlayerController* PC =
+	Cast<ALB_MainMenuPlayerController>(CachedPlayerController.Get()))
+	{
+		PC->OnCharacterSelectResult.RemoveDynamic(
+			this,
+			&ThisClass::HandleCharacterSelectResult);
 	}
 	
 	Super::NativeDestruct();
@@ -85,6 +112,16 @@ void ULB_CharacterSelectWidget::BuildCharacterCards()
 	}
 	
 	BP_OnCardsBuilt();
+}
+
+void ULB_CharacterSelectWidget::HandleCharacterSelectResult(ELBCharacterSelectResult Result)
+{
+	if (Result == ELBCharacterSelectResult::Success)
+	{
+		return;
+	}
+
+	BP_OnCharacterSelectFailed(Result);
 }
 
 void ULB_CharacterSelectWidget::OnCharacterCardClicked(ELBCharacterID ClickedID)
@@ -149,17 +186,21 @@ void ULB_CharacterSelectWidget::OnDetailViewClicked()
 	BP_OnDetailViewRequested();
 }
 
-void ULB_CharacterSelectWidget::OnEnterWaitingRoomClicked()
+void ULB_CharacterSelectWidget::OnConfirmCharacterClicked()
 {
 	if (SelectedCharacterID == ELBCharacterID::None) return;
 	
 	// 선택한 캐릭터를 PlayerState에 저장
 	if (CachedPlayerController.IsValid())
 	{
-		ALB_PlayerState* LBPS = Cast<ALB_PlayerState>(CachedPlayerController->PlayerState);
-		if (!IsValid(LBPS)) return;
-		
-		LBPS->SetCharacterID_ServerOnly(SelectedCharacterID);
+		ALB_MainMenuPlayerController* PC = Cast<ALB_MainMenuPlayerController>(CachedPlayerController.Get());
+
+		if (!IsValid(PC))
+		{
+			return;
+		}
+
+		PC->SelectCharacter(SelectedCharacterID);
 	}
 	
 	// 이후, 대기실 이동

@@ -272,7 +272,7 @@ void ULB_MainMenuWaitingWidget::Refresh(const FLBMainMenuSnapshot& Snapshot)
 		const ALB_MainMenuPlayerController* Controller = Cast<ALB_MainMenuPlayerController>(GetOwningPlayer());
 		const bool bIsHost = IsValid(Controller) && Controller->IsLocalListenHost();
 		StartButton->SetVisibility(bIsHost ? EVisibility::Visible : EVisibility::Collapsed);
-		StartButton->SetEnabled(bIsHost && Snapshot.Phase == ELBMainMenuPhase::Ready && Controller->CanRequestStartHunt());
+		StartButton->SetEnabled(bIsHost && Snapshot.Phase == ELBMainMenuPhase::Ready && Controller->CanRequestStartCharacterSelect());
 	}
 }
 
@@ -280,7 +280,7 @@ FReply ULB_MainMenuWaitingWidget::HandleStartClicked()
 {
 	if (ALB_MainMenuPlayerController* Controller = Cast<ALB_MainMenuPlayerController>(GetOwningPlayer()))
 	{
-		Controller->RequestStartHunt();
+		Controller->RequestStartCharacterSelect();
 	}
 	return FReply::Handled();
 }

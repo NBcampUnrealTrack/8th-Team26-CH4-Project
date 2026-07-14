@@ -29,9 +29,9 @@ public:
 	virtual void HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer) override;
 
 	UFUNCTION(BlueprintPure, Category="LB|MainMenu|Travel")
-	bool CanStartHunt(const APlayerController* RequestingController) const;
+	bool CanStartCharacterSelect(const APlayerController* RequestingController) const;
 
-	bool TryStartHunt(APlayerController* RequestingController);
+	bool TryStartCharacterSelect(APlayerController* RequestingController);
 	ELBCodenameSubmitResult TryConfirmCodename(
 		ALB_MainMenuPlayerController* RequestingController,
 		const FString& RawCodename,
@@ -45,7 +45,7 @@ public:
 	int32 GetMinPlayersToStart() const { return FMath::Max(1, MinPlayersToStart); }
 
 	UFUNCTION(BlueprintPure, Category="LB|MainMenu|Travel")
-	TSoftObjectPtr<UWorld> GetRaidMap() const { return RaidMap; }
+	TSoftObjectPtr<UWorld> GetCharacterSelectMap() const { return CharacterSelectMap; }
 
 	bool StartsPlayersWithoutMenuPawns() const { return bStartPlayersAsSpectators; }
 
@@ -55,7 +55,7 @@ protected:
 
 	// World soft reference이므로 Class Defaults에 맵 에셋 선택기가 나타나며 cooker도 의존성을 추적할 수 있다.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="LB|MainMenu|Travel")
-	TSoftObjectPtr<UWorld> RaidMap;
+	TSoftObjectPtr<UWorld> CharacterSelectMap;
 
 private:
 	UPROPERTY(Transient)
@@ -66,9 +66,9 @@ private:
 	void RefreshLobbySnapshot();
 	FLBMainMenuSnapshot BuildLobbySnapshot(bool bAdvanceRevision);
 	bool AreAllActivePlayersLoaded() const;
-	bool GetRaidMapPackageName(FString& OutPackageName) const;
+	bool GetCharacterSelectMapPackageName(FString& OutPackageName) const;
 	ALB_MainMenuGameState* GetMainMenuGameState() const;
-	bool StartRaidTravel();
+	bool StartCharacterSelectTravel();
 	void UnbindRoomPhaseDelegate();
 
 	UFUNCTION()

@@ -2,7 +2,7 @@
 
 
 #include "UI/CharacterSelect/LB_CharacterPreview.h"
-#include "System/Raid/LBCharacterTypes.h"
+#include "System/Character/LBCharacterTypes.h"
 
 ALB_CharacterPreview::ALB_CharacterPreview()
 {

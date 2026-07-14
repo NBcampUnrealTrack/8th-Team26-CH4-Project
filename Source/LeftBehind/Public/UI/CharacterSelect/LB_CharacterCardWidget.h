@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "System/Raid/LBCharacterTypes.h"
+#include "System/Character/LBCharacterTypes.h"
 #include "UI/Base/LB_BaseUserWidget.h"
 #include "LB_CharacterCardWidget.generated.h"
 
