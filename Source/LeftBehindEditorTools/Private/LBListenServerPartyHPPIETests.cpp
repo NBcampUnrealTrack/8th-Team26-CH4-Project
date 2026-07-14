@@ -239,7 +239,7 @@ namespace
 				ALB_MainMenuPlayerController* HostController = FindLocalMenuController(ListenServerWorld);
 				if (!IsValid(HostController)
 					|| !HasTwoConfirmedPlayers(ListenServerWorld)
-					|| !HostController->CanRequestStartHunt())
+					|| !HostController->CanRequestStartCharacterSelect())
 				{
 					return false;
 				}

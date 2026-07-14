@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "LBCharacterTypes.h"
+#include "../Character/LBCharacterTypes.h"
 #include "LBRaidTypes.generated.h"
 
 // 네트워크/세이브/Blueprint에 저장되는 숫자의 의미가 바뀌지 않도록 기존 ordinal을 명시한다.

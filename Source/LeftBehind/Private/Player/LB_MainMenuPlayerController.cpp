@@ -4,10 +4,12 @@
 #include "Engine/AssetManager.h"
 #include "Engine/StreamableManager.h"
 #include "GameMode/LB_MainMenuGameMode.h"
+#include "GameMode/LB_CharacterSelectGameMode.h"
 #include "Player/LB_PlayerState.h"
 #include "System/Online/LB_OnlineSessionSubsystem.h"
 #include "UI/MainMenu/LB_MainMenuRootWidget.h"
 #include "UI/MainMenu/LB_MultiplayerHubWidget.h"
+
 
 DEFINE_LOG_CATEGORY_STATIC(LogLBMainMenuPlayerController, Log, All);
 
@@ -27,6 +29,54 @@ ALB_MainMenuPlayerController::ALB_MainMenuPlayerController()
 		TEXT("/Game/LeftBehind/UI/MainMenu/WBP_WaitingRoom.WBP_WaitingRoom_C")));
 }
 
+void ALB_MainMenuPlayerController::SelectCharacter(ELBCharacterID CharacterID)
+{
+	if (!IsLocalController())
+	{
+		return;
+	}
+
+	if (HasAuthority())
+	{
+		ServerSelectCharacter_Implementation(CharacterID);
+		return;
+	}
+
+	ServerSelectCharacter(CharacterID);
+}
+
+void ALB_MainMenuPlayerController::ReadyCharacter()
+{
+	if (!IsLocalController())
+	{
+		return;
+	}
+
+	if (HasAuthority())
+	{
+		ServerReadyCharacter_Implementation();
+		return;
+	}
+
+	ServerReadyCharacter();
+}
+
+void ALB_MainMenuPlayerController::CancelReady()
+{
+	if (!IsLocalController())
+	{
+		return;
+	}
+
+	if (HasAuthority())
+	{
+		ServerCancelReady_Implementation();
+		return;
+	}
+
+	ServerCancelReady();
+}
+
 void ALB_MainMenuPlayerController::BeginPlay()
 {
 	Super::BeginPlay();
@@ -38,6 +88,14 @@ void ALB_MainMenuPlayerController::BeginPlay()
 
 	bMenuUITeardown = false;
 	bShowMouseCursor = true;
+	
+	if (IsCharacterSelectLevel())
+	{
+		bMenuUITeardown = false;
+		SetMenuScreen(ELBMainMenuScreen::CharacterSelect);
+		return;
+	}
+	
 	BindOnlineSubsystem();
 	ShowInitialOnlineRoomScreen();
 }
@@ -53,10 +111,18 @@ void ALB_MainMenuPlayerController::OnRep_PlayerState()
 {
 	Super::OnRep_PlayerState();
 
-	if (IsLocalController() && !bMenuUITeardown)
+	if (!IsLocalController() || bMenuUITeardown)
 	{
-		ShowInitialOnlineRoomScreen();
+		return;
 	}
+
+	if (IsCharacterSelectLevel())
+	{
+		SetMenuScreen(ELBMainMenuScreen::CharacterSelect);
+		return;
+	}
+
+	ShowInitialOnlineRoomScreen();
 }
 
 void ALB_MainMenuPlayerController::PreClientTravel(
@@ -76,6 +142,23 @@ void ALB_MainMenuPlayerController::PreClientTravel(
 	UnbindOnlineSubsystem();
 	TeardownMenuUI();
 	Super::PreClientTravel(PendingURL, TravelType, bIsSeamlessTravel);
+}
+
+void ALB_MainMenuPlayerController::BeginPlayingState()
+{
+	Super::BeginPlayingState();
+	
+	if (!IsLocalController())
+	{
+		return;
+	}
+
+	bMenuUITeardown = false;
+
+	if (IsCharacterSelectLevel())
+	{
+		SetMenuScreen(ELBMainMenuScreen::CharacterSelect);
+	}
 }
 
 void ALB_MainMenuPlayerController::BeginOnlinePlay()
@@ -135,6 +218,12 @@ void ALB_MainMenuPlayerController::BeginOnlinePlay()
 
 void ALB_MainMenuPlayerController::SetMenuScreen(ELBMainMenuScreen NewScreen)
 {
+	UE_LOG(LogLBMainMenuPlayerController, Warning,
+		TEXT("SetMenuScreen Screen=%d Teardown=%d Local=%d"),
+		(int32)NewScreen,
+		bMenuUITeardown,
+		IsLocalController());
+	
 	if (bMenuUITeardown
 		|| GetNetMode() == NM_DedicatedServer
 		|| !IsLocalController()
@@ -179,7 +268,7 @@ void ALB_MainMenuPlayerController::SubmitCodename(const FText& RawCodename)
 	ServerSubmitCodename(RawCodenameString);
 }
 
-void ALB_MainMenuPlayerController::RequestStartHunt()
+void ALB_MainMenuPlayerController::RequestStartCharacterSelect()
 {
 	if (!IsLocalListenHost())
 	{
@@ -188,13 +277,13 @@ void ALB_MainMenuPlayerController::RequestStartHunt()
 	}
 
 	ALB_MainMenuGameMode* MainMenuGameMode = GetWorld() ? GetWorld()->GetAuthGameMode<ALB_MainMenuGameMode>() : nullptr;
-	if (!IsValid(MainMenuGameMode) || !MainMenuGameMode->TryStartHunt(this))
+	if (!IsValid(MainMenuGameMode) || !MainMenuGameMode->TryStartCharacterSelect(this))
 	{
 		UE_LOG(LogLBMainMenuPlayerController, Verbose, TEXT("Start hunt request did not pass server policy."));
 	}
 }
 
-bool ALB_MainMenuPlayerController::CanRequestStartHunt() const
+bool ALB_MainMenuPlayerController::CanRequestStartCharacterSelect() const
 {
 	if (!IsLocalListenHost())
 	{
@@ -204,7 +293,7 @@ bool ALB_MainMenuPlayerController::CanRequestStartHunt() const
 	const ALB_MainMenuGameMode* MainMenuGameMode = GetWorld()
 		? GetWorld()->GetAuthGameMode<ALB_MainMenuGameMode>()
 		: nullptr;
-	return IsValid(MainMenuGameMode) && MainMenuGameMode->CanStartHunt(this);
+	return IsValid(MainMenuGameMode) && MainMenuGameMode->CanStartCharacterSelect(this);
 }
 
 bool ALB_MainMenuPlayerController::IsLocalListenHost() const
@@ -253,6 +342,8 @@ void ALB_MainMenuPlayerController::TeardownMenuUI()
 
 void ALB_MainMenuPlayerController::ShowDesiredMenuScreen()
 {
+	UE_LOG(LogLBMainMenuPlayerController, Warning, TEXT("ShowDesiredMenuScreen Desired=%d"), (int32)DesiredScreen);
+	
 	if (bMenuUITeardown || DesiredScreen == ELBMainMenuScreen::None)
 	{
 		return;
@@ -260,6 +351,11 @@ void ALB_MainMenuPlayerController::ShowDesiredMenuScreen()
 
 	if (UUserWidget* ExistingWidget = GetMenuWidget(DesiredScreen))
 	{
+		UE_LOG(LogLBMainMenuPlayerController, Warning,
+			TEXT("Existing Widget Found: %s InViewport=%d"),
+			*GetNameSafe(ExistingWidget),
+			ExistingWidget->IsInViewport() ? 1 : 0);
+		
 		UUserWidget* Widgets[] = {
 			MainMenuWidget.Get(),
 			MultiplayerWidget.Get(),
@@ -277,8 +373,14 @@ void ALB_MainMenuPlayerController::ShowDesiredMenuScreen()
 
 		if (!ExistingWidget->IsInViewport())
 		{
-			ExistingWidget->AddToPlayerScreen(MenuWidgetZOrder);
+			const bool bAdded = ExistingWidget->AddToPlayerScreen(MenuWidgetZOrder);
+
+			UE_LOG(LogLBMainMenuPlayerController, Warning,
+				TEXT("AddToPlayerScreen Result=%d Widget=%s"),
+				bAdded ? 1 : 0,
+				*GetNameSafe(ExistingWidget));
 		}
+		
 		ExistingWidget->SetVisibility(ESlateVisibility::Visible);
 		VisibleScreen = DesiredScreen;
 		if (VisibleScreen == ELBMainMenuScreen::Main && bShowRoomEntryAfterMainLoad)
@@ -306,7 +408,12 @@ void ALB_MainMenuPlayerController::ShowDesiredMenuScreen()
 
 	if (UClass* LoadedClass = WidgetClass->Get())
 	{
+		UE_LOG(LogLBMainMenuPlayerController, Warning, TEXT("Widget class already loaded: %s"), *LoadedClass->GetName());
+		
 		UUserWidget* NewWidget = CreateWidget<UUserWidget>(this, LoadedClass);
+		
+		UE_LOG(LogLBMainMenuPlayerController, Warning, TEXT("CreateWidget Result: %s"), *GetNameSafe(NewWidget));
+		
 		if (IsValid(NewWidget))
 		{
 			SetMenuWidget(DesiredScreen, NewWidget);
@@ -350,12 +457,17 @@ void ALB_MainMenuPlayerController::HandleMenuWidgetClassLoaded(
 	}
 
 	UUserWidget* NewWidget = CreateWidget<UUserWidget>(this, LoadedClass);
+	
+	UE_LOG(LogLBMainMenuPlayerController, Warning, TEXT("Async CreateWidget Result: %s"), *GetNameSafe(NewWidget));
+	
 	if (!IsValid(NewWidget))
 	{
 		UE_LOG(LogLBMainMenuPlayerController, Error, TEXT("Failed to create menu widget. Screen=%d"), static_cast<int32>(LoadedScreen));
 		return;
 	}
 
+	UE_LOG(LogLBMainMenuPlayerController, Warning, TEXT("Set Character Widget Screen=%d Widget=%s"), (int32)LoadedScreen, *GetNameSafe(NewWidget));
+	
 	SetMenuWidget(LoadedScreen, NewWidget);
 	ShowDesiredMenuScreen();
 }
@@ -533,6 +645,72 @@ void ALB_MainMenuPlayerController::HandleOnlineStateChanged(
 		SetMenuScreen(ELBMainMenuScreen::Multiplayer);
 	}
 }
+
+bool ALB_MainMenuPlayerController::IsCharacterSelectLevel() const
+{
+	const UWorld* World = GetWorld();
+
+	if (!IsValid(World))
+	{
+		return false;
+	}
+
+	return World->GetMapName().Contains(TEXT("L_CharacterSelect"));
+}
+
+void ALB_MainMenuPlayerController::ClientReceiveCharacterSelectResult_Implementation(ELBCharacterSelectResult Result)
+{
+	OnCharacterSelectResult.Broadcast(Result);
+}
+
+void ALB_MainMenuPlayerController::ServerSelectCharacter_Implementation(ELBCharacterID CharacterID)
+{
+	ALB_CharacterSelectGameMode* GameMode =
+		GetWorld() ? GetWorld()->GetAuthGameMode<ALB_CharacterSelectGameMode>() : nullptr;
+
+	if (!IsValid(GameMode))
+	{
+		return;
+	}
+
+	const ELBCharacterSelectResult Result =
+		GameMode->TrySelectCharacter(this, CharacterID);
+
+	if (Result == ELBCharacterSelectResult::Success)
+	{
+		return;
+	}
+
+	ClientReceiveCharacterSelectResult(Result);
+}
+
+
+void ALB_MainMenuPlayerController::ServerReadyCharacter_Implementation()
+{
+	ALB_CharacterSelectGameMode* GameMode =
+		GetWorld() ? GetWorld()->GetAuthGameMode<ALB_CharacterSelectGameMode>() : nullptr;
+
+	if (!IsValid(GameMode))
+	{
+		return;
+	}
+
+	GameMode->TrySetCharacterReady(this);
+}
+
+void ALB_MainMenuPlayerController::ServerCancelReady_Implementation()
+{
+	ALB_CharacterSelectGameMode* GameMode =
+		GetWorld() ? GetWorld()->GetAuthGameMode<ALB_CharacterSelectGameMode>() : nullptr;
+
+	if (!IsValid(GameMode))
+	{
+		return;
+	}
+
+	GameMode->TryCancelCharacterReady(this);
+}
+
 
 void ALB_MainMenuPlayerController::HandleCodenameSubmission_ServerOnly(const FString& RawCodename)
 {

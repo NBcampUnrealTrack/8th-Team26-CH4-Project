@@ -24,6 +24,7 @@ UENUM(BlueprintType)
 enum class ELBRoomPhase : uint8
 {
 	Waiting,
+	CharacterSelect,
 	InRaid
 };
 
@@ -112,9 +113,13 @@ public:
 	 * Host-only async update performed before ServerTravel to the raid.
 	 * Wait for OnRoomPhaseUpdateComplete(success, InRaid, ...) before traveling.
 	 */
-	UFUNCTION(BlueprintCallable, Category="LB|Online")
-	bool LockRoomForRaid();
 
+	UFUNCTION(BlueprintCallable, Category="LB|Online")
+	bool StartCharacterSelect();
+
+	UFUNCTION(BlueprintCallable, Category="LB|Online")
+	bool StartRaid();
+	
 	/** Reopens the host lobby after returning from the raid. */
 	UFUNCTION(BlueprintCallable, Category="LB|Online")
 	bool ReopenRoomAfterRaid();

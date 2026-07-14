@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "UI/Base/LB_BaseUserWidget.h"
-#include "System/Raid/LBCharacterTypes.h"
+#include "System/Character/LBCharacterTypes.h"
 #include "LB_PartyMemberSlotWidget.generated.h"
 
 // 파티원 한 명의 상태를 표시하는 슬롯 위젯
