@@ -124,13 +124,14 @@ struct FLBCharacterData : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	TObjectPtr<UMaterialInstance> PreviewMaterialInstance;
 	
+	// 메시 위치/회전/스케일 오프셋
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	FVector MeshOffset;
-	
+	FVector MeshOffset = FVector::ZeroVector;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	FRotator MeshRotation;
-	
+	FRotator MeshRotation = FRotator::ZeroRotator;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	FVector MeshScale;
+	FVector MeshScale = FVector::OneVector;
 	
 };

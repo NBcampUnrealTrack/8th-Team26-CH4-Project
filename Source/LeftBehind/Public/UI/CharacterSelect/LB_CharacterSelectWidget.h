@@ -82,7 +82,7 @@ protected:
 	TSubclassOf<ULB_CharacterCardWidget> CharacterCardClass;
 	
 	// 캐릭터 데이터 테이블
-	UPROPERTY(EditDefaultsOnly, Category="LB|CharacterSelect")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="LB|CharacterSelect")
 	TObjectPtr<UDataTable> CharacterDataTable;
 	
 	
