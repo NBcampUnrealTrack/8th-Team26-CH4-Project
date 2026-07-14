@@ -35,6 +35,7 @@ namespace
 		constexpr int32 MaxSearchResults = 50;
 		const FName RoomPhaseKey(TEXT("ROOM_PHASE"));
 		const FString WaitingPhaseValue(TEXT("Waiting"));
+		const FString CharacterSelectPhaseValue(TEXT("CharacterSelect"));
 		const FString InRaidPhaseValue(TEXT("InRaid"));
 
 		FName GetRoomPhaseKey()
@@ -47,6 +48,11 @@ namespace
 			return WaitingPhaseValue;
 		}
 
+		const FString& GetCharacterSelectPhaseValue()
+		{
+			return CharacterSelectPhaseValue;
+		}
+		
 		const FString& GetInRaidPhaseValue()
 		{
 			return InRaidPhaseValue;
@@ -83,6 +89,33 @@ namespace
 			FOnlineSessionSettings Settings;
 			ApplyWaitingPolicy(Settings);
 			return Settings;
+		}
+		
+		void ApplyCharacterSelectPolicy(FOnlineSessionSettings& Settings, int32 CurrentPlayers)
+		{
+			Settings.NumPublicConnections = 0;
+			Settings.NumPrivateConnections = FMath::Clamp(CurrentPlayers, 1, MaxPublicConnections);
+
+			Settings.bShouldAdvertise = false;
+			Settings.bAllowJoinInProgress = false;
+			Settings.bAllowInvites = false;
+
+			Settings.bUsesPresence = true;
+			Settings.bAllowJoinViaPresence = false;
+			Settings.bAllowJoinViaPresenceFriendsOnly = false;
+
+			Settings.bIsLANMatch = false;
+			Settings.bUseLobbiesIfAvailable = true;
+
+			Settings.Set(
+				GetRoomPhaseKey(),
+				GetCharacterSelectPhaseValue(),
+				EOnlineDataAdvertisementType::ViaOnlineService);
+
+			Settings.Set(
+				SETTING_HOST_MIGRATION,
+				false,
+				EOnlineDataAdvertisementType::DontAdvertise);
 		}
 
 		void ApplyInRaidPolicy(FOnlineSessionSettings& Settings, const int32 CurrentPlayers)
@@ -633,9 +666,14 @@ public:
 		return true;
 	}
 
-	bool LockRoomForRaid()
+	bool StartCharacterSelect()
 	{
-		return BeginPhaseUpdate(ELBRoomPhase::InRaid, false);
+		return BeginPhaseUpdate(ELBRoomPhase::CharacterSelect,false);
+	}
+	
+	bool StartRaid()
+	{
+		return BeginPhaseUpdate(ELBRoomPhase::InRaid,false);
 	}
 
 	bool ReopenRoomAfterRaid()
@@ -1103,7 +1141,7 @@ private:
 			: nullptr;
 		return bInRoom
 			&& bRoomHost
-			&& CurrentRoomPhase == ELBRoomPhase::InRaid
+			&& (CurrentRoomPhase == ELBRoomPhase::InRaid || CurrentRoomPhase == ELBRoomPhase::CharacterSelect)
 			&& NamedSession
 			&& NamedSession->bHosting;
 	}
@@ -1241,9 +1279,22 @@ private:
 				LBOnlineSessionPolicy::MaxPublicConnections);
 			LBOnlineSessionPolicy::ApplyInRaidPolicy(UpdatedSettings, CurrentPlayers);
 		}
-		else
+		else if (NewPhase == ELBRoomPhase::Waiting)
 		{
 			LBOnlineSessionPolicy::ApplyWaitingPolicy(UpdatedSettings);
+		}
+		else if (NewPhase == ELBRoomPhase::CharacterSelect)
+		{
+			const int32 CurrentPlayers = FMath::Clamp(
+				FMath::Max(
+					NamedSession->RegisteredPlayers.Num(),
+					NamedSession->SessionSettings.MemberSettings.Num()),
+				1,
+				LBOnlineSessionPolicy::MaxPublicConnections);
+			
+			LBOnlineSessionPolicy::ApplyCharacterSelectPolicy(
+				UpdatedSettings,
+				CurrentPlayers);
 		}
 
 		PendingOperation = ELBPendingOnlineOperation::UpdatePhase;
@@ -1573,7 +1624,7 @@ private:
 			FPackageName::GetShortName(LoadedWorld->GetOutermost()->GetName()));
 		if (bInRoom
 			&& bRoomHost
-			&& CurrentRoomPhase == ELBRoomPhase::InRaid
+			&& (CurrentRoomPhase == ELBRoomPhase::CharacterSelect || CurrentRoomPhase == ELBRoomPhase::InRaid)
 			&& LoadedMapName == FPackageName::GetShortName(LBMainMenuMap.ToString()))
 		{
 			// EOS may briefly report another operation as busy immediately after
@@ -1714,9 +1765,14 @@ bool ULB_OnlineSessionSubsystem::CanOpenSocialOverlay(FText* OutUnavailableReaso
 	return false;
 }
 
-bool ULB_OnlineSessionSubsystem::LockRoomForRaid()
+bool ULB_OnlineSessionSubsystem::StartCharacterSelect()
 {
-	return Runtime.IsValid() && Runtime->LockRoomForRaid();
+	return Runtime.IsValid() && Runtime->StartCharacterSelect();
+}
+
+bool ULB_OnlineSessionSubsystem::StartRaid()
+{
+	return Runtime.IsValid() && Runtime->StartRaid();
 }
 
 bool ULB_OnlineSessionSubsystem::ReopenRoomAfterRaid()

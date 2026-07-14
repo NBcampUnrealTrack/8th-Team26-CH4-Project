@@ -81,7 +81,7 @@ bool ULBMainMenuPIETestBridge::ScheduleStartRequests(
 			{
 				for (int32 Index = 0; Index < RequestCount; ++Index)
 				{
-					StrongController->RequestStartHunt();
+					StrongController->RequestStartCharacterSelect();
 				}
 			}
 		}));

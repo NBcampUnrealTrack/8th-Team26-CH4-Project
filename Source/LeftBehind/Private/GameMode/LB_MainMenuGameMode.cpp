@@ -24,8 +24,8 @@ ALB_MainMenuGameMode::ALB_MainMenuGameMode()
 	DefaultPawnClass = nullptr;
 	HUDClass = nullptr;
 
-	RaidMap = TSoftObjectPtr<UWorld>(FSoftObjectPath(
-		TEXT("/Game/LeftBehind/Maps/Main.Main")));
+	CharacterSelectMap = TSoftObjectPtr<UWorld>(FSoftObjectPath(
+		TEXT("/Game/LeftBehind/Maps/L_CharacterSelect.L_CharacterSelect")));
 }
 
 void ALB_MainMenuGameMode::BeginPlay()
@@ -67,7 +67,7 @@ void ALB_MainMenuGameMode::HandleStartingNewPlayer_Implementation(APlayerControl
 	RefreshLobbySnapshot();
 }
 
-bool ALB_MainMenuGameMode::CanStartHunt(const APlayerController* RequestingController) const
+bool ALB_MainMenuGameMode::CanStartCharacterSelect(const APlayerController* RequestingController) const
 {
 	if (!HasAuthority()
 		|| bTravelInProgress
@@ -101,16 +101,16 @@ bool ALB_MainMenuGameMode::CanStartHunt(const APlayerController* RequestingContr
 		ConfirmedPlayers += PlayerState->IsCodenameConfirmed() ? 1 : 0;
 	}
 
-	FString RaidPackageName;
+	FString CharacterSelectPackageName;
 	return ConnectedPlayers >= GetMinPlayersToStart()
 		&& ConfirmedPlayers == ConnectedPlayers
 		&& AreAllActivePlayersLoaded()
-		&& GetRaidMapPackageName(RaidPackageName);
+		&& GetCharacterSelectMapPackageName(CharacterSelectPackageName);
 }
 
-bool ALB_MainMenuGameMode::TryStartHunt(APlayerController* RequestingController)
+bool ALB_MainMenuGameMode::TryStartCharacterSelect(APlayerController* RequestingController)
 {
-	if (!CanStartHunt(RequestingController))
+	if (!CanStartCharacterSelect(RequestingController))
 	{
 		UE_LOG(
 			LogLBMainMenuGameMode,
@@ -122,8 +122,8 @@ bool ALB_MainMenuGameMode::TryStartHunt(APlayerController* RequestingController)
 		return false;
 	}
 
-	FString RaidPackageName;
-	if (!GetRaidMapPackageName(RaidPackageName))
+	FString CharacterSelectPackageName;
+	if (!GetCharacterSelectMapPackageName(CharacterSelectPackageName))
 	{
 		return false;
 	}
@@ -135,7 +135,7 @@ bool ALB_MainMenuGameMode::TryStartHunt(APlayerController* RequestingController)
 	{
 		if (!OnlineSubsystem->IsRoomHost())
 		{
-			UE_LOG(LogLBMainMenuGameMode, Warning, TEXT("Only the EOS room host may lock and start the raid."));
+			UE_LOG(LogLBMainMenuGameMode, Warning, TEXT("Only the EOS room host may lock and start the CharacterSelect."));
 			return false;
 		}
 
@@ -144,7 +144,7 @@ bool ALB_MainMenuGameMode::TryStartHunt(APlayerController* RequestingController)
 		OnlineSubsystem->OnRoomPhaseUpdateComplete.AddUniqueDynamic(
 			this,
 			&ThisClass::HandleRoomPhaseUpdateComplete);
-		if (!OnlineSubsystem->LockRoomForRaid())
+		if (!OnlineSubsystem->StartCharacterSelect())
 		{
 			UnbindRoomPhaseDelegate();
 			bTravelInProgress = false;
@@ -153,11 +153,11 @@ bool ALB_MainMenuGameMode::TryStartHunt(APlayerController* RequestingController)
 			return false;
 		}
 
-		UE_LOG(LogLBMainMenuGameMode, Log, TEXT("Waiting for EOS room lock before raid travel."));
+		UE_LOG(LogLBMainMenuGameMode, Log, TEXT("Waiting for EOS room lock before CharacterSelect travel."));
 		return true;
 	}
 
-	return StartRaidTravel();
+	return StartCharacterSelectTravel();
 }
 
 ELBCodenameSubmitResult ALB_MainMenuGameMode::TryConfirmCodename(
@@ -248,10 +248,10 @@ FLBMainMenuSnapshot ALB_MainMenuGameMode::BuildLobbySnapshot(bool bAdvanceRevisi
 	FLBMainMenuSnapshot Snapshot;
 	Snapshot.MinPlayersToStart = GetMinPlayersToStart();
 
-	FString RaidPackageName;
-	if (GetRaidMapPackageName(RaidPackageName))
+	FString CharacterSelectPackageName;
+	if (GetCharacterSelectMapPackageName(CharacterSelectPackageName))
 	{
-		Snapshot.TargetMapName = FName(*FPackageName::GetShortName(RaidPackageName));
+		Snapshot.TargetMapName = FName(*FPackageName::GetShortName(CharacterSelectPackageName));
 	}
 
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
@@ -309,24 +309,24 @@ bool ALB_MainMenuGameMode::AreAllActivePlayersLoaded() const
 	return true;
 }
 
-bool ALB_MainMenuGameMode::GetRaidMapPackageName(FString& OutPackageName) const
+bool ALB_MainMenuGameMode::GetCharacterSelectMapPackageName(FString& OutPackageName) const
 {
 	OutPackageName.Reset();
-	const FSoftObjectPath RaidMapPath = RaidMap.ToSoftObjectPath();
-	if (RaidMapPath.IsNull() || !RaidMapPath.IsValid())
+	const FSoftObjectPath CharacterSelectMapPath = CharacterSelectMap.ToSoftObjectPath();
+	if (CharacterSelectMapPath.IsNull() || !CharacterSelectMapPath.IsValid())
 	{
 		return false;
 	}
 
-	OutPackageName = FPackageName::ObjectPathToPackageName(RaidMapPath.GetAssetPathString());
+	OutPackageName = FPackageName::ObjectPathToPackageName(CharacterSelectMapPath.GetAssetPathString());
 	FText InvalidReason;
 	if (!FPackageName::IsValidLongPackageName(OutPackageName, true, &InvalidReason))
 	{
 		UE_LOG(
 			LogLBMainMenuGameMode,
 			Error,
-			TEXT("RaidMap has invalid package path. Path=%s Reason=%s"),
-			*RaidMapPath.ToString(),
+			TEXT("CharacterSelectMap has invalid package path. Path=%s Reason=%s"),
+			*CharacterSelectMapPath.ToString(),
 			*InvalidReason.ToString());
 		OutPackageName.Reset();
 		return false;
@@ -334,7 +334,7 @@ bool ALB_MainMenuGameMode::GetRaidMapPackageName(FString& OutPackageName) const
 
 	if (!FPackageName::DoesPackageExist(OutPackageName))
 	{
-		UE_LOG(LogLBMainMenuGameMode, Error, TEXT("RaidMap package does not exist. Package=%s"), *OutPackageName);
+		UE_LOG(LogLBMainMenuGameMode, Error, TEXT("CharacterSelectMap package does not exist. Package=%s"), *OutPackageName);
 		OutPackageName.Reset();
 		return false;
 	}
@@ -347,10 +347,10 @@ ALB_MainMenuGameState* ALB_MainMenuGameMode::GetMainMenuGameState() const
 	return GetGameState<ALB_MainMenuGameState>();
 }
 
-bool ALB_MainMenuGameMode::StartRaidTravel()
+bool ALB_MainMenuGameMode::StartCharacterSelectTravel()
 {
-	FString RaidPackageName;
-	if (!GetRaidMapPackageName(RaidPackageName))
+	FString CharacterSelectPackageName;
+	if (!GetCharacterSelectMapPackageName(CharacterSelectPackageName))
 	{
 		bTravelInProgress = false;
 		RefreshLobbySnapshot();
@@ -364,11 +364,11 @@ bool ALB_MainMenuGameMode::StartRaidTravel()
 	}
 
 	UWorld* World = GetWorld();
-	if (!IsValid(World) || !World->ServerTravel(RaidPackageName, false))
+	if (!IsValid(World) || !World->ServerTravel(CharacterSelectPackageName, false))
 	{
 		bTravelInProgress = false;
 		RefreshLobbySnapshot();
-		UE_LOG(LogLBMainMenuGameMode, Error, TEXT("ServerTravel failed immediately. URL=%s"), *RaidPackageName);
+		UE_LOG(LogLBMainMenuGameMode, Error, TEXT("ServerTravel failed immediately. URL=%s"), *CharacterSelectPackageName);
 
 		if (ULB_OnlineSessionSubsystem* OnlineSubsystem = GetGameInstance()
 			? GetGameInstance()->GetSubsystem<ULB_OnlineSessionSubsystem>()
@@ -380,7 +380,7 @@ bool ALB_MainMenuGameMode::StartRaidTravel()
 		return false;
 	}
 
-	UE_LOG(LogLBMainMenuGameMode, Log, TEXT("Starting seamless ServerTravel. URL=%s"), *RaidPackageName);
+	UE_LOG(LogLBMainMenuGameMode, Log, TEXT("Starting CharacterSelect travel. URL=%s"), *CharacterSelectPackageName);
 	return true;
 }
 
@@ -407,17 +407,17 @@ void ALB_MainMenuGameMode::HandleRoomPhaseUpdateComplete(
 		return;
 	}
 
-	if (!bWasSuccessful || Phase != ELBRoomPhase::InRaid)
+	if (!bWasSuccessful || Phase != ELBRoomPhase::CharacterSelect)
 	{
 		bTravelInProgress = false;
 		RefreshLobbySnapshot();
 		UE_LOG(
 			LogLBMainMenuGameMode,
 			Error,
-			TEXT("EOS room lock failed; raid travel was cancelled. Error=%s"),
+			TEXT("EOS room lock failed; CharacterSelect travel was cancelled. Error=%s"),
 			*ErrorMessage.ToString());
 		return;
 	}
 
-	StartRaidTravel();
+	StartCharacterSelectTravel();
 }
