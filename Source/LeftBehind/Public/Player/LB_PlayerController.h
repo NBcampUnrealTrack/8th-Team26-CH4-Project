@@ -96,6 +96,9 @@ private:
 	
 	UPROPERTY(EditDefaultsOnly, Category = "LB|Input|Abilities")
 	TObjectPtr<UInputAction> PrimaryAction;
+	
+	UPROPERTY(EditDefaultsOnly, Category = "LB|Input|Abilities")
+	TObjectPtr<UInputAction> SecondaryAction;
 
 	// 꾹 눌러 연사할 때 몽타주가 매 프레임 끊기지 않도록 두는 최소 재발동 간격이다.
 	UPROPERTY(EditDefaultsOnly, Category = "LB|Input|Abilities", meta = (ClampMin = "0.01"))
@@ -152,6 +155,7 @@ private:
 	void Move(const FInputActionValue& Value);
 	void Look(const FInputActionValue& Value);
 	void PrimaryPressed();
+	void SecondaryPressed();
 	void PrimaryReleased();
 	void SetPrimaryHeld_ServerOnly(bool bHeld);
 	void HandlePrimaryRepeat_ServerOnly();
@@ -203,5 +207,8 @@ private:
 	// 기존 BlueprintCallable 단발 API를 서버 권한으로 전달하는 태그 없는 전용 RPC다.
 	UFUNCTION(Server, Reliable)
 	void ServerRequestPrimaryAttack();
+	
+	UFUNCTION(Server, Reliable)
+	void ServerActivateSecondary();
 	
 };

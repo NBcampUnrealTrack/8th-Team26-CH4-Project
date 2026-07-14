@@ -35,11 +35,11 @@ protected:
 	void OnCharacterCardClicked(ELBCharacterID ClickedID);
 	
 	// 상세정보 버튼 클릭
-	UFUNCTION()
+	UFUNCTION(BlueprintCallable, Category="LB|CharacterSelect")
 	void OnDetailViewClicked();
 	
 	// 대기실 입장 버튼 클릭
-	UFUNCTION()
+	UFUNCTION(BlueprintCallable, Category="LB|CharacterSelect")
 	void OnEnterWaitingRoomClicked();
 	
 	// 상세 화면에서 기본 화면으로 복귀
@@ -85,13 +85,14 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category="LB|CharacterSelect")
 	TObjectPtr<UDataTable> CharacterDataTable;
 	
+	
+	UPROPERTY(BlueprintReadOnly, Category="LB|CharacterSelect")
+	TArray<TObjectPtr<ULB_CharacterCardWidget>> AllCards;
+	
 private:
 	UPROPERTY()
 	TObjectPtr<ULB_CharacterCardWidget> PreviousSelectedCard = nullptr;
 	
 	UPROPERTY()
 	ELBCharacterID SelectedCharacterID = ELBCharacterID::None;
-	
-	UPROPERTY()
-	TArray<TObjectPtr<ULB_CharacterCardWidget>> AllCards;
 };

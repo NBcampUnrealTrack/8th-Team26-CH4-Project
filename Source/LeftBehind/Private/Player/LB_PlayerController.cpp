@@ -230,6 +230,11 @@ void ALB_PlayerController::SetupInputComponent()
 		EnhancedInputComponent->BindAction(PrimaryAction, ETriggerEvent::Completed, this, &ThisClass::PrimaryReleased);
 		EnhancedInputComponent->BindAction(PrimaryAction, ETriggerEvent::Canceled, this, &ThisClass::PrimaryReleased);
 	}
+	
+	if (IsValid(SecondaryAction))
+	{
+		EnhancedInputComponent->BindAction(SecondaryAction, ETriggerEvent::Started, this, &ThisClass::SecondaryPressed);
+	}
 }
 
 void ALB_PlayerController::BeginPlay()
@@ -399,6 +404,20 @@ void ALB_PlayerController::PrimaryPressed()
 	ServerSetPrimaryHeld(true);
 }
 
+void ALB_PlayerController::SecondaryPressed()
+{
+	if (bPauseMenuOpen) return;
+	if (!IsAlive()) return;
+	if (!IsLocalController()) return;
+	
+	
+	if (HasAuthority())
+	{
+		ActivateAbility(LBTags::LBAbilities::Secondary);
+		return;
+	}
+	ServerActivateSecondary();
+}
 void ALB_PlayerController::PrimaryReleased()
 {
 	// Completed와 Canceled가 같은 프레임에 들어와도 release RPC는 한 번만 전송한다.
@@ -1223,6 +1242,11 @@ void ALB_PlayerController::HandleHostPauseChanged(bool bPaused)
 {
 	(void)bPaused;
 	RefreshPauseOverlay();
+}
+
+void ALB_PlayerController::ServerActivateSecondary_Implementation()
+{
+	ActivateAbility(LBTags::LBAbilities::Secondary);
 }
 
 void ALB_PlayerController::ApplyRaidStatePresentation(ELBRaidState NewState)

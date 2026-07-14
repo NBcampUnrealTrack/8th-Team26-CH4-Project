@@ -230,12 +230,14 @@ void ALB_BossCharacter::HandleDeath()
 {
 	Super::HandleDeath();
 	
-	if (bIsDead)
+	/*if (bIsDead)
 	{
 		return;
-	}
+	}*/
 
-	Super::HandleDeath();
+	/*Super::HandleDeath();*/
+	
+
 	Die_ServerOnly();
 }
 
