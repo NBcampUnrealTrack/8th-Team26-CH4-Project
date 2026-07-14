@@ -37,6 +37,17 @@ UAttributeSet* ALB_BaseCharacter::GetAttributeSet() const
 	return nullptr;
 }
 
+void ALB_BaseCharacter::MulticastFreezePose_Implementation()
+{
+	USkeletalMeshComponent* ThisMesh = GetMesh();
+	if (!IsValid(ThisMesh))
+	{
+		return;
+	}
+	ThisMesh->bPauseAnims = true;
+
+}
+
 void ALB_BaseCharacter::MulticastPlayCosmeticMontage_Implementation(UAnimMontage* Montage, float PlayRate)
 {
 	if (!IsValid(Montage))
@@ -55,7 +66,11 @@ void ALB_BaseCharacter::MulticastPlayCosmeticMontage_Implementation(UAnimMontage
 	}
 
 	// 공격 판정은 서버에서 이미 처리하고, 몽타주는 모든 클라이언트가 같은 타이밍에 보도록 재생한다.
-	AnimInstance->Montage_Play(Montage, FMath::Max(0.01f, PlayRate));
+	float Time = AnimInstance->Montage_Play(Montage, FMath::Max(0.01f, PlayRate));
+	
+	UE_LOG(LogTemp, Warning, TEXT("[LB Animation] Montage play Succeed. Character=%s Montage=%s, PlayTime = %f"),
+	*GetNameSafe(this),
+	*GetNameSafe(Montage),Time);
 }
 
 void ALB_BaseCharacter::GiveStartupAbilities()
@@ -155,6 +170,7 @@ void ALB_BaseCharacter::HandleDeath()
 	if (HasAuthority())
 	{
 		MulticastPlayCosmeticMontage(DeathMontage);
+
 	}
 }
 
