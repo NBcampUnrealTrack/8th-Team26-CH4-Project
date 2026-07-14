@@ -82,12 +82,25 @@ void ULB_MainMenuRootWidget::NativeDestruct()
 	Super::NativeDestruct();
 }
 
-void ULB_MainMenuRootWidget::HandleStartClicked()
+void ULB_MainMenuRootWidget::ExecuteOnlinePlay()
 {
+	if (bOnlinePlayRequested) return;
+	bOnlinePlayRequested = true;
+	
 	if (ALB_MainMenuPlayerController* Controller = Cast<ALB_MainMenuPlayerController>(GetOwningPlayer()))
 	{
 		Controller->BeginOnlinePlay();
 	}
+}
+
+void ULB_MainMenuRootWidget::ResetOnlinePlayFlag()
+{
+	bOnlinePlayRequested = false;
+}
+
+void ULB_MainMenuRootWidget::HandleStartClicked()
+{
+	BP_OnStartClicked();
 }
 
 void ULB_MainMenuRootWidget::HandleBackClicked()
