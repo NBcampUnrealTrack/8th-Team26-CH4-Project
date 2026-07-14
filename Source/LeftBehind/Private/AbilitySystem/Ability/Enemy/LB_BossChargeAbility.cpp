@@ -6,6 +6,7 @@
 #include "SNegativeActionButton.h"
 #include "AbilitySystem/Task/LB_TelegraphAbilityTask.h"
 #include "AbilitySystem/Task/LB_TickDamageTask.h"
+#include "AbilitySystem/Ability/LB_AbilityTypes.h"
 #include "Characters/LB_BaseCharacter.h"
 #include "GameplayTags/LBTags.h"
 #include "Utils/LB_BlueprintLibrary.h"
