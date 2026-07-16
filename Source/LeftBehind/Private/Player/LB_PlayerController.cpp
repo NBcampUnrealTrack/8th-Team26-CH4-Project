@@ -409,11 +409,11 @@ void ALB_PlayerController::SecondaryPressed()
 	if (bPauseMenuOpen) return;
 	if (!IsAlive()) return;
 	if (!IsLocalController()) return;
-	
-	
+
+
 	if (HasAuthority())
 	{
-		ActivateAbility(LBTags::LBAbilities::Secondary);
+		TryActivateSecondary_ServerOnly();
 		return;
 	}
 	ServerActivateSecondary();
@@ -529,6 +529,40 @@ float ALB_PlayerController::GetSafePrimaryActivationInterval() const
 {
 	return FMath::IsFinite(PrimaryActivationInterval) && PrimaryActivationInterval >= 0.01f
 		? PrimaryActivationInterval
+		: 0.3f;
+}
+
+bool ALB_PlayerController::TryActivateSecondary_ServerOnly()
+{
+	if (!HasAuthority())
+	{
+		return false;
+	}
+
+	const UWorld* World = GetWorld();
+	if (!IsValid(World))
+	{
+		return false;
+	}
+
+	const double CurrentTime = World->GetTimeSeconds();
+	const double SafeInterval = static_cast<double>(GetSafeSecondaryActivationInterval());
+	if (LastSecondaryActivationServerTime >= 0.0
+		&& CurrentTime >= LastSecondaryActivationServerTime
+		&& CurrentTime - LastSecondaryActivationServerTime + UE_KINDA_SMALL_NUMBER < SafeInterval)
+	{
+		return false;
+	}
+
+	// 성공 여부와 무관하게 시도 시각을 기록해 실패 상태에서 Reliable RPC를 연속 호출하는 남용도 제한한다.
+	LastSecondaryActivationServerTime = CurrentTime;
+	return ActivateAbility(LBTags::LBAbilities::Secondary);
+}
+
+float ALB_PlayerController::GetSafeSecondaryActivationInterval() const
+{
+	return FMath::IsFinite(SecondaryActivationInterval) && SecondaryActivationInterval >= 0.01f
+		? SecondaryActivationInterval
 		: 0.3f;
 }
 
@@ -1246,7 +1280,7 @@ void ALB_PlayerController::HandleHostPauseChanged(bool bPaused)
 
 void ALB_PlayerController::ServerActivateSecondary_Implementation()
 {
-	ActivateAbility(LBTags::LBAbilities::Secondary);
+	TryActivateSecondary_ServerOnly();
 }
 
 void ALB_PlayerController::ApplyRaidStatePresentation(ELBRaidState NewState)
