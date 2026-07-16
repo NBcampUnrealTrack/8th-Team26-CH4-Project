@@ -4,30 +4,11 @@
 
 #include "CoreMinimal.h"
 #include "Abilities/GameplayAbility.h"
+#include "AbilitySystem/Ability/LB_AbilityTypes.h"
 #include "LB_BossChargeAbility.generated.h"
 
-USTRUCT(BlueprintType)
-struct FLB_AttackConfig
-{
-	GENERATED_BODY()
-	
-	TSubclassOf<UGameplayEffect> DamageEffect;
-	
-	float Damage = 0.f;
-	
-	float HitBoxRadius = 0.f;
-	
-	float HitBoxForwardOffset = 0.f;
 
-	float HitBoxElevationOffset = 0.f;
-
-	bool bDrawHitDebug;
-	
-	float KnockbackForce;
-	
-	float KnockbackForceV;
-};
-
+class ALB_TelegraphIndicator;
 /**
  * 
  */
@@ -125,6 +106,18 @@ public:
 	
 private:
 	FLB_AttackConfig AttackConfig;
+	
+	UPROPERTY()
+	TArray<ALB_TelegraphIndicator*> SpawnedIndicators;
+
+	UPROPERTY(EditDefaultsOnly,BlueprintReadOnly, Category="LB|Summon", meta=(AllowPrivateAccess = true))
+	TSubclassOf<ALB_TelegraphIndicator> IndicatorClass;
+	
+	UPROPERTY(EditDefaultsOnly, Category="LB|Summon",meta=(AllowPrivateAccess = true))
+	float IndicatorRadius;
+	
+	UPROPERTY(EditDefaultsOnly, Category="LB|Summon",meta=(AllowPrivateAccess = true))
+	float IndicatorLength;;
 	
 	
 };

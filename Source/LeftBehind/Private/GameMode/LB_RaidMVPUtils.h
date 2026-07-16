@@ -1,7 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "System/Raid/LBCharacterTypes.h"
+#include "System/Character/LBCharacterTypes.h"
 
 namespace LBRaidMVP
 {

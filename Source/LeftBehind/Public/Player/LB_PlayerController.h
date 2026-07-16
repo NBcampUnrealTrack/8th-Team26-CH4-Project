@@ -104,8 +104,14 @@ private:
 	UPROPERTY(EditDefaultsOnly, Category = "LB|Input|Abilities", meta = (ClampMin = "0.01"))
 	float PrimaryActivationInterval = 0.3f;
 
+	// 우클릭 스킬도 몽타주가 끝나기 전에 재발동되지 않도록 두는 최소 간격이다.
+	UPROPERTY(EditDefaultsOnly, Category = "LB|Input|Abilities", meta = (ClampMin = "0.01"))
+	float SecondaryActivationInterval = 0.3f;
+
 	// 서버가 실제 공격 시도 시각을 보관해 hold 타이머와 단발 RPC가 동일한 rate gate를 공유한다.
 	double LastPrimaryActivationServerTime = -1.0;
+	// 서버가 마지막으로 우클릭 스킬을 시도한 시각을 기록한다.
+	double LastSecondaryActivationServerTime = -1.0;
 	bool bLocalPrimaryHeld = false;
 	bool bServerPrimaryHeld = false;
 	FTimerHandle ServerPrimaryRepeatTimerHandle;
@@ -162,6 +168,8 @@ private:
 	void StopPrimaryRepeat_ServerOnly();
 	bool TryActivatePrimary_ServerOnly();
 	float GetSafePrimaryActivationInterval() const;
+	bool TryActivateSecondary_ServerOnly();
+	float GetSafeSecondaryActivationInterval() const;
 	bool IsAlive() const;
 
 	void ApplyInputMappingContexts();

@@ -35,11 +35,7 @@ public:
 	
 	void HandleDamageableActorsInHitBox();
 	
-	UPROPERTY(BlueprintAssignable)
-	FTickDamageResultDelegate OnTargetImpact;
-	
-	UPROPERTY(BlueprintAssignable)
-	FTickDamageResultDelegate OnObstacleHit;
+
 	
 	UPROPERTY(BlueprintAssignable)
 	FTickDamageResultDelegate OnTaskCompleted;

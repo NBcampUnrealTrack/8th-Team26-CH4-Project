@@ -6,8 +6,11 @@
 #include "LB_BaseCharacter.h"
 #include "LB_EnemyCharacter.generated.h"
 
+class ULB_ThreatComponent;
 class ULB_AbilitySystemComponent;
 class UAttributeSet;
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLB_MinionsDiedSignature,ALB_EnemyCharacter*, DeathMinion);
 
 UCLASS()
 class LEFTBEHIND_API ALB_EnemyCharacter : public ALB_BaseCharacter
@@ -22,16 +25,46 @@ public:
 
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 	
+	
+	void StopMovementUntilLanded();
+
+	virtual void BeginPlay() override;
+	
+	virtual void Tick(float DeltaSeconds) override;
+	
+	UFUNCTION()
+	void Die_ServerOnly();
+	
+	UFUNCTION()
+	void OnRep_CurrentHP();
+	
+	UPROPERTY(BlueprintAssignable, Category="LB|Enemy")
+	FOnLB_MinionsDiedSignature OnMinionsDied;
+	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Replicated)
 	bool bIsBeingLaunched{false};
 	
-	void StopMovementUntilLanded();
+	UPROPERTY(EditDefaultsOnly,BlueprintReadOnly, Category="LB|Enemy")
+	bool bIsMinions = false;
+	
 protected:
 	// Called when the game starts or when spawned
-	virtual void BeginPlay() override;
+
 	virtual UAttributeSet* GetAttributeSet() const override;
 	virtual void HandleDeath() override;
+	
+	//Status
+	UPROPERTY(ReplicatedUsing=OnRep_CurrentHP, BlueprintReadOnly, Category="LB|Enemy")
+	float CurrentHP = 10000.f;
 
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="LB|Enemy")
+	float MaxHP = 10000.f;
+
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="LB|Enemy")
+	float DEF = 50.f;
+
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="LB|Enemy")
+	bool bIsDead = false;
 
 	
 private:

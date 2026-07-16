@@ -3,7 +3,10 @@
 
 #include "Controller/Component/LB_ThreatComponent.h"
 
+#include "EngineUtils.h"
 #include "AbilitySystem/LB_AttributeSet.h"
+#include "Characters/LB_PlayerCharacter.h"
+#include "GameplayTags/LBTags.h"
 
 
 // Sets default values for this component's properties
@@ -26,7 +29,11 @@ void ULB_ThreatComponent::BeginPlay()
 	ULB_AttributeSet* BossAttributeSet = Cast<ULB_AttributeSet>(Boss->GetAttributeSet()) ;
 	if (!IsValid(BossAttributeSet)) return;
 	
-	
+	for (TActorIterator<ALB_PlayerCharacter> It(GetWorld()); It; ++It)
+	{
+		ALB_PlayerCharacter* Player = *It;
+		CachedPlayer.Add(Player);
+	}
 	
 	BossAttributeSet->ActorDamaged.AddDynamic(this,&ULB_ThreatComponent::UpdateDamageMap);
 	
@@ -95,6 +102,30 @@ AActor* ULB_ThreatComponent::SelectMostThreatCharacter()
 	return Target;
 	
 	
+}
+
+AActor* ULB_ThreatComponent::ClosestPlayerCharacter()
+{
+	ALB_PlayerCharacter* CloestPlayerCharacter = nullptr;
+	AActor* Owner = GetOwner();
+	if (!IsValid(Owner))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[LB_ThreatComponent] Owner is nullptr"));
+		return nullptr;
+	}
+	float Distance = 9999.f;
+	
+	for (ALB_PlayerCharacter* PlayerCharacter : CachedPlayer)
+	{
+		float NewCloseDistance = Owner->GetDistanceTo(PlayerCharacter);
+		if (Distance > NewCloseDistance)
+		{
+			Distance = NewCloseDistance;
+			 CloestPlayerCharacter = PlayerCharacter;
+		}
+	}
+	
+	return CloestPlayerCharacter;
 }
 
 void ULB_ThreatComponent::UpdateThreatMap( AActor* Instigator,  AActor* Causer, float Damage)

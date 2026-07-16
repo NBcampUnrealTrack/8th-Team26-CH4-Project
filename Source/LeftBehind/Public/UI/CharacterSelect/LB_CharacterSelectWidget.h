@@ -3,8 +3,9 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "System/Raid/LBCharacterTypes.h"
+#include "System/Character/LBCharacterTypes.h"
 #include "UI/Base/LB_BaseUserWidget.h"
+#include "System/CharacterSelect/LBCharacterSelectTypes.h"
 #include "LB_CharacterSelectWidget.generated.h"
 
 // 캐릭터 선택창 루트 위젯
@@ -28,7 +29,10 @@ protected:
 	// DT_CharacterData를 읽어 역할별로 카드를 생성
 	void BuildCharacterCards();
 	
-	// 버튼 이벤트 3가지 ------------------------------------
+	UFUNCTION()
+	void HandleCharacterSelectResult(ELBCharacterSelectResult Result);
+	
+	// 버튼 이벤트 ------------------------------------
 	
 	// 캐릭터 카드 클릭
 	UFUNCTION()
@@ -38,15 +42,15 @@ protected:
 	UFUNCTION(BlueprintCallable, Category="LB|CharacterSelect")
 	void OnDetailViewClicked();
 	
-	// 대기실 입장 버튼 클릭
+	// 캐릭터 확정
 	UFUNCTION(BlueprintCallable, Category="LB|CharacterSelect")
-	void OnEnterWaitingRoomClicked();
+	void OnConfirmCharacterClicked();
 	
 	// 상세 화면에서 기본 화면으로 복귀
 	UFUNCTION(BlueprintCallable, Category="LB|CharacterSelect")
 	void OnBackToBasicClicked();
 	
-	// BP 확장지점 4가지 ----------------------------------
+	// BP 확장지점 ----------------------------------
 	
 	// 카드 생성 완료 후, 카드 등장 애니메이션
 	UFUNCTION(BlueprintImplementableEvent, Category="LB|CharacterSelect")
@@ -64,6 +68,8 @@ protected:
 	UFUNCTION(BlueprintImplementableEvent, Category="LB|CharacterSelect")
 	void BP_OnBasicViewRequested();
 
+	UFUNCTION(BlueprintImplementableEvent, Category="LB|CharacterSelect")
+	void BP_OnCharacterSelectFailed(ELBCharacterSelectResult Result);
 	
 	// 바인드 위젯 ----------------------------------------
 	
@@ -82,7 +88,7 @@ protected:
 	TSubclassOf<ULB_CharacterCardWidget> CharacterCardClass;
 	
 	// 캐릭터 데이터 테이블
-	UPROPERTY(EditDefaultsOnly, Category="LB|CharacterSelect")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="LB|CharacterSelect")
 	TObjectPtr<UDataTable> CharacterDataTable;
 	
 	

@@ -8,6 +8,7 @@
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
 #include "Characters/LB_BaseCharacter.h"
+#include "Characters/LB_PlayerCharacter.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "GameFramework/Character.h"
 #include "GameplayTags/LBTags.h"
@@ -125,8 +126,9 @@ void ULB_BossAttackAbility::HandleActivateAbility(const FGameplayAbilitySpecHand
 	int32 AppliedCount = 0;
 	for (AActor* HitActor : HitActors)
 	{
-		
-		if (ULB_BlueprintLibrary::ApplyDamageEffect_ServerOnly(
+		if (ALB_PlayerCharacter* HitCharacter = Cast<ALB_PlayerCharacter>(HitActor))
+		{
+			if (ULB_BlueprintLibrary::ApplyDamageEffect_ServerOnly(
 			AvatarActor,
 			HitActor,
 			DamageEffect,
@@ -135,9 +137,12 @@ void ULB_BossAttackAbility::HandleActivateAbility(const FGameplayAbilitySpecHand
 			Damage,
 			LBTags::Events::Enemy::HitReact
 			))
-		{
-			++AppliedCount;
+			{
+				++AppliedCount;
+			}
+			
 		}
+
 		
 		if (ACharacter* HitCharacter = Cast<ACharacter>(HitActor))
 		{

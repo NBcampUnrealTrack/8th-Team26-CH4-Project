@@ -9,6 +9,9 @@
 #include "Animation/AnimMontage.h"
 #include "GameplayAbilitySpec.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Controller/Component/LB_AttackPatternComponent.h"
+#include "Controller/Component/LB_ThreatComponent.h"
+#include "GameplayTags/LBTags.h"
 #include "Net/UnrealNetwork.h"
 
 
@@ -16,8 +19,11 @@
 ALB_BaseCharacter::ALB_BaseCharacter()
 {
 	// Set this character to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
-	PrimaryActorTick.bCanEverTick = false;
+	PrimaryActorTick.bCanEverTick = true;
 	GetMesh()->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
+	
+	ThreatComponent = CreateDefaultSubobject<ULB_ThreatComponent>(TEXT("ThreatComponent"));
+	AttackPatternComponent = CreateDefaultSubobject<ULB_AttackPatternComponent>(TEXT("AttackPatternComponent"));
 }
 
 void ALB_BaseCharacter::GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const
@@ -71,6 +77,8 @@ void ALB_BaseCharacter::MulticastPlayCosmeticMontage_Implementation(UAnimMontage
 	UE_LOG(LogTemp, Warning, TEXT("[LB Animation] Montage play Succeed. Character=%s Montage=%s, PlayTime = %f"),
 	*GetNameSafe(this),
 	*GetNameSafe(Montage),Time);
+	
+	
 }
 
 void ALB_BaseCharacter::GiveStartupAbilities()
@@ -169,8 +177,15 @@ void ALB_BaseCharacter::HandleDeath()
 
 	if (HasAuthority())
 	{
+		if (!IsValid(DeathMontage))
+		{
+			return;
+		}
+		
+		//PlayLength로 재생했는데, 삭제가 느리게 되는 오류 제거
+		float Duration = DeathMontage->GetPlayLength() - 0.3f;
 		MulticastPlayCosmeticMontage(DeathMontage);
-
+		SetLifeSpan(Duration);
 	}
 }
 

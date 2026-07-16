@@ -4,17 +4,21 @@
 #include "GameFramework/PlayerController.h"
 #include "System/MainMenu/LBMainMenuTypes.h"
 #include "System/Online/LB_OnlineSessionSubsystem.h"
+#include "System/Character/LBCharacterTypes.h"
 #include "LB_MainMenuPlayerController.generated.h"
 
+enum class ELBCharacterSelectResult : uint8;
 struct FStreamableHandle;
 class UUserWidget;
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
-	FOnLBCodenameSubmissionResult,
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnLBCodenameSubmissionResult,
 	ELBCodenameSubmitResult,
 	Result,
 	const FString&,
 	SanitizedCodename);
+
+// 멀티 환경 캐릭터 셀렉 현황 -- UI에서 구독
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FLBOnCharacterSelectResult, ELBCharacterSelectResult, Result);
 
 UCLASS()
 class LEFTBEHIND_API ALB_MainMenuPlayerController : public APlayerController
@@ -40,10 +44,10 @@ public:
 
 	// Listen Host의 로컬 authority 인스턴스에만 실행 경로가 존재한다. 원격 travel RPC는 의도적으로 없다.
 	UFUNCTION(BlueprintCallable, Category="LB|MainMenu|Travel")
-	void RequestStartHunt();
+	void RequestStartCharacterSelect();
 
 	UFUNCTION(BlueprintPure, Category="LB|MainMenu|Travel")
-	bool CanRequestStartHunt() const;
+	bool CanRequestStartCharacterSelect() const;
 
 	UFUNCTION(BlueprintPure, Category="LB|MainMenu|Network")
 	bool IsLocalListenHost() const;
@@ -53,6 +57,18 @@ public:
 
 	UPROPERTY(BlueprintAssignable, Category="LB|MainMenu|Name")
 	FOnLBCodenameSubmissionResult OnCodenameSubmissionResult;
+	
+	UPROPERTY(BlueprintAssignable)
+	FLBOnCharacterSelectResult OnCharacterSelectResult;
+	
+	UFUNCTION(BlueprintCallable, Category="LB|MainMenu|Character")
+	void SelectCharacter(ELBCharacterID CharacterID);
+	
+	UFUNCTION(BlueprintCallable, Category="LB|MainMenu|Character")
+	void ReadyCharacter();
+	
+	UFUNCTION(BlueprintCallable, Category="LB|MainMenu|Character")
+	void CancelReady();
 
 protected:
 	virtual void BeginPlay() override;
@@ -60,6 +76,8 @@ protected:
 	virtual void OnRep_PlayerState() override;
 	virtual void PreClientTravel(const FString& PendingURL, ETravelType TravelType, bool bIsSeamlessTravel) override;
 
+	virtual void BeginPlayingState() override;
+	
 	UPROPERTY(EditDefaultsOnly, Category="LB|MainMenu|UI")
 	TSoftClassPtr<UUserWidget> MainMenuWidgetClass;
 
@@ -125,4 +143,19 @@ private:
 	void ClientReceiveCodenameSubmissionResult(
 		ELBCodenameSubmitResult Result,
 		const FString& SanitizedCodename);
+	
+	UFUNCTION(Server, Reliable)
+	void ServerSelectCharacter(ELBCharacterID CharacterID);
+	
+	UFUNCTION(Server, Reliable)
+	void ServerReadyCharacter();
+
+	UFUNCTION(Server, Reliable)
+	void ServerCancelReady();
+	
+	UFUNCTION(Client, Reliable)
+	void ClientReceiveCharacterSelectResult(ELBCharacterSelectResult Result);
+	
+	// CharacterSelect 레벨인지 판단
+	bool IsCharacterSelectLevel() const;
 };
