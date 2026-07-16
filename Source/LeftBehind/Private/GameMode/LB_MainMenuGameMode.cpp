@@ -25,7 +25,7 @@ ALB_MainMenuGameMode::ALB_MainMenuGameMode()
 	HUDClass = nullptr;
 
 	RaidMap = TSoftObjectPtr<UWorld>(FSoftObjectPath(
-		TEXT("/Game/LeftBehind/Maps/Main.Main")));
+		TEXT("/Game/LeftBehind/Maps/Lv_Boss.Main")));
 }
 
 void ALB_MainMenuGameMode::BeginPlay()
