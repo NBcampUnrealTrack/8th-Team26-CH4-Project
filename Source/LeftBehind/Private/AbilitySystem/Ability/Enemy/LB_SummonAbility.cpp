@@ -44,10 +44,28 @@ void ULB_SummonAbility::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 		return;
 	}
 	
+	ALB_BossCharacter* BossCharacter = Cast<ALB_BossCharacter>(AvatarActor);
+	if (!BossCharacter)
+	{
+		ClearIndicator();
+		EndAbility(GetCurrentAbilitySpecHandle(),GetCurrentActorInfo()	,GetCurrentActivationInfo()	,true,true);
+		return;
+	}
+	
 	PendingSpawnLocations.Empty();
 	SpawnedIndicators.Empty();
 
-	for (int32 i = 0; i < SummonSpawnParams.SpawnCount; ++i)
+	
+	
+	TArray<ALB_EnemyCharacter*> ActiveMinions = BossCharacter->GetActiveMinions();
+	const int32 NeedToSpawn = SummonSpawnParams.SpawnCount - ActiveMinions.Num();
+	if (NeedToSpawn == 0)
+	{
+		EndAbility(GetCurrentAbilitySpecHandle(),GetCurrentActorInfo()	,GetCurrentActivationInfo()	,true,true);
+		return;
+	}
+	
+	for (int32 i =0; i < NeedToSpawn; ++i)
 	{
 		const FVector SpawnLocation = ULB_BlueprintLibrary::GetRandomSpawnLocation(
 			AvatarActor, SummonSpawnParams.MinSpawnRadius, SummonSpawnParams.MaxSpawnRadius);
@@ -138,17 +156,27 @@ void ULB_SummonAbility::OnAbilityActivated()
             continue;
         }
 		//스폰 위치를 가늠하기 위한 랜덤 좌표 스폰
-        const FVector SpawnLocation = ULB_BlueprintLibrary::GetRandomSpawnLocation(
-            AvatarActor, SummonSpawnParams.MinSpawnRadius, SummonSpawnParams.MaxSpawnRadius);
+		
         const FRotator SpawnRotation = AvatarActor->GetActorRotation();
 
-        FActorSpawnParameters SpawnParams;
+    	
+    	if (!PendingSpawnLocations.IsValidIndex(i))
+    	{
+    		UE_LOG(LogTemp, Error,
+				TEXT("Invalid PendingSpawnLocations index %d / %d"),
+				i,
+				PendingSpawnLocations.Num());
+
+    		break;
+    	}
+    	
+    	FActorSpawnParameters SpawnParams;
         SpawnParams.Owner = AvatarActor;
         SpawnParams.Instigator = Cast<APawn>(AvatarActor);
         SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
         ALB_EnemyCharacter* SpawnedMinion = World->SpawnActor<ALB_EnemyCharacter>(
-            ClassToSpawn, SpawnLocation, SpawnRotation, SpawnParams);
+            ClassToSpawn, PendingSpawnLocations[i], SpawnRotation, SpawnParams);
 
         if (!SpawnedMinion)
         {

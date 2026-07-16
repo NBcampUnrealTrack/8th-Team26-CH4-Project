@@ -33,6 +33,14 @@ EBTNodeResult::Type ULB_BTT_SelectClosetTarget::ExecuteTask(UBehaviorTreeCompone
 	*GetNameSafe(Cast<AActor>(BlackboardComponent->GetValueAsObject(TEXT("Target")))));*/
 	}
 	AICon->SetFocus(Target, EAIFocusPriority::Gameplay);
+	
+
+
+	/*UE_LOG(LogTemp, Warning, TEXT("Focus=%s"),
+		*GetNameSafe(AICon->GetFocusActor()));
+
+	UE_LOG(LogTemp, Warning, TEXT("ControlRot=%s"),
+		*AICon->GetControlRotation().ToString());*/
 
 	
 	

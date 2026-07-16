@@ -13,7 +13,7 @@
 ALB_EnemyBaseController::ALB_EnemyBaseController()
 {
 	
-	PrimaryActorTick.bCanEverTick = false;
+	PrimaryActorTick.bCanEverTick = true;
 }
 
 void ALB_EnemyBaseController::OnPossess(APawn* InPawn)

@@ -6,6 +6,7 @@
 #include "AIController.h"
 #include "BehaviorTree/BlackboardComponent.h"
 #include "Characters/Boss/LB_BossCharacter.h"
+#include "GameFramework/CharacterMovementComponent.h"
 
 EBTNodeResult::Type ULB_BTT_MoveToTarget::ExecuteTask(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory)
 {
@@ -26,8 +27,7 @@ EBTNodeResult::Type ULB_BTT_MoveToTarget::ExecuteTask(UBehaviorTreeComponent& Ow
 	BB->SetValueAsFloat(FName("AttackRange"),BaseCharacter->MeleeDistance);
 	BB->SetValueAsFloat(FName("WideAttackRange"),BaseCharacter->WideAttackTrigger);
 	
-	AIController->SetFocus(Target, EAIFocusPriority::Gameplay);
-	
+
 	
 	
 	return EBTNodeResult::Succeeded;
