@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "LB_AbilityTypes.generated.h"
 
+class ALB_EnemyCharacter;
 class UGameplayEffect;
 /**
  * 
@@ -46,7 +47,7 @@ struct FLB_SummonSpawnParams
 
 	//소환하려는 소환수 클래스
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Attack")
-	TArray<TSubclassOf<AActor>> MinionClass;
+	TArray<TSubclassOf<ALB_EnemyCharacter>> MinionClass;
 
 	//스폰 횟수
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Attack")

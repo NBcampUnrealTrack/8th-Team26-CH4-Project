@@ -19,22 +19,16 @@ public:
 	// Sets default values for this actor's properties
 	ALB_EnemyBaseController();
 	
+	virtual void OnPossess(APawn* InPawn) override;
+	
 	virtual void BeginPlay() override;
 
 private:
 	
-	UPROPERTY(EditAnywhere, BlueprintReadOnly,Category = "BOSS|AI", meta=(AllowPrivateAccess = true))
-	TObjectPtr<ULB_ThreatComponent> ThreatComponent;
-	
-	UPROPERTY(EditAnywhere, BlueprintReadOnly,Category = "BOSS|AI", meta=(AllowPrivateAccess = true))
-	TObjectPtr<ULB_AttackPatternComponent> AttackPatternComponent;
-	
-	
-	
-	UPROPERTY(EditAnywhere,BlueprintReadOnly,Category = "BOSS|AI",meta=(AllowPrivateAccess=true))
+	UPROPERTY(EditAnywhere,BlueprintReadOnly,Category = "Enemy|AI",meta=(AllowPrivateAccess=true))
 	TObjectPtr<UBlackboardComponent> BlackboardComponent;
 	
-	UPROPERTY(EditAnywhere,BlueprintReadOnly,Category = "BOSS|AI",meta=(AllowPrivateAccess=true))
+	UPROPERTY(EditAnywhere,BlueprintReadOnly,Category = "Enemy|AI",meta=(AllowPrivateAccess=true))
 	TObjectPtr<UBehaviorTree> BehaviorTree;
 
 	

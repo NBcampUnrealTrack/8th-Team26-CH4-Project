@@ -8,6 +8,8 @@
 #include "LB_BaseCharacter.generated.h"
 
 
+class ULB_AttackPatternComponent;
+class ULB_ThreatComponent;
 struct FOnAttributeChangeData;
 class UGameplayAbility;
 class UGameplayEffect;
@@ -33,7 +35,7 @@ public:
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastPlayCosmeticMontage(UAnimMontage* Montage, float PlayRate = 1.f);
 	
-	//서버 호출 시에 클라이언트의 
+	//서버 호출 시에 클라이언트의 애니메이션 동작을 멈춘다.
 	UFUNCTION(NetMulticast, Unreliable, BlueprintCallable, Category = "LeftBehind|Animation")
 	void MulticastFreezePose();
 	
@@ -42,8 +44,22 @@ public:
 	
 	bool IsAlive() const { return bAlive; }
 	
+	// ---- Attack ----
+	ULB_ThreatComponent* GetThreatComponent() {return ThreatComponent;}
+	ULB_AttackPatternComponent* GetAttackComponent() { return AttackPatternComponent;}
+	
 	UPROPERTY(EditAnywhere, Category = "Crash|AI")
 	float SearchRange{1000.f};
+	
+	//Player에게 접근하기 위한 거리
+	UPROPERTY(EditAnywhere,BlueprintReadOnly, Category = "Enemy|AI")
+	float MeleeDistance;
+	
+	UPROPERTY(EditAnywhere,BlueprintReadOnly, Category = "Enemy|AI")
+	float RangedDistance;
+	
+	UPROPERTY(EditAnywhere,BlueprintReadOnly, Category = "Enemy|AI")
+	float WideAttackTrigger;
 	
 protected:
 	void GiveStartupAbilities();
@@ -52,6 +68,14 @@ protected:
 	void OnHealthChanged(const FOnAttributeChangeData& AttributeChangeData);
 	virtual void HandleDeath();
 	virtual void HandleRespon();
+	
+	
+	// --- AI ---
+	TObjectPtr<ULB_ThreatComponent> ThreatComponent;
+	
+	TObjectPtr<ULB_AttackPatternComponent> AttackPatternComponent;
+	
+
 	
 private:
 

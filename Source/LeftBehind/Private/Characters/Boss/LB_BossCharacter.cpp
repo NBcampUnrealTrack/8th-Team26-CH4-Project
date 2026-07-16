@@ -6,6 +6,7 @@
 #include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystem/LB_AbilitySystemComponent.h"
 #include "AbilitySystem/LB_Attributeset.h"
+#include "Characters/LB_EnemyCharacter.h"
 #include "Components/CapsuleComponent.h"
 #include "Controller/Component/LB_AttackPatternComponent.h"
 #include "Controller/Component/LB_ThreatComponent.h"
@@ -14,7 +15,7 @@
 
 ALB_BossCharacter::ALB_BossCharacter()
 {
-	PrimaryActorTick.bCanEverTick = false;
+	PrimaryActorTick.bCanEverTick = true;
 	bReplicates = true;
 
 	if (UCapsuleComponent* Capsule = GetCapsuleComponent())
@@ -31,8 +32,7 @@ ALB_BossCharacter::ALB_BossCharacter()
 
 	Attributeset = CreateDefaultSubobject<ULB_AttributeSet>(TEXT("Attributeset"));
 	
-	ThreatComponent = CreateDefaultSubobject<ULB_ThreatComponent>(TEXT("ThreatComponent"));
-	AttackPatternComponent = CreateDefaultSubobject<ULB_AttackPatternComponent>(TEXT("AttackPatternComponent"));
+
 	
 	
 
@@ -217,6 +217,18 @@ void ALB_BossCharacter::StopMovementUntilLanded()
 	{
 		LandedDelegate.AddDynamic(this, &ThisClass::EnableMovementOnLanded);
 	}
+}
+
+void ALB_BossCharacter::AddActiveMinions(ALB_EnemyCharacter* NewMinion)
+{
+	NewMinion->OnMinionsDied.AddDynamic(this,&ALB_BossCharacter::HandleMinionsDeath);
+	ActiveMinions.Add(NewMinion);
+}
+
+void ALB_BossCharacter::HandleMinionsDeath(ALB_EnemyCharacter* DeathMinions)
+{
+	ActiveMinions.Remove(DeathMinions);
+	
 }
 
 void ALB_BossCharacter::EnableMovementOnLanded(const FHitResult& Hit)

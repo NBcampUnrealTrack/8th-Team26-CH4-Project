@@ -8,6 +8,7 @@
 #include "LB_BossChargeAbility.generated.h"
 
 
+class ALB_TelegraphIndicator;
 /**
  * 
  */
@@ -105,6 +106,18 @@ public:
 	
 private:
 	FLB_AttackConfig AttackConfig;
+	
+	UPROPERTY()
+	TArray<ALB_TelegraphIndicator*> SpawnedIndicators;
+
+	UPROPERTY(EditDefaultsOnly,BlueprintReadOnly, Category="LB|Summon", meta=(AllowPrivateAccess = true))
+	TSubclassOf<ALB_TelegraphIndicator> IndicatorClass;
+	
+	UPROPERTY(EditDefaultsOnly, Category="LB|Summon",meta=(AllowPrivateAccess = true))
+	float IndicatorRadius;
+	
+	UPROPERTY(EditDefaultsOnly, Category="LB|Summon",meta=(AllowPrivateAccess = true))
+	float IndicatorLength;;
 	
 	
 };

@@ -8,6 +8,7 @@
 #include "LB_ThreatComponent.generated.h"
 
 
+class ALB_PlayerCharacter;
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnThreatTargetChanged, AActor*, NewTarget);
 
 
@@ -28,6 +29,8 @@ public:
 	//노릴 최우선 목표 최신화 및 반환
 	AActor* SelectMostThreatCharacter();
 	
+	AActor* ClosestPlayerCharacter();
+	
 	
 private:
 	//위협도 맵 업데이트
@@ -43,6 +46,7 @@ private:
 	
 	TMap<ALB_BaseCharacter*, float> ThreatMap;
 	TMap<ALB_BaseCharacter*, float> DamageMap;
+	TArray<ALB_PlayerCharacter*> CachedPlayer;
 	
 	//Behavior Tree와의 연계를 위해서 필요.
 	AActor* Target;

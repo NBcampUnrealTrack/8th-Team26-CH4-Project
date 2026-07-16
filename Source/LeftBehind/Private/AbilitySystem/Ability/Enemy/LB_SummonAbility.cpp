@@ -3,8 +3,11 @@
 
 #include "AbilitySystem/Ability/Enemy/LB_SummonAbility.h"
 
+#include "AbilitySystemComponent.h"
+#include "AbilitySystem/Ability/LB_TelegraphIndicator.h"
 #include "AbilitySystem/Task/LB_TelegraphAbilityTask.h"
 #include "Characters/LB_EnemyCharacter.h"
+#include "Characters/Boss/LB_BossCharacter.h"
 #include "GameplayTags/LBTags.h"
 #include "Utils/LB_BlueprintLibrary.h"
 
@@ -41,6 +44,27 @@ void ULB_SummonAbility::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 		return;
 	}
 	
+	PendingSpawnLocations.Empty();
+	SpawnedIndicators.Empty();
+
+	for (int32 i = 0; i < SummonSpawnParams.SpawnCount; ++i)
+	{
+		const FVector SpawnLocation = ULB_BlueprintLibrary::GetRandomSpawnLocation(
+			AvatarActor, SummonSpawnParams.MinSpawnRadius, SummonSpawnParams.MaxSpawnRadius);
+		PendingSpawnLocations.Add(SpawnLocation);
+
+		if (IndicatorClass)
+		{
+			FActorSpawnParameters IndicatorSpawnParams;
+			if (ALB_TelegraphIndicator* Indicator = GetWorld()->SpawnActor<ALB_TelegraphIndicator>(
+				IndicatorClass, SpawnLocation, FRotator::ZeroRotator, IndicatorSpawnParams))
+			{
+				Indicator->SetAsCircle(IndicatorRadius);
+				SpawnedIndicators.Add(Indicator);
+			}
+		}
+	}
+	
 	if (bIsTelegraph)
 	{
 		ULB_TelegraphAbilityTask* TelegraphAbilityTask = 
@@ -54,6 +78,11 @@ void ULB_SummonAbility::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 		TelegraphAbilityTask->OnTaskCancelled.AddDynamic(this, &ULB_SummonAbility::OnAbilityCancelled);
 		TelegraphAbilityTask->ReadyForActivation();
 	}
+	else
+	{
+		
+		OnAbilityActivated();
+	}
 	
 	
 	
@@ -64,6 +93,7 @@ void ULB_SummonAbility::OnAbilityActivated()
 	AActor* AvatarActor = GetAvatarActorFromActorInfo();
     if (!AvatarActor)
     {
+    	ClearIndicator();
     	EndAbility(GetCurrentAbilitySpecHandle(),GetCurrentActorInfo()	,GetCurrentActivationInfo()	,true,true);
         return;
     }
@@ -71,25 +101,29 @@ void ULB_SummonAbility::OnAbilityActivated()
     if (SummonSpawnParams.MinionClass.Num() == 0)
     {
         UE_LOG(LogTemp, Warning, TEXT("[%s] MinionClass가 비어있습니다."), *GetName());
+    	
+    	ClearIndicator();
        	EndAbility(GetCurrentAbilitySpecHandle(),GetCurrentActorInfo()	,GetCurrentActivationInfo()	,true,true);
         return;
     }
-
-    // 죽거나 소멸한 소환수 정리 (스폰 전에 먼저 갱신)
-    /*ActiveMinions.RemoveAll([](const TWeakObjectPtr<ALB_EnemyCharacter>& Minion)
-    {
-        return !Minion.IsValid();
-    });*/
-
+	
+	ALB_BossCharacter* BossCharacter = Cast<ALB_BossCharacter>(AvatarActor);
+	if (!BossCharacter)
+	{
+		ClearIndicator();
+		EndAbility(GetCurrentAbilitySpecHandle(),GetCurrentActorInfo()	,GetCurrentActivationInfo()	,true,true);
+		return;
+	}
+	
     UWorld* World = AvatarActor->GetWorld();
     UAbilitySystemComponent* SourceASC = GetAbilitySystemComponentFromActorInfo();
-
+	TArray<ALB_EnemyCharacter*> ActiveMinions = BossCharacter->GetActiveMinions();
     int32 SpawnedCount = 0;
 
-    /*for (int32 i = 0; i < SummonSpawnParams.SpawnCount; ++i)
-    {*/
+    for (int32 i = 0; i < SummonSpawnParams.SpawnCount; ++i)
+    {
         // 최대 소환 수 도달 시 중단
-        /*if (ActiveMinions.Num() >= SummonSpawnParams.MaxActiveMinions)
+        if (ActiveMinions.Num() >= SummonSpawnParams.MaxActiveMinions)
         {
             UE_LOG(LogTemp, Log, TEXT("[%s] 최대 소환수(%d) 도달, 스폰 중단"),
                 *GetName(), SummonSpawnParams.MaxActiveMinions);
@@ -103,7 +137,7 @@ void ULB_SummonAbility::OnAbilityActivated()
         {
             continue;
         }
-
+		//스폰 위치를 가늠하기 위한 랜덤 좌표 스폰
         const FVector SpawnLocation = ULB_BlueprintLibrary::GetRandomSpawnLocation(
             AvatarActor, SummonSpawnParams.MinSpawnRadius, SummonSpawnParams.MaxSpawnRadius);
         const FRotator SpawnRotation = AvatarActor->GetActorRotation();
@@ -111,14 +145,14 @@ void ULB_SummonAbility::OnAbilityActivated()
         FActorSpawnParameters SpawnParams;
         SpawnParams.Owner = AvatarActor;
         SpawnParams.Instigator = Cast<APawn>(AvatarActor);
-        SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossible;
+        SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
         ALB_EnemyCharacter* SpawnedMinion = World->SpawnActor<ALB_EnemyCharacter>(
             ClassToSpawn, SpawnLocation, SpawnRotation, SpawnParams);
 
         if (!SpawnedMinion)
         {
-            UE_LOG(LogTemp, Warning, TEXT("[%s] 소환 실패: %s"), *GetName(), *ClassToSpawn->GetName());
+            UE_LOG(LogTemp, Warning, TEXT("[%s] Summon Failed: %s"), *GetName(), *ClassToSpawn->GetName());
             continue;
         }
 
@@ -145,12 +179,14 @@ void ULB_SummonAbility::OnAbilityActivated()
             }
         }
 
-        ActiveMinions.Add(SpawnedMinion);
+        BossCharacter->AddActiveMinions(SpawnedMinion);
         ++SpawnedCount;
     }
+	
+	ClearIndicator();
 
-    UE_LOG(LogTemp, Log, TEXT("[%s] 총 %d마리 소환 완료 (현재 활성: %d/%d)"),
-        *GetName(), SpawnedCount, ActiveMinions.Num(), SummonSpawnParams.MaxActiveMinions);*/
+    UE_LOG(LogTemp, Log, TEXT("[%s]  %d summon success (Current Active minions: %d/%d)"),
+        *GetName(), SpawnedCount, ActiveMinions.Num(), SummonSpawnParams.MaxActiveMinions);
 	
 	
 	EndAbility(GetCurrentAbilitySpecHandle()
@@ -162,11 +198,28 @@ void ULB_SummonAbility::OnAbilityActivated()
 
 void ULB_SummonAbility::OnAbilityCancelled()
 {
+	ClearIndicator();
+	
 	EndAbility(GetCurrentAbilitySpecHandle()
 	,GetCurrentActorInfo()
 	,GetCurrentActivationInfo()
 	,true
 	,true);
+}
+
+void ULB_SummonAbility::ClearIndicator()
+{
+
+	for (ALB_TelegraphIndicator* Indicator : SpawnedIndicators)
+	{
+		if (IsValid(Indicator))
+		{
+			Indicator->Destroy();
+		}
+	}
+	
+	PendingSpawnLocations.Empty();
+	SpawnedIndicators.Empty();
 }
 
 

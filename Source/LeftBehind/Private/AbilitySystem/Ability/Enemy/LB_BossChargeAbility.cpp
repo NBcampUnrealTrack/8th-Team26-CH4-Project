@@ -7,6 +7,7 @@
 #include "AbilitySystem/Task/LB_TelegraphAbilityTask.h"
 #include "AbilitySystem/Task/LB_TickDamageTask.h"
 #include "AbilitySystem/Ability/LB_AbilityTypes.h"
+#include "AbilitySystem/Ability/LB_TelegraphIndicator.h"
 #include "Characters/LB_BaseCharacter.h"
 #include "GameplayTags/LBTags.h"
 #include "Utils/LB_BlueprintLibrary.h"
@@ -61,9 +62,26 @@ void ULB_BossChargeAbility::ActivateAbility(const FGameplayAbilitySpecHandle Han
 		return;
 	}
 
+
 	//전조 증상 여부에 따른 Task 생성 추가
 	if (bIsTelegraph)
 	{
+		//전조 증상이 있을 경우, Indicator를 소환한다.
+		IndicatorLength = ChargingDistance;
+		
+		if (IndicatorClass)
+		{
+			FActorSpawnParameters IndicatorSpawnParams;
+			FVector SpawnLocation = AvatarActor->GetActorLocation();
+			FRotator SpawnRotation = AvatarActor->GetActorRotation();
+			if (ALB_TelegraphIndicator* Indicator = GetWorld()->SpawnActor<ALB_TelegraphIndicator>(
+				IndicatorClass, SpawnLocation, SpawnRotation, IndicatorSpawnParams))
+			{
+				Indicator->SetAsLine(IndicatorRadius, IndicatorLength);
+				SpawnedIndicators.Add(Indicator);
+			}
+		}
+		
 		ULB_TelegraphAbilityTask* TelegraphAbilityTask = ULB_TelegraphAbilityTask::PlayTelegraph(
 			this,
 			TelegraphMontage,

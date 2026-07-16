@@ -7,18 +7,21 @@
 #include "AIController.h"
 #include "AbilitySystem/LB_AbilitySystemComponent.h"
 #include "AbilitySystem/LB_AttributeSet.h"
+#include "Controller/Component/LB_ThreatComponent.h"
 #include "GameplayTags/LBTags.h"
 #include "Net/UnrealNetwork.h"
 
 ALB_EnemyCharacter::ALB_EnemyCharacter()
 {
-	PrimaryActorTick.bCanEverTick = false;
+	PrimaryActorTick.bCanEverTick = true;
 	
 	AbilitySystemComponent = CreateDefaultSubobject<ULB_AbilitySystemComponent>("AbilitySystemComponent");
 	AbilitySystemComponent->SetIsReplicated(true);
 	AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Mixed);
 	
+	
 	Attributeset = CreateDefaultSubobject<ULB_AttributeSet>("AttributeSet");
+	bIsDead = false;
 	
 }
 
@@ -53,7 +56,36 @@ void ALB_EnemyCharacter::BeginPlay()
 	
 	GetAbilitySystemComponent()->GetGameplayAttributeValueChangeDelegate(Lb_AttributeSet->GetHealthAttribute()).RemoveAll(this);
 	GetAbilitySystemComponent()->GetGameplayAttributeValueChangeDelegate(Lb_AttributeSet->GetHealthAttribute()).AddUObject(this,&ThisClass::OnHealthChanged);
-	
+
+}
+
+void ALB_EnemyCharacter::Die_ServerOnly()
+{
+	UE_LOG(LogTemp,Warning, TEXT("LB_BossCharacter: Die_ServerOnly Activate"));
+	if (!HasAuthority() || bIsDead)
+	{
+		return;
+	}
+
+	bIsDead = true;
+	CurrentHP = 0.f;
+
+	if (ULB_AttributeSet* LBAttributeset = Cast<ULB_AttributeSet>(GetAttributeSet()))
+	{
+		LBAttributeset->SetHealth(0.f);
+	}
+
+	OnRep_CurrentHP();
+	if (bIsMinions)
+	{
+		OnMinionsDied.Broadcast(this);
+	}
+
+	ForceNetUpdate();
+}
+
+void ALB_EnemyCharacter::OnRep_CurrentHP()
+{
 }
 
 UAttributeSet* ALB_EnemyCharacter::GetAttributeSet() const
@@ -63,7 +95,13 @@ UAttributeSet* ALB_EnemyCharacter::GetAttributeSet() const
 
 void ALB_EnemyCharacter::HandleDeath()
 {
+	
+	Die_ServerOnly();
 	Super::HandleDeath();
+	
+	
+
+	
 	
 	
 }
