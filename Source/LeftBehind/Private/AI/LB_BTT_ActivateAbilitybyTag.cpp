@@ -5,20 +5,20 @@
 
 #include "AbilitySystemComponent.h"
 #include "AIController.h"
-#include "Characters/Boss/LB_BossCharacter.h"
+#include "Characters/LB_BaseCharacter.h"
 #include "EntitySystem/MovieSceneEntitySystemRunner.h"
 
 EBTNodeResult::Type ULB_BTT_ActivateAbilitybyTag::ExecuteTask(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory)
 {
-	/*UE_LOG(LogTemp,Warning, TEXT("LB_BTT_ActivateAbilitybyTag is start"));*/
+	UE_LOG(LogTemp,Warning, TEXT("LB_BTT_ActivateAbilitybyTag is start"));
 	Super::ExecuteTask(OwnerComp, NodeMemory);
 	
 	if (!AbilityTag.IsValid()) return EBTNodeResult::Failed; 
 	
-	ALB_BossCharacter* BossCharacter = Cast<ALB_BossCharacter>(OwnerComp.GetAIOwner()->GetPawn());
-	if (!IsValid(BossCharacter)) return EBTNodeResult::Failed;
+	ALB_BaseCharacter* BaseCharacter = Cast<ALB_BaseCharacter>(OwnerComp.GetAIOwner()->GetPawn());
+	if (!IsValid(BaseCharacter)) return EBTNodeResult::Failed;
 	
-	UAbilitySystemComponent* ASC = BossCharacter->GetAbilitySystemComponent();
+	UAbilitySystemComponent* ASC = BaseCharacter->GetAbilitySystemComponent();
 	if (ASC == nullptr) return EBTNodeResult::Failed;
 	
 	
@@ -43,8 +43,8 @@ EBTNodeResult::Type ULB_BTT_ActivateAbilitybyTag::ExecuteTask(UBehaviorTreeCompo
 	//TryActiavteAbility를 통해서 Spec를 통해서 능력을 발동시킨다.
 	bool bActivated = ASC->TryActivateAbility(Spec->Handle);
 	
-	/*UE_LOG(LogTemp, Warning, TEXT("[BTT_ActivateAbility] Tag=%s Spec=%s Activated=%d"), 
-	*AbilityTag.ToString(), Spec ? TEXT("Found") : TEXT("NotFound"), bActivated);*/
+	UE_LOG(LogTemp, Warning, TEXT("[BTT_ActivateAbility] Tag=%s Spec=%s Activated=%d"), 
+	*AbilityTag.ToString(), Spec ? TEXT("Found") : TEXT("NotFound"), bActivated);
 	if (!bActivated)
 	{
 		/*UE_LOG(LogTemp,Warning, TEXT("LB_BTT_ActivateAbilitybyTag is not bActivated"));*/

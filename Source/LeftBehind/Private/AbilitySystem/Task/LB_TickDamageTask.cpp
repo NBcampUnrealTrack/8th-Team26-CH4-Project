@@ -137,7 +137,7 @@ AttackConfig.bDrawHitDebug
 	
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("[LB BossAttack] %s hit %d actor(s). Damage=%.1f"), *GetNameSafe(GetAvatarActor()), AppliedCount, AttackConfig.Damage);
+	UE_LOG(LogTemp, Log, TEXT("[LB ChargingAttack] %s hit %d actor(s). Damage=%.1f"), *GetNameSafe(GetAvatarActor()), AppliedCount, AttackConfig.Damage);
 }
 
 

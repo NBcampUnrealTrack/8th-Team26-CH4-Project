@@ -6,6 +6,7 @@
 #include "AIController.h"
 #include "BehaviorTree/BlackboardComponent.h"
 #include "Characters/Boss/LB_BossCharacter.h"
+#include "GameFramework/CharacterMovementComponent.h"
 
 EBTNodeResult::Type ULB_BTT_MoveToTarget::ExecuteTask(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory)
 {
@@ -17,11 +18,17 @@ EBTNodeResult::Type ULB_BTT_MoveToTarget::ExecuteTask(UBehaviorTreeComponent& Ow
 	AActor* Target = Cast<AActor>(BB->GetValueAsObject(FName("Target")));
 	if (!Target) return EBTNodeResult::Failed;
 	
-	ALB_BossCharacter* BossCharacter = Cast<ALB_BossCharacter>(OwnerComp.GetAIOwner()->GetPawn());
-	if (!IsValid(BossCharacter)) return EBTNodeResult::Failed;
+	AAIController* AIController = OwnerComp.GetAIOwner();
+	if (!AIController) return EBTNodeResult::Failed;
 	
-	BB->SetValueAsFloat(FName("AttackRange"),BossCharacter->MeleeDistance);
-	BB->SetValueAsFloat(FName("WideAttackRange"),BossCharacter->WideAttackTrigger);
+	ALB_BaseCharacter* BaseCharacter = Cast<ALB_BaseCharacter>(OwnerComp.GetAIOwner()->GetPawn());
+	if (!IsValid(BaseCharacter)) return EBTNodeResult::Failed;
+	
+	BB->SetValueAsFloat(FName("AttackRange"),BaseCharacter->MeleeDistance);
+	BB->SetValueAsFloat(FName("WideAttackRange"),BaseCharacter->WideAttackTrigger);
+	
+
+	
 	
 	return EBTNodeResult::Succeeded;
 }
