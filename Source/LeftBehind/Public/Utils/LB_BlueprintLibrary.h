@@ -75,4 +75,7 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Crash|Abilities")
 	static TArray<AActor*> ApplyKnockback(AActor* AvatarActor, const TArray<AActor*>& HitActors, float InnerRadius, float OuterRadius, float LaunchForceMagnitude, float RotationAngle = 45.f, bool bDrawDebugs = false);
+	
+	UFUNCTION(BlueprintCallable, Category = "LB|Abilities")
+	static FVector GetRandomSpawnLocation(AActor* CenterActor, float MinRadius, float MaxRadius);
 };

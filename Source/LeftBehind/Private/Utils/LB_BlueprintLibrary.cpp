@@ -9,6 +9,7 @@
 #include "Characters/LB_BaseCharacter.h"
 #include "Characters/LB_EnemyCharacter.h"
 #include "DrawDebugHelpers.h"
+#include "NavigationSystem.h"
 #include "Engine/OverlapResult.h"
 #include "GameFramework/Controller.h"
 #include "GameFramework/Pawn.h"
@@ -437,4 +438,54 @@ TArray<AActor*> ULB_BlueprintLibrary::ApplyKnockback(AActor* AvatarActor, const 
 		HitCharacter->LaunchCharacter(KnockbackForce, true, true);
 	}
 	return HitActors;
+}
+
+FVector ULB_BlueprintLibrary::GetRandomSpawnLocation(AActor* CenterActor, float MinRadius, float MaxRadius)
+{
+
+		if (!CenterActor)
+		{
+			return FVector::ZeroVector;
+		}
+
+		const FVector CenterLocation = CenterActor->GetActorLocation();
+
+		// 각도는 0~360 균등 랜덤
+		const float RandomAngle = FMath::FRandRange(0.f, 2.f * PI);
+
+		// 반지름은 면적 균등 분포를 위해 제곱근 보정
+		// (그냥 FRandRange(MinRadius, MaxRadius) 하면 안쪽 링에 밀집됨)
+		const float MinRadiusSq = MinRadius * MinRadius;
+		const float MaxRadiusSq = MaxRadius * MaxRadius;
+		const float RandomRadius = FMath::Sqrt(FMath::FRandRange(MinRadiusSq, MaxRadiusSq));
+
+		const float OffsetX = RandomRadius * FMath::Cos(RandomAngle);
+		const float OffsetY = RandomRadius * FMath::Sin(RandomAngle);
+
+		FVector SpawnLocation = CenterLocation + FVector(OffsetX, OffsetY, 0.f);
+
+		// NavMesh 위 유효 지점으로 보정 (지상 소환수라면 필수)
+		UNavigationSystemV1* NavSystem = UNavigationSystemV1::GetCurrent(CenterActor->GetWorld());
+		if (NavSystem)
+		{
+			FNavLocation NavLocation;
+			const bool bFound = NavSystem->ProjectPointToNavigation(
+				SpawnLocation,
+				NavLocation,
+				FVector(100.f, 100.f, 200.f) // Extent, 필요시 조정
+			);
+
+			if (bFound)
+			{
+				SpawnLocation = NavLocation.Location;
+			}
+			else
+			{
+				// NavMesh 못 찾으면 Fallback: 원래 좌표에 Z만 CenterActor 기준으로
+				SpawnLocation.Z = CenterLocation.Z;
+			}
+		}
+
+		return SpawnLocation;
+
 }
