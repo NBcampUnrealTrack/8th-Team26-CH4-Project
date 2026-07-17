@@ -12,12 +12,14 @@
 // DT_CharacterData를 읽어 캐릭터 카드 동적 생성
 // 캐릭터 선택/확정 처리
 
+class ATargetPoint;
 class UWrapBox;
 class ULB_CharacterCardWidget;
 class UDataTable;
 class ALB_CharacterSelectGameState;
 class UHorizontalBox;
 class ULB_CharacterSelectSlotWidget;
+class ALB_CharacterPreview;
 
 UCLASS()
 class LEFTBEHIND_API ULB_CharacterSelectWidget : public ULB_BaseUserWidget
@@ -132,7 +134,16 @@ protected:
 	UPROPERTY()
 	TArray<TObjectPtr<ULB_CharacterSelectSlotWidget>> PartySlots;
 	
+	UPROPERTY(EditDefaultsOnly, Category="LB|CharacterSelect")
+	TSubclassOf<ALB_CharacterPreview> CharacterPreviewClass;
+	
 private:
+	
+	void InitLocalCharacterPreview();
+
+	UPROPERTY()
+	TArray<TObjectPtr<ALB_CharacterPreview>> LocalCharacterPreviews;
+	
 	UPROPERTY()
 	TObjectPtr<ULB_CharacterCardWidget> PreviousSelectedCard = nullptr;
 	

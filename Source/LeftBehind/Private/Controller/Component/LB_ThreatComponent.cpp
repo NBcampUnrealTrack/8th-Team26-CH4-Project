@@ -29,11 +29,7 @@ void ULB_ThreatComponent::BeginPlay()
 	ULB_AttributeSet* BossAttributeSet = Cast<ULB_AttributeSet>(Boss->GetAttributeSet()) ;
 	if (!IsValid(BossAttributeSet)) return;
 	
-	for (TActorIterator<ALB_PlayerCharacter> It(GetWorld()); It; ++It)
-	{
-		ALB_PlayerCharacter* Player = *It;
-		CachedPlayer.Add(Player);
-	}
+
 	
 	BossAttributeSet->ActorDamaged.AddDynamic(this,&ULB_ThreatComponent::UpdateDamageMap);
 	
@@ -106,6 +102,14 @@ AActor* ULB_ThreatComponent::SelectMostThreatCharacter()
 
 AActor* ULB_ThreatComponent::ClosestPlayerCharacter()
 {
+	TArray<ALB_PlayerCharacter*> CachedPlayer;
+	
+	for (TActorIterator<ALB_PlayerCharacter> It(GetWorld()); It; ++It)
+	{
+		ALB_PlayerCharacter* Player = *It;
+		CachedPlayer.Add(Player);
+	}
+	
 	ALB_PlayerCharacter* CloestPlayerCharacter = nullptr;
 	AActor* Owner = GetOwner();
 	if (!IsValid(Owner))
