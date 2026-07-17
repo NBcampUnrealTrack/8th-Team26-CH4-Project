@@ -36,6 +36,8 @@ namespace
 		constexpr int32 MaxPublicConnections = 4;
 		constexpr int32 MaxSearchResults = 50;
 		const FName RoomPhaseKey(TEXT("ROOM_PHASE"));
+		const FName RoomNameKey(TEXT("ROOM_NAME"));
+		const FName RoomNameLookupKey(TEXT("ROOM_NAME_KEY"));
 		const FString WaitingPhaseValue(TEXT("Waiting"));
 		const FString CharacterSelectPhaseValue(TEXT("CharacterSelect"));
 		const FString InRaidPhaseValue(TEXT("InRaid"));
@@ -43,6 +45,16 @@ namespace
 		FName GetRoomPhaseKey()
 		{
 			return RoomPhaseKey;
+		}
+
+		FName GetRoomNameKey()
+		{
+			return RoomNameKey;
+		}
+
+		FName GetRoomNameLookupKey()
+		{
+			return RoomNameLookupKey;
 		}
 
 		const FString& GetWaitingPhaseValue()
@@ -86,11 +98,37 @@ namespace
 				EOnlineDataAdvertisementType::DontAdvertise);
 		}
 
-		FOnlineSessionSettings MakeWaitingRoomSettings()
+		FOnlineSessionSettings MakeWaitingRoomSettings(const FString& RoomName = FString())
 		{
 			FOnlineSessionSettings Settings;
 			ApplyWaitingPolicy(Settings);
+			if (!RoomName.IsEmpty())
+			{
+				Settings.Set(
+					GetRoomNameKey(),
+					RoomName,
+					EOnlineDataAdvertisementType::ViaOnlineService);
+				Settings.Set(
+					GetRoomNameLookupKey(),
+					RoomName.ToLower(),
+					EOnlineDataAdvertisementType::ViaOnlineService);
+			}
 			return Settings;
+		}
+
+		FString GetDisplayRoomName(
+			const FOnlineSessionSettings& Settings,
+			const FString& HostDisplayName)
+		{
+			FString RoomName;
+			if (Settings.Get(GetRoomNameKey(), RoomName) && !RoomName.IsEmpty())
+			{
+				return RoomName;
+			}
+
+			return FText::Format(
+				NSLOCTEXT("LeftBehind", "LegacyRoomName", "{0}의 방"),
+				FText::FromString(HostDisplayName)).ToString();
 		}
 		
 		void ApplyCharacterSelectPolicy(FOnlineSessionSettings& Settings, int32 CurrentPlayers)
@@ -98,7 +136,9 @@ namespace
 			Settings.NumPublicConnections = 0;
 			Settings.NumPrivateConnections = FMath::Clamp(CurrentPlayers, 1, MaxPublicConnections);
 
-			Settings.bShouldAdvertise = false;
+			// Keep the lobby discoverable by ROOM_NAME_KEY so its name stays reserved.
+			// Waiting-room searches still exclude it through ROOM_PHASE.
+			Settings.bShouldAdvertise = true;
 			Settings.bAllowJoinInProgress = false;
 			Settings.bAllowInvites = false;
 
@@ -124,7 +164,9 @@ namespace
 		{
 			Settings.NumPublicConnections = 0;
 			Settings.NumPrivateConnections = FMath::Clamp(CurrentPlayers, 1, MaxPublicConnections);
-			Settings.bShouldAdvertise = false;
+			// Keep the lobby discoverable by ROOM_NAME_KEY so its name stays reserved.
+			// Joining remains disabled and waiting-room searches filter it by phase.
+			Settings.bShouldAdvertise = true;
 			Settings.bAllowJoinInProgress = false;
 			Settings.bAllowInvites = false;
 			Settings.bUsesPresence = true;
@@ -191,6 +233,7 @@ namespace
 		None,
 		Login,
 		Create,
+		CreateNameCheck,
 		Search,
 		Join,
 		Leave,
@@ -350,6 +393,7 @@ public:
 
 		ActiveSearch.Reset();
 		RoomResultIndices.Reset();
+		PendingRoomName.Reset();
 		ExternalUI.Reset();
 		Sessions.Reset();
 		Identity.Reset();
@@ -472,6 +516,66 @@ public:
 			ClearCreateDelegate();
 			PendingOperation = ELBPendingOnlineOperation::None;
 			ReportError(MakeOnlineError(NSLOCTEXT("LeftBehind", "CreateRoomAction", "방 만들기"), FString()), ELBOnlineState::Ready);
+			return false;
+		}
+
+		return true;
+	}
+
+	bool CreateRoomWithName(const FString& RequestedRoomName)
+	{
+		FText ValidationError;
+		FString NormalizedRoomName;
+		if (!ULB_OnlineSessionSubsystem::ValidateRoomName(
+			RequestedRoomName, NormalizedRoomName, ValidationError))
+		{
+			ReportNonFatalError(ValidationError);
+			return false;
+		}
+
+		if (!CanUseReadyServices(NSLOCTEXT("LeftBehind", "CreateRoomAction", "Create room")))
+		{
+			return false;
+		}
+
+		if (bInRoom || Sessions->GetNamedSession(NAME_GameSession))
+		{
+			ReportNonFatalError(NSLOCTEXT("LeftBehind", "AlreadyInRoom", "Leave the current room before creating another room."));
+			return false;
+		}
+
+		if (!BeginOperation(ELBPendingOnlineOperation::CreateNameCheck, ELBOnlineState::Creating))
+		{
+			return false;
+		}
+
+		PendingRoomName = MoveTemp(NormalizedRoomName);
+		ActiveSearch = MakeShared<FOnlineSessionSearch>();
+		ActiveSearch->MaxSearchResults = LBOnlineSessionPolicy::MaxSearchResults;
+		ActiveSearch->bIsLanQuery = false;
+		ActiveSearch->QuerySettings.Set(SEARCH_LOBBIES, true, EOnlineComparisonOp::Equals);
+		ActiveSearch->QuerySettings.Set(
+			FName(TEXT("BuildUniqueId")),
+			GetBuildUniqueId(),
+			EOnlineComparisonOp::Equals);
+		ActiveSearch->QuerySettings.Set(
+			LBOnlineSessionPolicy::GetRoomNameLookupKey(),
+			PendingRoomName.ToLower(),
+			EOnlineComparisonOp::Equals);
+
+		FindCompleteHandle = Sessions->AddOnFindSessionsCompleteDelegate_Handle(
+			FOnFindSessionsCompleteDelegate::CreateSP(
+				AsShared(),
+				&FLBOnlineSessionRuntime::HandleCreateNameCheckComplete));
+		if (!Sessions->FindSessions(LBLocalUserNum, ActiveSearch.ToSharedRef()))
+		{
+			ClearFindDelegate();
+			PendingOperation = ELBPendingOnlineOperation::None;
+			PendingRoomName.Reset();
+			ActiveSearch.Reset();
+			ReportError(
+				NSLOCTEXT("LeftBehind", "RoomNameCheckFailed", "Could not verify whether that room name is available."),
+				ELBOnlineState::Ready);
 			return false;
 		}
 
@@ -696,6 +800,38 @@ public:
 		return bInRoom && bRoomHost && NamedSession && NamedSession->bHosting;
 	}
 
+	FString GetCurrentRoomName() const
+	{
+		const FNamedOnlineSession* NamedSession = Sessions.IsValid()
+			? Sessions->GetNamedSession(NAME_GameSession)
+			: nullptr;
+		if (!NamedSession)
+		{
+			return FString();
+		}
+
+		FString HostDisplayName = NamedSession->OwningUserName;
+		if (HostDisplayName.IsEmpty()
+			&& Identity.IsValid()
+			&& NamedSession->OwningUserId.IsValid())
+		{
+			HostDisplayName = Identity->GetPlayerNickname(*NamedSession->OwningUserId);
+		}
+		if (HostDisplayName.IsEmpty() && NamedSession->bHosting && Identity.IsValid())
+		{
+			HostDisplayName = Identity->GetPlayerNickname(LBLocalUserNum);
+		}
+		if (HostDisplayName.IsEmpty())
+		{
+			HostDisplayName = NSLOCTEXT(
+				"LeftBehind", "UnknownCurrentRoomHost", "이름 없는 방장").ToString();
+		}
+
+		return LBOnlineSessionPolicy::GetDisplayRoomName(
+			NamedSession->SessionSettings,
+			HostDisplayName);
+	}
+
 private:
 	TWeakObjectPtr<ULB_OnlineSessionSubsystem> Owner;
 	IOnlineSubsystem* OnlineSubsystem = nullptr;
@@ -704,6 +840,7 @@ private:
 	IOnlineExternalUIPtr ExternalUI;
 	TSharedPtr<FOnlineSessionSearch> ActiveSearch;
 	TMap<FString, int32> RoomResultIndices;
+	FString PendingRoomName;
 
 	ELBPendingOnlineOperation PendingOperation = ELBPendingOnlineOperation::None;
 	ELBRoomPhase CurrentRoomPhase = ELBRoomPhase::Waiting;
@@ -876,6 +1013,75 @@ private:
 		}
 	}
 
+	void HandleCreateNameCheckComplete(const bool bWasSuccessful)
+	{
+		ClearFindDelegate();
+		ULB_OnlineSessionSubsystem* OwnerSubsystem = Owner.Get();
+		if (!OwnerSubsystem)
+		{
+			PendingOperation = ELBPendingOnlineOperation::None;
+			PendingRoomName.Reset();
+			ActiveSearch.Reset();
+			return;
+		}
+
+		if (!bWasSuccessful || !ActiveSearch.IsValid())
+		{
+			PendingOperation = ELBPendingOnlineOperation::None;
+			PendingRoomName.Reset();
+			ActiveSearch.Reset();
+			ReportError(
+				NSLOCTEXT("LeftBehind", "RoomNameCheckFailed", "Could not verify whether that room name is available."),
+				ELBOnlineState::Ready);
+			return;
+		}
+
+		const bool bNameAlreadyExists = ActiveSearch->SearchResults.ContainsByPredicate(
+			[this](const FOnlineSessionSearchResult& Result)
+			{
+				if (!Result.IsValid()
+					|| Result.Session.SessionSettings.BuildUniqueId != GetBuildUniqueId())
+				{
+					return false;
+				}
+
+				const FString HostName = Result.Session.OwningUserName.IsEmpty()
+					? NSLOCTEXT("LeftBehind", "UnknownHost", "Unknown host").ToString()
+					: Result.Session.OwningUserName;
+				const FString ExistingName = LBOnlineSessionPolicy::GetDisplayRoomName(
+					Result.Session.SessionSettings, HostName);
+				return ExistingName.Equals(PendingRoomName, ESearchCase::IgnoreCase);
+			});
+
+		ActiveSearch.Reset();
+		if (bNameAlreadyExists)
+		{
+			PendingOperation = ELBPendingOnlineOperation::None;
+			PendingRoomName.Reset();
+			ReportError(
+				NSLOCTEXT("LeftBehind", "DuplicateRoomName", "A room with that name already exists."),
+				ELBOnlineState::Ready);
+			return;
+		}
+
+		PendingOperation = ELBPendingOnlineOperation::Create;
+		CreateCompleteHandle = Sessions->AddOnCreateSessionCompleteDelegate_Handle(
+			FOnCreateSessionCompleteDelegate::CreateSP(
+				AsShared(),
+				&FLBOnlineSessionRuntime::HandleCreateComplete));
+		const FOnlineSessionSettings Settings =
+			LBOnlineSessionPolicy::MakeWaitingRoomSettings(PendingRoomName);
+		PendingRoomName.Reset();
+		if (!Sessions->CreateSession(LBLocalUserNum, NAME_GameSession, Settings))
+		{
+			ClearCreateDelegate();
+			PendingOperation = ELBPendingOnlineOperation::None;
+			ReportError(
+				MakeOnlineError(NSLOCTEXT("LeftBehind", "CreateRoomAction", "Create room"), FString()),
+				ELBOnlineState::Ready);
+		}
+	}
+
 	void HandleFindComplete(const bool bWasSuccessful)
 	{
 		ClearFindDelegate();
@@ -923,6 +1129,8 @@ private:
 			Room.HostDisplayName = Result.Session.OwningUserName.IsEmpty()
 				? NSLOCTEXT("LeftBehind", "UnknownHost", "이름 없는 호스트").ToString()
 				: Result.Session.OwningUserName;
+			Room.RoomName = LBOnlineSessionPolicy::GetDisplayRoomName(
+				Result.Session.SessionSettings, Room.HostDisplayName);
 			Room.MaxPlayers = FMath::Max(0, Result.Session.SessionSettings.NumPublicConnections);
 			Room.CurrentPlayers = FMath::Clamp(
 				Room.MaxPlayers - Result.Session.NumOpenPublicConnections,
@@ -937,7 +1145,7 @@ private:
 
 		NewRooms.Sort([](const FLBRoomSummary& Left, const FLBRoomSummary& Right)
 		{
-			const int32 NameOrder = Left.HostDisplayName.Compare(Right.HostDisplayName, ESearchCase::IgnoreCase);
+			const int32 NameOrder = Left.RoomName.Compare(Right.RoomName, ESearchCase::IgnoreCase);
 			return NameOrder == 0 ? Left.RoomId < Right.RoomId : NameOrder < 0;
 		});
 		UE_LOG(
@@ -1738,6 +1946,65 @@ bool ULB_OnlineSessionSubsystem::CreateRoom()
 	return Runtime.IsValid() && Runtime->CreateRoom();
 }
 
+bool ULB_OnlineSessionSubsystem::CreateRoomWithName(const FString& RoomName)
+{
+	return Runtime.IsValid() && Runtime->CreateRoomWithName(RoomName);
+}
+
+bool ULB_OnlineSessionSubsystem::ValidateRoomName(
+	const FString& RoomName,
+	FString& OutNormalizedRoomName,
+	FText& OutErrorMessage)
+{
+	OutNormalizedRoomName.Reset();
+	OutErrorMessage = FText::GetEmpty();
+
+	for (const TCHAR Character : RoomName)
+	{
+		const uint32 CodePoint = static_cast<uint32>(Character);
+		if (FChar::IsControl(Character) || CodePoint == 0x2028 || CodePoint == 0x2029)
+		{
+			OutErrorMessage = NSLOCTEXT(
+				"LeftBehind", "RoomNameControlCharacter", "Room names cannot contain line breaks or control characters.");
+			OutNormalizedRoomName.Reset();
+			return false;
+		}
+
+		if (FChar::IsWhitespace(Character))
+		{
+			continue;
+		}
+
+		const bool bEnglishLetter = (Character >= TEXT('A') && Character <= TEXT('Z'))
+			|| (Character >= TEXT('a') && Character <= TEXT('z'));
+		const bool bNumber = Character >= TEXT('0') && Character <= TEXT('9');
+		const bool bKorean = (CodePoint >= 0xAC00 && CodePoint <= 0xD7A3)
+			|| (CodePoint >= 0x1100 && CodePoint <= 0x11FF)
+			|| (CodePoint >= 0x3130 && CodePoint <= 0x318F)
+			|| (CodePoint >= 0xA960 && CodePoint <= 0xA97F)
+			|| (CodePoint >= 0xD7B0 && CodePoint <= 0xD7FF);
+		if (!bEnglishLetter && !bNumber && !bKorean)
+		{
+			OutErrorMessage = NSLOCTEXT(
+				"LeftBehind", "RoomNameInvalidCharacter", "한글, 영문, 숫자만 입력해주세요");
+			OutNormalizedRoomName.Reset();
+			return false;
+		}
+
+		OutNormalizedRoomName.AppendChar(Character);
+	}
+
+	if (OutNormalizedRoomName.Len() < 2 || OutNormalizedRoomName.Len() > 24)
+	{
+		OutErrorMessage = NSLOCTEXT(
+			"LeftBehind", "RoomNameInvalidLength", "공백을 제외한 방 이름은 2~24자여야 합니다.");
+		OutNormalizedRoomName.Reset();
+		return false;
+	}
+
+	return true;
+}
+
 bool ULB_OnlineSessionSubsystem::RefreshRooms()
 {
 	return Runtime.IsValid() && Runtime->RefreshRooms();
@@ -1798,6 +2065,11 @@ bool ULB_OnlineSessionSubsystem::IsInRoom() const
 bool ULB_OnlineSessionSubsystem::IsRoomHost() const
 {
 	return Runtime.IsValid() && Runtime->IsRoomHost();
+}
+
+FString ULB_OnlineSessionSubsystem::GetCurrentRoomName() const
+{
+	return Runtime.IsValid() ? Runtime->GetCurrentRoomName() : FString();
 }
 
 void ULB_OnlineSessionSubsystem::SetState(const ELBOnlineState NewState, const FText& StatusMessage)

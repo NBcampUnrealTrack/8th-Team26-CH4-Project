@@ -11,7 +11,8 @@ enum class ELBMainMenuScreen : uint8
 	Codename = 2 UMETA(DisplayName="Codename"),
 	CharacterSelect = 3 UMETA(DisplayName="Character Select"),
 	Waiting = 4 UMETA(DisplayName="Waiting"),
-	Multiplayer = 5 UMETA(DisplayName="Multiplayer")
+	Multiplayer = 5 UMETA(DisplayName="Multiplayer"),
+	RoomName = 6 UMETA(DisplayName="Room Name")
 };
 
 UENUM(BlueprintType)

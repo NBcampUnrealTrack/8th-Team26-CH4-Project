@@ -79,7 +79,7 @@ TSharedRef<SWidget> ULB_MultiplayerHubWidget::RebuildWidget()
 			+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 12.f, 0.f, 8.f)
 			[
 				SAssignNew(SelectionText, STextBlock)
-				.Font(BodyFont)
+					.Font(BodyFont)
 			]
 			+ SVerticalBox::Slot().AutoHeight()
 			[
@@ -204,13 +204,22 @@ void ULB_MultiplayerHubWidget::RefreshRoomRows()
 	}
 	else
 	{
+		RoomListBox->AddSlot().AutoHeight().Padding(8.f, 2.f, 8.f, 6.f)
+		[
+			SNew(STextBlock)
+			.Text(LOCTEXT("RoomListHeader", "방 이름    |    방장    |    현재 인원"))
+			.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 15))
+			.ColorAndOpacity(FLinearColor(0.6f, 0.68f, 0.74f))
+		];
+
 		const bool bCanSelect = IsValid(BoundOnlineSubsystem)
 			&& BoundOnlineSubsystem->GetState() == ELBOnlineState::Ready;
 		for (const FLBRoomSummary& Room : Rooms)
 		{
 			const bool bSelected = Room.RoomId == SelectedRoomId;
 			const FText RoomLabel = FText::Format(
-				LOCTEXT("RoomFormat", "{0}    {1}/{2}{3}"),
+				LOCTEXT("RoomFormat", "{0}    |    {1}    |    {2}/{3}{4}"),
+				FText::FromString(Room.RoomName),
 				FText::FromString(Room.HostDisplayName.IsEmpty() ? TEXT("Unknown host") : Room.HostDisplayName),
 				FText::AsNumber(Room.CurrentPlayers),
 				FText::AsNumber(Room.MaxPlayers),
@@ -348,9 +357,9 @@ FReply ULB_MultiplayerHubWidget::HandleSignInClicked()
 
 FReply ULB_MultiplayerHubWidget::HandleCreateClicked()
 {
-	if (!IsValid(BoundOnlineSubsystem) || !BoundOnlineSubsystem->CreateRoom())
+	if (ALB_MainMenuPlayerController* Controller = Cast<ALB_MainMenuPlayerController>(GetOwningPlayer()))
 	{
-		ShowRequestFailure(LOCTEXT("CreateRejected", "Room creation could not be started."));
+		Controller->BeginRoomCreation();
 	}
 	return FReply::Handled();
 }

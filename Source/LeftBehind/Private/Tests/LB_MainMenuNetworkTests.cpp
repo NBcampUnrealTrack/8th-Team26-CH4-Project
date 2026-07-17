@@ -4,6 +4,13 @@
 #include "Engine/GameInstance.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/ConfigCacheIni.h"
+#include "Blueprint/WidgetBlueprintGeneratedClass.h"
+#include "Blueprint/WidgetTree.h"
+#include "Components/EditableText.h"
+#include "Components/PanelWidget.h"
+#include "Components/TextBlock.h"
+#include "Components/Widget.h"
+#include "UObject/UnrealType.h"
 #include "UObject/UObjectGlobals.h"
 
 #include "GameMode/LB_MainMenuGameMode.h"
@@ -13,6 +20,8 @@
 #include "System/Online/LB_OnlineInvitePolicy.h"
 #include "System/Online/LB_OnlineLoginPolicy.h"
 #include "System/Online/LB_OnlineSessionSubsystem.h"
+#include "UI/MainMenu/LB_CodenameEntryWidget.h"
+#include "UI/MainMenu/LB_MainMenuWaitingWidget.h"
 #include "UI/MainMenu/LB_MultiplayerHubWidget.h"
 
 namespace
@@ -230,9 +239,24 @@ bool FLBMainMenuNativeDefaultsTest::RunTest(const FString& Parameters)
 	TestNotNull(
 		TEXT("The main menu exposes the native EOS sign-in entry point"),
 		ALB_MainMenuPlayerController::StaticClass()->FindFunctionByName(TEXT("BeginOnlinePlay")));
+	TestNotNull(
+		TEXT("The main menu exposes the room-name entry screen"),
+		ALB_MainMenuPlayerController::StaticClass()->FindFunctionByName(TEXT("BeginRoomCreation")));
+	TestNotNull(
+		TEXT("The room-name entry screen can submit its draft"),
+		ALB_MainMenuPlayerController::StaticClass()->FindFunctionByName(TEXT("SubmitRoomName")));
 	TestFalse(
 		TEXT("The native multiplayer hub can be instantiated without a Blueprint asset"),
 		ULB_MultiplayerHubWidget::StaticClass()->HasAnyClassFlags(CLASS_Abstract));
+	TestNotNull(
+		TEXT("The legacy CreateRoom Blueprint entry point remains available"),
+		ULB_OnlineSessionSubsystem::StaticClass()->FindFunctionByName(TEXT("CreateRoom")));
+	TestNotNull(
+		TEXT("The named-room Blueprint entry point is available"),
+		ULB_OnlineSessionSubsystem::StaticClass()->FindFunctionByName(TEXT("CreateRoomWithName")));
+	TestNotNull(
+		TEXT("The active room name is available to the waiting room and Blueprints"),
+		ULB_OnlineSessionSubsystem::StaticClass()->FindFunctionByName(TEXT("GetCurrentRoomName")));
 	TestNotNull(
 		TEXT("The online subsystem exposes social-overlay invitations"),
 		ULB_OnlineSessionSubsystem::StaticClass()->FindFunctionByName(TEXT("OpenSocialOverlay")));
@@ -296,6 +320,166 @@ bool FLBInviteOwnerResolutionFallbackTest::RunTest(const FString& Parameters)
 		TEXT("A rejected invite clears any previously prepared payload"),
 		PreparedInvite.IsSessionInfoValid());
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FLBRoomNameValidationTest,
+	"LeftBehind.MainMenu.Network.RoomNameValidation",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FLBRoomNameValidationTest::RunTest(const FString& Parameters)
+{
+	(void)Parameters;
+
+	FString NormalizedName;
+	FText Error;
+	TestTrue(
+		TEXT("Korean, English, and numeric characters are accepted"),
+		ULB_OnlineSessionSubsystem::ValidateRoomName(
+			TEXT("한글Room26"), NormalizedName, Error));
+	TestEqual(TEXT("Accepted names are preserved"), NormalizedName, FString(TEXT("한글Room26")));
+
+	TestTrue(
+		TEXT("Whitespace is removed before validation"),
+		ULB_OnlineSessionSubsystem::ValidateRoomName(
+			TEXT("  우리 방  26 "), NormalizedName, Error));
+	TestEqual(TEXT("All whitespace is removed"), NormalizedName, FString(TEXT("우리방26")));
+
+	TestFalse(
+		TEXT("A line break is rejected instead of normalized away"),
+		ULB_OnlineSessionSubsystem::ValidateRoomName(
+			TEXT("Room\nName"), NormalizedName, Error));
+	TestFalse(
+		TEXT("Control characters are rejected"),
+		ULB_OnlineSessionSubsystem::ValidateRoomName(
+			FString(TEXT("Room")) + TCHAR(0x001F), NormalizedName, Error));
+	TestFalse(
+		TEXT("Punctuation is rejected"),
+		ULB_OnlineSessionSubsystem::ValidateRoomName(
+			TEXT("Room!"), NormalizedName, Error));
+	TestFalse(
+		TEXT("Names shorter than two normalized characters are rejected"),
+		ULB_OnlineSessionSubsystem::ValidateRoomName(
+			TEXT(" A "), NormalizedName, Error));
+	TestFalse(
+		TEXT("Names longer than 24 normalized characters are rejected"),
+		ULB_OnlineSessionSubsystem::ValidateRoomName(
+			FString::ChrN(25, TEXT('A')), NormalizedName, Error));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FLBRoomNameWidgetContractTest,
+	"LeftBehind.MainMenu.Network.RoomNameWidgetContract",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FLBRoomNameWidgetContractTest::RunTest(const FString& Parameters)
+{
+	(void)Parameters;
+
+	const TCHAR* WidgetClassPath =
+		TEXT("/Game/LeftBehind/UI/MainMenu/WBP_CodenameEntry.WBP_CodenameEntry_C");
+	UClass* WidgetClass = LoadClass<ULB_CodenameEntryWidget>(nullptr, WidgetClassPath);
+	TestNotNull(TEXT("The existing codename-entry designer asset loads"), WidgetClass);
+	if (!WidgetClass)
+	{
+		return false;
+	}
+
+	TestTrue(
+		TEXT("The designer asset directly uses the native reusable entry widget"),
+		WidgetClass->GetSuperClass() == ULB_CodenameEntryWidget::StaticClass());
+	const UWidgetBlueprintGeneratedClass* GeneratedClass =
+		Cast<UWidgetBlueprintGeneratedClass>(WidgetClass);
+	TestNotNull(TEXT("The entry asset is a Widget Blueprint generated class"), GeneratedClass);
+	if (!GeneratedClass)
+	{
+		return false;
+	}
+
+	const UWidgetTree* WidgetTree = GeneratedClass->GetWidgetTreeArchetype();
+	TestNotNull(TEXT("The entry asset owns a widget tree"), WidgetTree);
+	if (!WidgetTree)
+	{
+		return false;
+	}
+	TestNotNull(
+		TEXT("The entry root can host the native validation message"),
+		Cast<UPanelWidget>(WidgetTree->RootWidget));
+
+	TestNotNull(
+		TEXT("Room-name mode reuses ETB_Name"),
+		Cast<UEditableText>(WidgetTree->FindWidget(TEXT("ETB_Name"))));
+	TestNotNull(
+		TEXT("Room-name mode reuses TXT_CharCount"),
+		Cast<UTextBlock>(WidgetTree->FindWidget(TEXT("TXT_CharCount"))));
+	for (const FName TextWidgetName : {
+		FName(TEXT("TextBlock_31")),
+		FName(TEXT("TextBlock_32")),
+		FName(TEXT("TextBlock_33")),
+		FName(TEXT("TextBlock_34")),
+		FName(TEXT("TXT_Label_2")),
+		FName(TEXT("TXT_Label_3")),
+		FName(TEXT("TXT_Back"))})
+	{
+		TestNotNull(
+			*FString::Printf(TEXT("Room-name mode reuses %s"), *TextWidgetName.ToString()),
+			Cast<UTextBlock>(WidgetTree->FindWidget(TextWidgetName)));
+	}
+
+	UWidget* ConfirmButton = WidgetTree->FindWidget(TEXT("BTN_Confirm"));
+	UWidget* BackButton = WidgetTree->FindWidget(TEXT("BTN_CodeName_Back"));
+	TestNotNull(TEXT("Room-name mode reuses BTN_Confirm"), ConfirmButton);
+	TestNotNull(TEXT("Room-name mode reuses BTN_CodeName_Back"), BackButton);
+
+	const UClass* PrimaryButtonClass = LoadClass<UWidget>(
+		nullptr,
+		TEXT("/Game/LeftBehind/UI/SubWidgets/WBP_Common_ButtonPrimary.WBP_Common_ButtonPrimary_C"));
+	TestNotNull(TEXT("The existing common primary button class loads"), PrimaryButtonClass);
+	if (PrimaryButtonClass && ConfirmButton)
+	{
+		TestTrue(
+			TEXT("The create-room action retains the common primary button styling"),
+			ConfirmButton->GetClass()->IsChildOf(PrimaryButtonClass));
+	}
+
+	const auto HasSupportedClickDelegate = [](const UWidget* Widget)
+	{
+		return Widget
+			&& (FindFProperty<FMulticastDelegateProperty>(Widget->GetClass(), TEXT("OnBTNClicked"))
+				|| FindFProperty<FMulticastDelegateProperty>(Widget->GetClass(), TEXT("OnClicked")));
+	};
+	TestTrue(TEXT("BTN_Confirm exposes a supported click delegate"), HasSupportedClickDelegate(ConfirmButton));
+	TestTrue(TEXT("BTN_CodeName_Back exposes a supported click delegate"), HasSupportedClickDelegate(BackButton));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FLBWaitingRoomWidgetContractTest,
+	"LeftBehind.MainMenu.Network.WaitingRoomWidgetContract",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FLBWaitingRoomWidgetContractTest::RunTest(const FString& Parameters)
+{
+	(void)Parameters;
+
+	const TCHAR* WidgetClassPath =
+		TEXT("/Game/LeftBehind/UI/MainMenu/WBP_WaitingRoom.WBP_WaitingRoom_C");
+	UClass* WidgetClass = LoadClass<ULB_MainMenuWaitingWidget>(nullptr, WidgetClassPath);
+	TestNotNull(TEXT("The waiting-room shell asset loads"), WidgetClass);
+	if (!WidgetClass)
+	{
+		return false;
+	}
+
+	TestTrue(
+		TEXT("The waiting-room shell directly uses the native designed widget"),
+		WidgetClass->GetSuperClass() == ULB_MainMenuWaitingWidget::StaticClass());
+	TestFalse(
+		TEXT("The waiting-room shell remains constructible"),
+		WidgetClass->HasAnyClassFlags(CLASS_Abstract));
 	return true;
 }
 

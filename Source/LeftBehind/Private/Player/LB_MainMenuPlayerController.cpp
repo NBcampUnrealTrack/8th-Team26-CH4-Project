@@ -24,6 +24,7 @@ ALB_MainMenuPlayerController::ALB_MainMenuPlayerController()
 	MultiplayerWidgetClass = ULB_MultiplayerHubWidget::StaticClass();
 	CodenameWidgetClass = TSoftClassPtr<UUserWidget>(FSoftObjectPath(
 		TEXT("/Game/LeftBehind/UI/MainMenu/WBP_CodenameEntry.WBP_CodenameEntry_C")));
+	RoomNameWidgetClass = CodenameWidgetClass;
 	CharacterSelectWidgetClass = TSoftClassPtr<UUserWidget>(FSoftObjectPath(
 		TEXT("/Game/LeftBehind/UI/CharacterSelect/WBP_LB_CharacterSelectWidget.WBP_LB_CharacterSelectWidget_C")));
 	WaitingWidgetClass = TSoftClassPtr<UUserWidget>(FSoftObjectPath(
@@ -314,6 +315,50 @@ void ALB_MainMenuPlayerController::ShowRoomEntryScreen()
 	SetMenuScreen(ELBMainMenuScreen::Main);
 }
 
+void ALB_MainMenuPlayerController::BeginRoomCreation()
+{
+	if (!IsLocalController() || bMenuUITeardown || IsLocalNetworkPIE())
+	{
+		return;
+	}
+
+	ULB_OnlineSessionSubsystem* OnlineSubsystem = GetGameInstance()
+		? GetGameInstance()->GetSubsystem<ULB_OnlineSessionSubsystem>()
+		: nullptr;
+	if (!IsValid(OnlineSubsystem)
+		|| OnlineSubsystem->IsInRoom()
+		|| OnlineSubsystem->GetState() != ELBOnlineState::Ready)
+	{
+		return;
+	}
+
+	bCancellingCodenameFlow = false;
+	CodenameEntryPurpose = ECodenameEntryPurpose::RoomCreation;
+	ResetCodenameSubmissionState();
+	SetMenuScreen(ELBMainMenuScreen::RoomName);
+}
+
+bool ALB_MainMenuPlayerController::SubmitRoomName(const FText& RawRoomName)
+{
+	if (!IsLocalController()
+		|| bMenuUITeardown
+		|| CodenameEntryPurpose != ECodenameEntryPurpose::RoomCreation)
+	{
+		return false;
+	}
+
+	ULB_OnlineSessionSubsystem* OnlineSubsystem = GetGameInstance()
+		? GetGameInstance()->GetSubsystem<ULB_OnlineSessionSubsystem>()
+		: nullptr;
+	return IsValid(OnlineSubsystem)
+		&& OnlineSubsystem->CreateRoomWithName(RawRoomName.ToString());
+}
+
+bool ALB_MainMenuPlayerController::IsRoomNameEntryActive() const
+{
+	return CodenameEntryPurpose == ECodenameEntryPurpose::RoomCreation;
+}
+
 void ALB_MainMenuPlayerController::SubmitCodename(const FText& RawCodename)
 {
 	if (!IsLocalController() || bMenuUITeardown)
@@ -419,6 +464,21 @@ bool ALB_MainMenuPlayerController::CancelCodenameEntry()
 		ShowRoomEntryScreen();
 		return true;
 	}
+	if (CodenameEntryPurpose == ECodenameEntryPurpose::RoomCreation)
+	{
+		if (ULB_OnlineSessionSubsystem* OnlineSubsystem = GetGameInstance()
+			? GetGameInstance()->GetSubsystem<ULB_OnlineSessionSubsystem>()
+			: nullptr;
+			IsValid(OnlineSubsystem) && OnlineSubsystem->GetState() == ELBOnlineState::Creating)
+		{
+			return true;
+		}
+
+		CodenameEntryPurpose = ECodenameEntryPurpose::None;
+		ResetCodenameSubmissionState();
+		SetMenuScreen(ELBMainMenuScreen::Multiplayer);
+		return true;
+	}
 
 	ULB_OnlineSessionSubsystem* OnlineSubsystem = GetGameInstance()
 		? GetGameInstance()->GetSubsystem<ULB_OnlineSessionSubsystem>()
@@ -499,6 +559,7 @@ void ALB_MainMenuPlayerController::TeardownMenuUI()
 		MainMenuWidget.Get(),
 		MultiplayerWidget.Get(),
 		CodenameWidget.Get(),
+		RoomNameWidget.Get(),
 		CharacterSelectWidget.Get(),
 		WaitingWidget.Get()
 	};
@@ -513,6 +574,7 @@ void ALB_MainMenuPlayerController::TeardownMenuUI()
 	MainMenuWidget = nullptr;
 	MultiplayerWidget = nullptr;
 	CodenameWidget = nullptr;
+	RoomNameWidget = nullptr;
 	CharacterSelectWidget = nullptr;
 	WaitingWidget = nullptr;
 	DesiredScreen = ELBMainMenuScreen::None;
@@ -543,6 +605,7 @@ void ALB_MainMenuPlayerController::ShowDesiredMenuScreen()
 			MainMenuWidget.Get(),
 			MultiplayerWidget.Get(),
 			CodenameWidget.Get(),
+			RoomNameWidget.Get(),
 			CharacterSelectWidget.Get(),
 			WaitingWidget.Get()
 		};
@@ -683,6 +746,8 @@ UUserWidget* ALB_MainMenuPlayerController::GetMenuWidget(ELBMainMenuScreen Scree
 		return MultiplayerWidget;
 	case ELBMainMenuScreen::Codename:
 		return CodenameWidget;
+	case ELBMainMenuScreen::RoomName:
+		return RoomNameWidget;
 	case ELBMainMenuScreen::CharacterSelect:
 		return CharacterSelectWidget;
 	case ELBMainMenuScreen::Waiting:
@@ -705,6 +770,9 @@ void ALB_MainMenuPlayerController::SetMenuWidget(ELBMainMenuScreen Screen, UUser
 	case ELBMainMenuScreen::Codename:
 		CodenameWidget = Widget;
 		break;
+	case ELBMainMenuScreen::RoomName:
+		RoomNameWidget = Widget;
+		break;
 	case ELBMainMenuScreen::CharacterSelect:
 		CharacterSelectWidget = Widget;
 		break;
@@ -726,6 +794,8 @@ const TSoftClassPtr<UUserWidget>* ALB_MainMenuPlayerController::GetMenuWidgetCla
 		return &MultiplayerWidgetClass;
 	case ELBMainMenuScreen::Codename:
 		return &CodenameWidgetClass;
+	case ELBMainMenuScreen::RoomName:
+		return &RoomNameWidgetClass;
 	case ELBMainMenuScreen::CharacterSelect:
 		return &CharacterSelectWidgetClass;
 	case ELBMainMenuScreen::Waiting:

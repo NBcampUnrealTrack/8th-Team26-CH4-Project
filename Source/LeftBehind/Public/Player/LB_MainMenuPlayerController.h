@@ -41,6 +41,17 @@ public:
 	UFUNCTION(BlueprintCallable, Category="LB|MainMenu|Online")
 	void BeginOnlinePlay();
 
+	/** Opens the existing registration UI in room-name mode. */
+	UFUNCTION(BlueprintCallable, Category="LB|MainMenu|Online")
+	void BeginRoomCreation();
+
+	/** Validates the current room-name draft and starts EOS room creation. */
+	UFUNCTION(BlueprintCallable, Category="LB|MainMenu|Online")
+	bool SubmitRoomName(const FText& RawRoomName);
+
+	UFUNCTION(BlueprintPure, Category="LB|MainMenu|Online")
+	bool IsRoomNameEntryActive() const;
+
 	UFUNCTION(BlueprintCallable, Category="LB|MainMenu|Name")
 	void SubmitCodename(const FText& RawCodename);
 
@@ -92,6 +103,10 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category="LB|MainMenu|UI")
 	TSoftClassPtr<UUserWidget> CodenameWidgetClass;
 
+	/** Reuses the codename designer asset as a separate room-name screen instance. */
+	UPROPERTY(EditDefaultsOnly, Category="LB|MainMenu|UI")
+	TSoftClassPtr<UUserWidget> RoomNameWidgetClass;
+
 	UPROPERTY(EditDefaultsOnly, Category="LB|MainMenu|UI")
 	TSoftClassPtr<UUserWidget> MultiplayerWidgetClass;
 
@@ -109,7 +124,8 @@ private:
 	{
 		None,
 		BeforeOnlinePlay,
-		InRoom
+		InRoom,
+		RoomCreation
 	};
 
 	enum class ECodenameApplyState : uint8
@@ -124,6 +140,9 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UUserWidget> CodenameWidget;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UUserWidget> RoomNameWidget;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UUserWidget> MultiplayerWidget;
