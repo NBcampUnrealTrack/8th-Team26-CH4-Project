@@ -3,26 +3,25 @@
 
 #include "UI/CharacterSelect/LB_CharacterSelectWidget.h"
 
+#include "EngineUtils.h"
 #include "Components/WrapBox.h"
 #include "UI/CharacterSelect/LB_CharacterCardWidget.h"
 #include "Engine/DataTable.h"
+#include "Engine/TargetPoint.h"
 #include "GameState/LB_CharacterSelectGameState.h"
 #include "Player/LB_MainMenuPlayerController.h"
 #include "Components/HorizontalBox.h"
-#include "GameMode/LB_CharacterSelectGameMode.h"
+#include "UI/CharacterSelect/LB_CharacterPreview.h"
 #include "UI/CharacterSelect/LB_CharacterSelectSlotWidget.h"
 
 void ULB_CharacterSelectWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
 	BuildCharacterCards();
+	InitLocalCharacterPreview();
 	
 	ALB_MainMenuPlayerController* PC =
 	Cast<ALB_MainMenuPlayerController>(CachedPlayerController.Get());
-	
-	//UE_LOG(LogTemp, Warning, TEXT("CachedPC = %s"), *GetNameSafe(CachedPlayerController.Get()));
-
-	//UE_LOG(LogTemp, Warning, TEXT("Cast = %s"), *GetNameSafe(Cast<ALB_MainMenuPlayerController>(CachedPlayerController.Get())));
 
 	if (!IsValid(PC))
 	{
@@ -357,4 +356,71 @@ void ULB_CharacterSelectWidget::OnConfirmCharacterClicked()
 void ULB_CharacterSelectWidget::OnBackToBasicClicked()
 {
 	BP_OnBasicViewRequested();
+}
+
+void ULB_CharacterSelectWidget::InitLocalCharacterPreview()
+{
+	if (!CharacterDataTable || !CharacterPreviewClass) return;
+
+	LocalCharacterPreviews.Empty();
+
+	TArray<TObjectPtr<ATargetPoint>> TargetPoints;
+
+	for (TActorIterator<ATargetPoint> It(GetWorld()); It; ++It)
+	{
+		TargetPoints.Add(*It);
+	}
+	
+	TargetPoints.Sort([](const ATargetPoint& A, const ATargetPoint& B)
+	{
+		return A.GetName() < B.GetName();
+	});
+	
+	TArray<FName> RowNames = CharacterDataTable->GetRowNames();
+
+	RowNames.Sort([](const FName& A, const FName& B)
+	{
+		return A.LexicalLess(B);
+	});
+	
+	for(int32 Index = 0;
+		Index < RowNames.Num();
+		Index++)
+	{
+		const FLBCharacterData* Data =
+			CharacterDataTable->FindRow<FLBCharacterData>(
+				RowNames[Index],
+				TEXT("LocalPreview"));
+
+
+		if(!Data)
+		{
+			continue;
+		}
+		
+		if(!TargetPoints.IsValidIndex(Index))
+		{
+			continue;
+		}
+		
+		FActorSpawnParameters Params;
+		
+		Params.Owner = GetOwningPlayer();
+		
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		
+		ALB_CharacterPreview* Preview =
+			GetWorld()->SpawnActor<ALB_CharacterPreview>(
+				CharacterPreviewClass,
+				TargetPoints[Index]->GetActorTransform(),
+				Params);
+		
+		if(!Preview)
+		{
+			continue;
+		}
+		
+		Preview->Initialize(*Data);
+		LocalCharacterPreviews.Add(Preview);
+	}
 }
