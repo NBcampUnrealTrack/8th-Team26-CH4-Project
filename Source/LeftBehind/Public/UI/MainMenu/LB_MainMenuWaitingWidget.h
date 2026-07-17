@@ -79,6 +79,9 @@ private:
 	UFUNCTION()
 	void HandlePlayerLobbyStateChanged(bool bValue);
 
+	UFUNCTION()
+	void HandlePlayerNameChanged();
+
 	void BindGameState();
 	void BindOnlineSubsystem();
 	void RefreshPlayerStateBindings();

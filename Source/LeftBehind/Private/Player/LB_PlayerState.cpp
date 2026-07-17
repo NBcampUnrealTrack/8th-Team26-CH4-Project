@@ -84,6 +84,12 @@ void ALB_PlayerState::OverrideWith(APlayerState* PlayerState)
 	}
 }
 
+void ALB_PlayerState::OnRep_PlayerName()
+{
+	Super::OnRep_PlayerName();
+	OnPlayerNameChanged.Broadcast();
+}
+
 void ALB_PlayerState::ResetRaidStats_ServerOnly()
 {
 	// 레이드 통계는 서버가 원본이다. 클라이언트 호출은 무시한다.
