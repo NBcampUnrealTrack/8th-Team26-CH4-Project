@@ -28,6 +28,7 @@ namespace
 	{
 		WaitForLobby,
 		WaitForCodenames,
+		WaitForReady,
 		WaitForRaid,
 	};
 
@@ -60,6 +61,7 @@ namespace
 		FName OriginalGameNetDriverFallbackClass;
 		bool bGameNetDriverOverrideActive = false;
 		bool bStopAfterCodenames = false;
+		bool bStopAfterReady = false;
 	};
 
 	bool OverrideGameNetDriverForPIE(const TSharedRef<FLBPIEPartyHPState>& State)
@@ -330,9 +332,38 @@ namespace
 				{
 					return true;
 				}
-				if (!HostController->CanRequestStartCharacterSelect())
+
+				ALB_MainMenuPlayerController* ClientController = FindLocalMenuController(ClientWorld);
+				if (!IsValid(ClientController) || !ClientController->CanRequestLobbyReady())
 				{
 					return false;
+				}
+				Test->TestFalse(
+					TEXT("Listen host cannot start before the remote member is ready"),
+					HostController->CanRequestStartCharacterSelect());
+				if (!ULBMainMenuPIETestBridge::ScheduleLobbyReady(ClientController))
+				{
+					Test->AddError(TEXT("The remote PIE client could not submit lobby readiness."));
+					return true;
+				}
+
+				State->Stage = ELBPIEPartyHPStage::WaitForReady;
+				return false;
+			}
+
+			case ELBPIEPartyHPStage::WaitForReady:
+			{
+				ALB_MainMenuPlayerController* HostController = FindLocalMenuController(ListenServerWorld);
+				if (!IsValid(HostController) || !HostController->CanRequestStartCharacterSelect())
+				{
+					return false;
+				}
+				Test->TestTrue(
+					TEXT("Listen host can start after the remote member is ready"),
+					HostController->CanRequestStartCharacterSelect());
+				if (State->bStopAfterReady)
+				{
+					return true;
 				}
 
 				if (!ULBMainMenuPIETestBridge::ScheduleStartRequests(HostController))
@@ -465,6 +496,24 @@ bool FLBMainMenuCodenameListenServerPIETest::RunTest(const FString& Parameters)
 
 	const TSharedRef<FLBPIEPartyHPState> State = MakeShared<FLBPIEPartyHPState>();
 	State->bStopAfterCodenames = true;
+	ADD_LATENT_AUTOMATION_COMMAND(FStartLBListenServerPIE(State, this));
+	ADD_LATENT_AUTOMATION_COMMAND(FDriveLBListenServerPartyHPPIE(State, this));
+	ADD_LATENT_AUTOMATION_COMMAND(FEndPlayMapCommand());
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(1.0f));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FLBMainMenuReadyListenServerPIETest,
+	"LeftBehind.MainMenu.Ready.ListenServerPIE",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FLBMainMenuReadyListenServerPIETest::RunTest(const FString& Parameters)
+{
+	(void)Parameters;
+
+	const TSharedRef<FLBPIEPartyHPState> State = MakeShared<FLBPIEPartyHPState>();
+	State->bStopAfterReady = true;
 	ADD_LATENT_AUTOMATION_COMMAND(FStartLBListenServerPIE(State, this));
 	ADD_LATENT_AUTOMATION_COMMAND(FDriveLBListenServerPartyHPPIE(State, this));
 	ADD_LATENT_AUTOMATION_COMMAND(FEndPlayMapCommand());

@@ -402,7 +402,7 @@ TSharedRef<SWidget> ULB_MainMenuWaitingWidget::RebuildWidget()
 							.ContentPadding(0.f)
 							.OnClicked_UObject(this, &ThisClass::HandleStartClicked)
 							[
-								SNew(STextBlock)
+								SAssignNew(StartButtonText, STextBlock)
 								.Text(LOCTEXT("Start", "START RAID  >"))
 								.Font(EyebrowFont)
 								.ColorAndOpacity(FSlateColor::UseForeground())
@@ -448,6 +448,7 @@ void ULB_MainMenuWaitingWidget::ReleaseSlateResources(const bool bReleaseChildre
 	ReadyProgressBar.Reset();
 	PlayerListBox.Reset();
 	StartButton.Reset();
+	StartButtonText.Reset();
 	InviteButton.Reset();
 	LeaveButton.Reset();
 	PrimaryButtonStyle.Reset();
@@ -468,6 +469,7 @@ void ULB_MainMenuWaitingWidget::NativeConstruct()
 
 void ULB_MainMenuWaitingWidget::NativeDestruct()
 {
+	UnbindPlayerStateDelegates();
 	if (IsValid(BoundGameState))
 	{
 		BoundGameState->OnMainMenuSnapshotChanged.RemoveDynamic(this, &ThisClass::HandleSnapshotChanged);
@@ -491,6 +493,7 @@ void ULB_MainMenuWaitingWidget::BindGameState()
 
 	if (IsValid(BoundGameState))
 	{
+		UnbindPlayerStateDelegates();
 		BoundGameState->OnMainMenuSnapshotChanged.RemoveDynamic(this, &ThisClass::HandleSnapshotChanged);
 	}
 	BoundGameState = NewGameState;
@@ -537,6 +540,77 @@ void ULB_MainMenuWaitingWidget::HandleOnlineStateChanged(
 {
 	RefreshRoomIdentity();
 	RefreshOnlineControls(NewState, StatusMessage);
+	if (IsValid(BoundGameState))
+	{
+		Refresh(BoundGameState->GetMainMenuSnapshot());
+	}
+}
+
+void ULB_MainMenuWaitingWidget::HandlePlayerLobbyStateChanged(const bool bValue)
+{
+	(void)bValue;
+	if (IsValid(BoundGameState))
+	{
+		Refresh(BoundGameState->GetMainMenuSnapshot());
+	}
+}
+
+void ULB_MainMenuWaitingWidget::RefreshPlayerStateBindings()
+{
+	TArray<ALB_PlayerState*> CurrentPlayerStates;
+	if (IsValid(BoundGameState))
+	{
+		for (const TObjectPtr<APlayerState>& PlayerState : BoundGameState->PlayerArray)
+		{
+			if (ALB_PlayerState* LBPlayerState = Cast<ALB_PlayerState>(PlayerState))
+			{
+				CurrentPlayerStates.Add(LBPlayerState);
+			}
+		}
+	}
+
+	for (ALB_PlayerState* BoundPlayerState : BoundPlayerStates)
+	{
+		if (IsValid(BoundPlayerState) && !CurrentPlayerStates.Contains(BoundPlayerState))
+		{
+			BoundPlayerState->OnCodenameConfirmedChanged.RemoveDynamic(
+				this,
+				&ThisClass::HandlePlayerLobbyStateChanged);
+			BoundPlayerState->OnLobbyReadyChanged.RemoveDynamic(
+				this,
+				&ThisClass::HandlePlayerLobbyStateChanged);
+		}
+	}
+
+	BoundPlayerStates.Reset(CurrentPlayerStates.Num());
+	for (ALB_PlayerState* PlayerState : CurrentPlayerStates)
+	{
+		PlayerState->OnCodenameConfirmedChanged.AddUniqueDynamic(
+			this,
+			&ThisClass::HandlePlayerLobbyStateChanged);
+		PlayerState->OnLobbyReadyChanged.AddUniqueDynamic(
+			this,
+			&ThisClass::HandlePlayerLobbyStateChanged);
+		BoundPlayerStates.Add(PlayerState);
+	}
+}
+
+void ULB_MainMenuWaitingWidget::UnbindPlayerStateDelegates()
+{
+	for (ALB_PlayerState* PlayerState : BoundPlayerStates)
+	{
+		if (!IsValid(PlayerState))
+		{
+			continue;
+		}
+		PlayerState->OnCodenameConfirmedChanged.RemoveDynamic(
+			this,
+			&ThisClass::HandlePlayerLobbyStateChanged);
+		PlayerState->OnLobbyReadyChanged.RemoveDynamic(
+			this,
+			&ThisClass::HandlePlayerLobbyStateChanged);
+	}
+	BoundPlayerStates.Reset();
 }
 
 void ULB_MainMenuWaitingWidget::RefreshRoomIdentity()
@@ -612,6 +686,7 @@ void ULB_MainMenuWaitingWidget::RefreshOnlineControls(
 void ULB_MainMenuWaitingWidget::Refresh(const FLBMainMenuSnapshot& Snapshot)
 {
 	RefreshRoomIdentity();
+	RefreshPlayerStateBindings();
 
 	if (PlayerCountText.IsValid())
 	{
@@ -652,19 +727,22 @@ void ULB_MainMenuWaitingWidget::Refresh(const FLBMainMenuSnapshot& Snapshot)
 			PhaseColor = FLinearColor(0.56f, 0.76f, 0.91f, 1.f);
 			break;
 		default:
-			PhaseLabel = LOCTEXT("Collecting", "CONFIRMING CODENAMES");
+			PhaseLabel = Snapshot.ConfirmedPlayers < Snapshot.ConnectedPlayers
+				? LOCTEXT("Collecting", "CONFIRMING CODENAMES")
+				: LOCTEXT("WaitingForSquad", "WAITING FOR SQUAD READY");
 			break;
 		}
 		PhaseText->SetText(PhaseLabel);
 		PhaseText->SetColorAndOpacity(PhaseColor);
 	}
 
-	const float ReadyRatio = Snapshot.ConnectedPlayers > 0
+	const float ReadyRatio = Snapshot.RequiredReadyPlayers > 0
 		? FMath::Clamp(
-			static_cast<float>(Snapshot.ConfirmedPlayers) / static_cast<float>(Snapshot.ConnectedPlayers),
+			static_cast<float>(Snapshot.ReadyPlayers) / static_cast<float>(Snapshot.RequiredReadyPlayers),
 			0.f,
 			1.f)
-		: 0.f;
+		: (Snapshot.ConnectedPlayers > 0
+			&& Snapshot.ConfirmedPlayers == Snapshot.ConnectedPlayers ? 1.f : 0.f);
 	if (ReadyProgressBar.IsValid())
 	{
 		ReadyProgressBar->SetPercent(TOptional<float>(ReadyRatio));
@@ -696,9 +774,29 @@ void ULB_MainMenuWaitingWidget::Refresh(const FLBMainMenuSnapshot& Snapshot)
 				const int32 SlotIndex = ValidPlayerCount++;
 				const ALB_PlayerState* LBPlayerState = Cast<ALB_PlayerState>(PlayerState);
 				const bool bConfirmed = IsValid(LBPlayerState) && LBPlayerState->IsCodenameConfirmed();
-				const FLinearColor StatusColor = bConfirmed
-					? LBAccentHoverColor
-					: FLinearColor(0.38f, 0.37f, 0.35f, 1.f);
+				const bool bHostPlayer = Snapshot.HostPlayerId != INDEX_NONE
+					&& PlayerState->GetPlayerId() == Snapshot.HostPlayerId;
+				const bool bLobbyReady = IsValid(LBPlayerState) && LBPlayerState->IsLobbyReady();
+				FText PlayerStatusText;
+				FLinearColor StatusColor(0.38f, 0.37f, 0.35f, 1.f);
+				if (!bConfirmed)
+				{
+					PlayerStatusText = LOCTEXT("PlayerConfirming", "CONFIRMING");
+				}
+				else if (bHostPlayer)
+				{
+					PlayerStatusText = LOCTEXT("PlayerHost", "HOST");
+					StatusColor = LBAccentHoverColor;
+				}
+				else if (bLobbyReady)
+				{
+					PlayerStatusText = LOCTEXT("PlayerReady", "READY");
+					StatusColor = LBAccentHoverColor;
+				}
+				else
+				{
+					PlayerStatusText = LOCTEXT("PlayerNotReady", "NOT READY");
+				}
 				const FString PlayerDisplayName = PlayerState->GetPlayerName().IsEmpty()
 					? LOCTEXT("UnknownAgent", "UNKNOWN AGENT").ToString()
 					: PlayerState->GetPlayerName();
@@ -738,9 +836,7 @@ void ULB_MainMenuWaitingWidget::Refresh(const FLBMainMenuSnapshot& Snapshot)
 						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 						[
 							SNew(STextBlock)
-							.Text(bConfirmed
-								? LOCTEXT("PlayerReady", "READY")
-								: LOCTEXT("PlayerConfirming", "CONFIRMING"))
+							.Text(PlayerStatusText)
 							.Font(RosterStatusFont)
 							.ColorAndOpacity(StatusColor)
 						]
@@ -789,8 +885,22 @@ void ULB_MainMenuWaitingWidget::Refresh(const FLBMainMenuSnapshot& Snapshot)
 	{
 		const ALB_MainMenuPlayerController* Controller = Cast<ALB_MainMenuPlayerController>(GetOwningPlayer());
 		const bool bIsHost = IsValid(Controller) && Controller->IsLocalListenHost();
-		StartButton->SetVisibility(bIsHost ? EVisibility::Visible : EVisibility::Collapsed);
-		StartButton->SetEnabled(bIsHost && Snapshot.Phase == ELBMainMenuPhase::Ready && Controller->CanRequestStartCharacterSelect());
+		const ALB_PlayerState* LocalPlayerState = IsValid(Controller)
+			? Controller->GetPlayerState<ALB_PlayerState>()
+			: nullptr;
+		const bool bLocalReady = IsValid(LocalPlayerState) && LocalPlayerState->IsLobbyReady();
+		StartButton->SetVisibility(IsValid(Controller) ? EVisibility::Visible : EVisibility::Collapsed);
+		StartButton->SetEnabled(bIsHost
+			? Snapshot.Phase == ELBMainMenuPhase::Ready && Controller->CanRequestStartCharacterSelect()
+			: IsValid(Controller) && Controller->CanRequestLobbyReady());
+		if (StartButtonText.IsValid())
+		{
+			StartButtonText->SetText(bIsHost
+				? LOCTEXT("Start", "START RAID  >")
+				: (bLocalReady
+					? LOCTEXT("CancelReady", "CANCEL READY")
+					: LOCTEXT("SetReady", "READY  >")));
+		}
 	}
 }
 
@@ -798,7 +908,14 @@ FReply ULB_MainMenuWaitingWidget::HandleStartClicked()
 {
 	if (ALB_MainMenuPlayerController* Controller = Cast<ALB_MainMenuPlayerController>(GetOwningPlayer()))
 	{
-		Controller->RequestStartCharacterSelect();
+		if (Controller->IsLocalListenHost())
+		{
+			Controller->RequestStartCharacterSelect();
+		}
+		else if (const ALB_PlayerState* PlayerState = Controller->GetPlayerState<ALB_PlayerState>())
+		{
+			Controller->RequestSetLobbyReady(!PlayerState->IsLobbyReady());
+		}
 	}
 	return FReply::Handled();
 }

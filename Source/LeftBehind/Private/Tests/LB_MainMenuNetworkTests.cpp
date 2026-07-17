@@ -16,6 +16,7 @@
 #include "GameMode/LB_MainMenuGameMode.h"
 #include "GameState/LB_MainMenuGameState.h"
 #include "Player/LB_MainMenuPlayerController.h"
+#include "Player/LB_PlayerState.h"
 #include "System/MainMenu/LB_LocalPlayerProfileSubsystem.h"
 #include "System/Online/LB_OnlineInvitePolicy.h"
 #include "System/Online/LB_OnlineLoginPolicy.h"
@@ -233,6 +234,17 @@ bool FLBMainMenuNativeDefaultsTest::RunTest(const FString& Parameters)
 	TestNull(
 		TEXT("Remote clients have no ServerStartHunt RPC surface"),
 		ALB_MainMenuPlayerController::StaticClass()->FindFunctionByName(TEXT("ServerStartHunt")));
+	UFunction* LobbyReadyRPC =
+		ALB_MainMenuPlayerController::StaticClass()->FindFunctionByName(TEXT("ServerSetLobbyReady"));
+	TestNotNull(TEXT("Party members expose an owning-client lobby-ready RPC"), LobbyReadyRPC);
+	if (LobbyReadyRPC)
+	{
+		TestTrue(TEXT("Lobby ready is sent to the server"), LobbyReadyRPC->HasAnyFunctionFlags(FUNC_NetServer));
+		TestTrue(TEXT("Lobby ready delivery is reliable"), LobbyReadyRPC->HasAnyFunctionFlags(FUNC_NetReliable));
+	}
+	TestFalse(
+		TEXT("A new player state is not lobby-ready until the member opts in"),
+		GetDefault<ALB_PlayerState>()->IsLobbyReady());
 	TestTrue(
 		TEXT("Menu PlayerController can deliver Client RPCs such as ClientTravelInternal"),
 		GetDefault<ALB_MainMenuPlayerController>()->GetIsReplicated());
