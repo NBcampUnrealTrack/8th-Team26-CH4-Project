@@ -9,6 +9,7 @@
 #include "GameplayTags/LBTags.h"
 #include "LB_BossCharacter.generated.h"
 
+class ALB_EnemyCharacter;
 class ULB_AttributeSet;
 struct FGameplayAbilitySpecHandle;
 class ULB_AttackPatternComponent;
@@ -109,29 +110,24 @@ public:
 	
 	void StopMovementUntilLanded();
 	
-	// ---- Attack ----
-	ULB_ThreatComponent* GetThreatComponent() {return ThreatComponent;}
-	ULB_AttackPatternComponent* GetAttackComponent() { return AttackPatternComponent;}
+
 	
-	//Player에게 접근하기 위한 거리
-	UPROPERTY(EditAnywhere,BlueprintReadOnly, Category = "BOSS|AI")
-	float MeleeDistance;
+	// ---Minons---
+	TArray<ALB_EnemyCharacter*> GetActiveMinions() { return ActiveMinions;}
+	void AddActiveMinions(ALB_EnemyCharacter* NewMinion);
 	
-	UPROPERTY(EditAnywhere,BlueprintReadOnly, Category = "BOSS|AI")
-	float RangedDistance;
+	UFUNCTION()
+	void HandleMinionsDeath(ALB_EnemyCharacter* DeathMinions);
 	
-	UPROPERTY(EditAnywhere,BlueprintReadOnly, Category = "BOSS|AI")
-	float WideAttackTrigger;
+
 
 protected:
 	
 	
-
+	UFUNCTION()
 	virtual void HandleDeath() override;
 
-	TObjectPtr<ULB_ThreatComponent> ThreatComponent;
-	
-	TObjectPtr<ULB_AttackPatternComponent> AttackPatternComponent;
+
 	
 	
 	// ----- Phase -----
@@ -155,6 +151,9 @@ protected:
 	bool bIsDead = false;
 
 	bool bInitializingStats = false;
+	
+	//---Minions---
+
 	
 
 
@@ -181,4 +180,7 @@ private:
 	
 	UPROPERTY()
 	TArray<FGameplayAbilitySpecHandle> CurrentPhaseAbilityHandles;
+	
+	//---Minions ---
+	TArray<ALB_EnemyCharacter*> ActiveMinions;
 };
