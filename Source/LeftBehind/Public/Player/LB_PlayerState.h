@@ -22,6 +22,8 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLBDeadStateChanged, bool, bNewIsD
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLBCharacterIDChanged, ELBCharacterID, NewCharacterID);
 // 코드네임 확정 여부가 바뀌면 대기실 UI가 PlayerState 폴링 없이 반응한다.
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLBCodenameConfirmedChanged, bool, bConfirmed);
+// 복제된 PlayerName이 바뀌면 코드네임을 표시하는 UI를 다시 그린다.
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnLBPlayerNameChanged);
 // 메인 메뉴 대기실 준비 여부가 바뀌면 로스터와 액션 버튼을 즉시 갱신한다.
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLBLobbyReadyChanged, bool, bReady);
 
@@ -46,6 +48,8 @@ public:
     virtual void CopyProperties(APlayerState* PlayerState) override;
     // 일시 접속 해제 후 복귀할 때 inactive PlayerState의 정체성 필드를 복원한다.
     virtual void OverrideWith(APlayerState* PlayerState) override;
+    // 서버와 클라이언트 모두에서 PlayerName 변경을 프로젝트 UI에 전달한다.
+    virtual void OnRep_PlayerName() override;
 
     // 프로젝트 전용 ASC를 그대로 돌려준다. 블루프린트에서 세부 기능을 쓸 때 사용한다.
     UFUNCTION(BlueprintPure, Category="LB|GAS")
@@ -74,6 +78,9 @@ public:
 
     UPROPERTY(BlueprintAssignable)
     FOnLBCodenameConfirmedChanged OnCodenameConfirmedChanged;
+
+    UPROPERTY(BlueprintAssignable, Category="LB|MainMenu")
+    FOnLBPlayerNameChanged OnPlayerNameChanged;
 
     UPROPERTY(BlueprintAssignable, Category="LB|MainMenu")
     FOnLBLobbyReadyChanged OnLobbyReadyChanged;

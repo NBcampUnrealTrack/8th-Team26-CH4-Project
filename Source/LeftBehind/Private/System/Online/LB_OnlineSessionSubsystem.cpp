@@ -4,6 +4,7 @@
 #include "System/MainMenu/LB_LocalPlayerProfileSubsystem.h"
 #include "System/Online/LB_OnlineInvitePolicy.h"
 #include "System/Online/LB_OnlineLoginPolicy.h"
+#include "System/Online/LB_OnlineRoomIdentityPolicy.h"
 
 #include "Containers/Ticker.h"
 #include "Engine/Engine.h"
@@ -98,10 +99,13 @@ namespace
 				EOnlineDataAdvertisementType::DontAdvertise);
 		}
 
-		FOnlineSessionSettings MakeWaitingRoomSettings(const FString& RoomName = FString())
+		FOnlineSessionSettings MakeWaitingRoomSettings(
+			const FString& RoomName = FString(),
+			const FString& HostCodename = FString())
 		{
 			FOnlineSessionSettings Settings;
 			ApplyWaitingPolicy(Settings);
+			LBOnlineRoomIdentityPolicy::AdvertiseHostCodename(Settings, HostCodename);
 			if (!RoomName.IsEmpty())
 			{
 				Settings.Set(
@@ -510,7 +514,9 @@ public:
 			FOnCreateSessionCompleteDelegate::CreateSP(
 				AsShared(),
 				&FLBOnlineSessionRuntime::HandleCreateComplete));
-		const FOnlineSessionSettings Settings = LBOnlineSessionPolicy::MakeWaitingRoomSettings();
+		const FOnlineSessionSettings Settings = LBOnlineSessionPolicy::MakeWaitingRoomSettings(
+			FString(),
+			GetLocalCodename());
 		if (!Sessions->CreateSession(LBLocalUserNum, NAME_GameSession, Settings))
 		{
 			ClearCreateDelegate();
@@ -827,6 +833,12 @@ public:
 				"LeftBehind", "UnknownCurrentRoomHost", "이름 없는 방장").ToString();
 		}
 
+		HostDisplayName = LBOnlineRoomIdentityPolicy::ResolveHostDisplayName(
+			NamedSession->SessionSettings,
+			HostDisplayName,
+			NSLOCTEXT(
+				"LeftBehind", "UnknownCurrentRoomHost", "이름 없는 방장").ToString());
+
 		return LBOnlineSessionPolicy::GetDisplayRoomName(
 			NamedSession->SessionSettings,
 			HostDisplayName);
@@ -866,6 +878,20 @@ private:
 	FTSTicker::FDelegateHandle AutomaticWaitingPhaseRetryHandle;
 	int32 AutomaticWaitingPhaseAttempt = 0;
 	bool bAutomaticWaitingPhaseRecoveryActive = false;
+
+	FString GetLocalCodename() const
+	{
+		const ULB_OnlineSessionSubsystem* OwnerSubsystem = Owner.Get();
+		const UGameInstance* GameInstance = IsValid(OwnerSubsystem)
+			? OwnerSubsystem->GetGameInstance()
+			: nullptr;
+		const ULB_LocalPlayerProfileSubsystem* Profile = IsValid(GameInstance)
+			? GameInstance->GetSubsystem<ULB_LocalPlayerProfileSubsystem>()
+			: nullptr;
+		return IsValid(Profile) && Profile->HasCodename()
+			? Profile->GetCodename()
+			: FString();
+	}
 
 	bool IsLoggedIn() const
 	{
@@ -1045,9 +1071,10 @@ private:
 					return false;
 				}
 
-				const FString HostName = Result.Session.OwningUserName.IsEmpty()
-					? NSLOCTEXT("LeftBehind", "UnknownHost", "Unknown host").ToString()
-					: Result.Session.OwningUserName;
+				const FString HostName = LBOnlineRoomIdentityPolicy::ResolveHostDisplayName(
+					Result.Session.SessionSettings,
+					Result.Session.OwningUserName,
+					NSLOCTEXT("LeftBehind", "UnknownHost", "Unknown host").ToString());
 				const FString ExistingName = LBOnlineSessionPolicy::GetDisplayRoomName(
 					Result.Session.SessionSettings, HostName);
 				return ExistingName.Equals(PendingRoomName, ESearchCase::IgnoreCase);
@@ -1069,8 +1096,9 @@ private:
 			FOnCreateSessionCompleteDelegate::CreateSP(
 				AsShared(),
 				&FLBOnlineSessionRuntime::HandleCreateComplete));
-		const FOnlineSessionSettings Settings =
-			LBOnlineSessionPolicy::MakeWaitingRoomSettings(PendingRoomName);
+		const FOnlineSessionSettings Settings = LBOnlineSessionPolicy::MakeWaitingRoomSettings(
+			PendingRoomName,
+			GetLocalCodename());
 		PendingRoomName.Reset();
 		if (!Sessions->CreateSession(LBLocalUserNum, NAME_GameSession, Settings))
 		{
@@ -1126,9 +1154,10 @@ private:
 
 			FLBRoomSummary& Room = NewRooms.AddDefaulted_GetRef();
 			Room.RoomId = RoomId;
-			Room.HostDisplayName = Result.Session.OwningUserName.IsEmpty()
-				? NSLOCTEXT("LeftBehind", "UnknownHost", "이름 없는 호스트").ToString()
-				: Result.Session.OwningUserName;
+			Room.HostDisplayName = LBOnlineRoomIdentityPolicy::ResolveHostDisplayName(
+				Result.Session.SessionSettings,
+				Result.Session.OwningUserName,
+				NSLOCTEXT("LeftBehind", "UnknownHost", "이름 없는 호스트").ToString());
 			Room.RoomName = LBOnlineSessionPolicy::GetDisplayRoomName(
 				Result.Session.SessionSettings, Room.HostDisplayName);
 			Room.MaxPlayers = FMath::Max(0, Result.Session.SessionSettings.NumPublicConnections);

@@ -299,6 +299,16 @@ void ALB_MainMenuPlayerController::ShowRoomEntryScreen()
 		return;
 	}
 
+	// WBP_MainMenu's transition animations keep their final render state. The
+	// instance that opened the codename screen can therefore still have faded or
+	// translated children when it is added to the viewport again. Recreate the
+	// widget so the designer defaults are restored before selecting Start panel.
+	if (IsValid(MainMenuWidget))
+	{
+		MainMenuWidget->RemoveFromParent();
+		MainMenuWidget = nullptr;
+	}
+
 	if (ULB_OnlineSessionSubsystem* OnlineSubsystem = GetGameInstance()
 		? GetGameInstance()->GetSubsystem<ULB_OnlineSessionSubsystem>()
 		: nullptr;

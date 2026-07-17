@@ -20,6 +20,7 @@
 #include "System/MainMenu/LB_LocalPlayerProfileSubsystem.h"
 #include "System/Online/LB_OnlineInvitePolicy.h"
 #include "System/Online/LB_OnlineLoginPolicy.h"
+#include "System/Online/LB_OnlineRoomIdentityPolicy.h"
 #include "System/Online/LB_OnlineSessionSubsystem.h"
 #include "UI/MainMenu/LB_CodenameEntryWidget.h"
 #include "UI/MainMenu/LB_MainMenuWaitingWidget.h"
@@ -379,6 +380,65 @@ bool FLBRoomNameValidationTest::RunTest(const FString& Parameters)
 		ULB_OnlineSessionSubsystem::ValidateRoomName(
 			FString::ChrN(25, TEXT('A')), NormalizedName, Error));
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FLBRoomHostCodenamePolicyTest,
+	"LeftBehind.MainMenu.Network.RoomHostCodenamePolicy",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FLBRoomHostCodenamePolicyTest::RunTest(const FString& Parameters)
+{
+	(void)Parameters;
+
+	FOnlineSessionSettings Settings;
+	LBOnlineRoomIdentityPolicy::AdvertiseHostCodename(Settings, TEXT("  Raven  "));
+
+	FString AdvertisedCodename;
+	TestTrue(
+		TEXT("Room creation advertises the host codename"),
+		Settings.Get(
+			LBOnlineRoomIdentityPolicy::GetHostCodenameKey(),
+			AdvertisedCodename));
+	TestEqual(
+		TEXT("The advertised host codename is sanitized"),
+		AdvertisedCodename,
+		FString(TEXT("Raven")));
+	const FOnlineSessionSetting* HostCodenameSetting =
+		Settings.Settings.Find(LBOnlineRoomIdentityPolicy::GetHostCodenameKey());
+	TestNotNull(TEXT("The host codename setting exists"), HostCodenameSetting);
+	if (HostCodenameSetting)
+	{
+		TestEqual(
+			TEXT("The host codename is published through the online service"),
+			HostCodenameSetting->AdvertisementType,
+			EOnlineDataAdvertisementType::ViaOnlineService);
+	}
+
+	TestEqual(
+		TEXT("Room search prefers the advertised codename to the platform nickname"),
+		LBOnlineRoomIdentityPolicy::ResolveHostDisplayName(
+			Settings,
+			TEXT("EpicAccountName"),
+			TEXT("Unknown host")),
+		FString(TEXT("Raven")));
+
+	FOnlineSessionSettings LegacySettings;
+	TestEqual(
+		TEXT("Legacy rooms fall back to the platform nickname"),
+		LBOnlineRoomIdentityPolicy::ResolveHostDisplayName(
+			LegacySettings,
+			TEXT("EpicAccountName"),
+			TEXT("Unknown host")),
+		FString(TEXT("EpicAccountName")));
+	TestEqual(
+		TEXT("Rooms without either identity use the unknown-host label"),
+		LBOnlineRoomIdentityPolicy::ResolveHostDisplayName(
+			LegacySettings,
+			FString(),
+			TEXT("Unknown host")),
+		FString(TEXT("Unknown host")));
 	return true;
 }
 

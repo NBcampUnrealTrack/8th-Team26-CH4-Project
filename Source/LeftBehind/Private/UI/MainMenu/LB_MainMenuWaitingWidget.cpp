@@ -555,6 +555,14 @@ void ULB_MainMenuWaitingWidget::HandlePlayerLobbyStateChanged(const bool bValue)
 	}
 }
 
+void ULB_MainMenuWaitingWidget::HandlePlayerNameChanged()
+{
+	if (IsValid(BoundGameState))
+	{
+		Refresh(BoundGameState->GetMainMenuSnapshot());
+	}
+}
+
 void ULB_MainMenuWaitingWidget::RefreshPlayerStateBindings()
 {
 	TArray<ALB_PlayerState*> CurrentPlayerStates;
@@ -576,6 +584,9 @@ void ULB_MainMenuWaitingWidget::RefreshPlayerStateBindings()
 			BoundPlayerState->OnCodenameConfirmedChanged.RemoveDynamic(
 				this,
 				&ThisClass::HandlePlayerLobbyStateChanged);
+			BoundPlayerState->OnPlayerNameChanged.RemoveDynamic(
+				this,
+				&ThisClass::HandlePlayerNameChanged);
 			BoundPlayerState->OnLobbyReadyChanged.RemoveDynamic(
 				this,
 				&ThisClass::HandlePlayerLobbyStateChanged);
@@ -588,6 +599,9 @@ void ULB_MainMenuWaitingWidget::RefreshPlayerStateBindings()
 		PlayerState->OnCodenameConfirmedChanged.AddUniqueDynamic(
 			this,
 			&ThisClass::HandlePlayerLobbyStateChanged);
+		PlayerState->OnPlayerNameChanged.AddUniqueDynamic(
+			this,
+			&ThisClass::HandlePlayerNameChanged);
 		PlayerState->OnLobbyReadyChanged.AddUniqueDynamic(
 			this,
 			&ThisClass::HandlePlayerLobbyStateChanged);
@@ -606,6 +620,9 @@ void ULB_MainMenuWaitingWidget::UnbindPlayerStateDelegates()
 		PlayerState->OnCodenameConfirmedChanged.RemoveDynamic(
 			this,
 			&ThisClass::HandlePlayerLobbyStateChanged);
+		PlayerState->OnPlayerNameChanged.RemoveDynamic(
+			this,
+			&ThisClass::HandlePlayerNameChanged);
 		PlayerState->OnLobbyReadyChanged.RemoveDynamic(
 			this,
 			&ThisClass::HandlePlayerLobbyStateChanged);
@@ -797,9 +814,11 @@ void ULB_MainMenuWaitingWidget::Refresh(const FLBMainMenuSnapshot& Snapshot)
 				{
 					PlayerStatusText = LOCTEXT("PlayerNotReady", "NOT READY");
 				}
-				const FString PlayerDisplayName = PlayerState->GetPlayerName().IsEmpty()
-					? LOCTEXT("UnknownAgent", "UNKNOWN AGENT").ToString()
-					: PlayerState->GetPlayerName();
+				const FString PlayerDisplayName = !bConfirmed
+					? LOCTEXT("CodenamePending", "CODENAME PENDING").ToString()
+					: (PlayerState->GetPlayerName().IsEmpty()
+						? LOCTEXT("UnknownAgent", "UNKNOWN AGENT").ToString()
+						: PlayerState->GetPlayerName());
 
 				PlayerListBox->AddSlot().AutoHeight().Padding(0.f, 2.f)
 				[
