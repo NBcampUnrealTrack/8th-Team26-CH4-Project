@@ -1,5 +1,7 @@
 #include "System/Online/LB_OnlineSessionSubsystem.h"
 
+#include "Engine/GameInstance.h"
+#include "System/MainMenu/LB_LocalPlayerProfileSubsystem.h"
 #include "System/Online/LB_OnlineInvitePolicy.h"
 #include "System/Online/LB_OnlineLoginPolicy.h"
 
@@ -1107,6 +1109,14 @@ private:
 		if (bTravelToMenuAfterDestroy)
 		{
 			bTravelToMenuAfterDestroy = false;
+			if (ULB_LocalPlayerProfileSubsystem* Profile = OwnerSubsystem->GetGameInstance()
+				? OwnerSubsystem->GetGameInstance()->GetSubsystem<ULB_LocalPlayerProfileSubsystem>()
+				: nullptr)
+			{
+				// The room is now confirmed destroyed. Clearing earlier would lose
+				// the value if the asynchronous destroy operation failed.
+				Profile->ClearCodename();
+			}
 			bMenuTravelPending = true;
 			ClearLastError();
 			OwnerSubsystem->SetState(ELBOnlineState::Traveling);

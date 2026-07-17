@@ -7,8 +7,10 @@
 #include "Components/PanelWidget.h"
 #include "Components/TextBlock.h"
 #include "Components/Widget.h"
+#include "Engine/GameInstance.h"
 #include "GameMode/LB_MainMenuGameMode.h"
 #include "Player/LB_MainMenuPlayerController.h"
+#include "System/MainMenu/LB_LocalPlayerProfileSubsystem.h"
 #include "UObject/UnrealType.h"
 
 #define LOCTEXT_NAMESPACE "LBCodenameEntryWidget"
@@ -73,6 +75,15 @@ void ULB_CodenameEntryWidget::NativeConstruct()
 		NameInput->OnTextCommitted.Clear();
 		NameInput->OnTextChanged.AddUniqueDynamic(this, &ThisClass::HandleTextChanged);
 		NameInput->OnTextCommitted.AddUniqueDynamic(this, &ThisClass::HandleTextCommitted);
+		if (const UGameInstance* GameInstance = GetGameInstance())
+		{
+			if (const ULB_LocalPlayerProfileSubsystem* Profile =
+				GameInstance->GetSubsystem<ULB_LocalPlayerProfileSubsystem>();
+				IsValid(Profile) && Profile->HasCodename())
+			{
+				NameInput->SetText(FText::FromString(Profile->GetCodename()));
+			}
+		}
 		HandleTextChanged(NameInput->GetText());
 		NameInput->SetKeyboardFocus();
 	}
@@ -120,16 +131,19 @@ void ULB_CodenameEntryWidget::HandleConfirmClicked()
 
 void ULB_CodenameEntryWidget::HandleBackClicked()
 {
+	if (ALB_MainMenuPlayerController* Controller = Cast<ALB_MainMenuPlayerController>(GetOwningPlayer()))
+	{
+		if (Controller->CancelCodenameEntry())
+		{
+			return;
+		}
+
+		FInputModeGameAndUI InputMode;
+		Controller->SetInputMode(InputMode);
+	}
 	if (IsValid(NameInput))
 	{
 		NameInput->SetUserFocus(GetOwningPlayer());
-	}
-	
-	if (ALB_MainMenuPlayerController* Controller = Cast<ALB_MainMenuPlayerController>(GetOwningPlayer()))
-	{
-		FInputModeGameAndUI InputMode;
-		Controller->SetInputMode(InputMode);
-		//Controller->SetMenuScreen(ELBMainMenuScreen::Main);
 	}
 	
 	BP_OnBackClicked();
@@ -137,6 +151,11 @@ void ULB_CodenameEntryWidget::HandleBackClicked()
 
 void ULB_CodenameEntryWidget::HandleTextChanged(const FText& Text)
 {
+	if (ALB_MainMenuPlayerController* Controller = Cast<ALB_MainMenuPlayerController>(GetOwningPlayer()))
+	{
+		Controller->NotifyCodenameDraftChanged(Text);
+	}
+
 	FString Sanitized;
 	const bool bLocallyValid = ALB_MainMenuGameMode::ValidateCodename(Text.ToString(), Sanitized)
 		== ELBCodenameSubmitResult::Accepted;

@@ -6,6 +6,7 @@
 #include "GameMode/LB_MainMenuGameMode.h"
 #include "GameMode/LB_CharacterSelectGameMode.h"
 #include "Player/LB_PlayerState.h"
+#include "System/MainMenu/LB_LocalPlayerProfileSubsystem.h"
 #include "System/Online/LB_OnlineSessionSubsystem.h"
 #include "UI/MainMenu/LB_MainMenuRootWidget.h"
 #include "UI/MainMenu/LB_MultiplayerHubWidget.h"
@@ -97,11 +98,13 @@ void ALB_MainMenuPlayerController::BeginPlay()
 	}
 	
 	BindOnlineSubsystem();
+	RefreshCodenamePlayerStateBinding();
 	ShowInitialOnlineRoomScreen();
 }
 
 void ALB_MainMenuPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	UnbindCodenamePlayerState();
 	UnbindOnlineSubsystem();
 	TeardownMenuUI();
 	Super::EndPlay(EndPlayReason);
@@ -122,6 +125,7 @@ void ALB_MainMenuPlayerController::OnRep_PlayerState()
 		return;
 	}
 
+	RefreshCodenamePlayerStateBinding();
 	ShowInitialOnlineRoomScreen();
 }
 
@@ -139,6 +143,10 @@ void ALB_MainMenuPlayerController::PreClientTravel(
 		HasAuthority() ? 1 : 0,
 		bIsSeamlessTravel ? 1 : 0,
 		*PendingURL);
+	bCancellingCodenameFlow = true;
+	CodenameEntryPurpose = ECodenameEntryPurpose::None;
+	ResetCodenameSubmissionState();
+	UnbindCodenamePlayerState();
 	UnbindOnlineSubsystem();
 	TeardownMenuUI();
 	Super::PreClientTravel(PendingURL, TravelType, bIsSeamlessTravel);
@@ -167,6 +175,10 @@ void ALB_MainMenuPlayerController::BeginOnlinePlay()
 	{
 		return;
 	}
+	if (bCancellingCodenameFlow || CodenameApplyState == ECodenameApplyState::Submitting)
+	{
+		return;
+	}
 	if (IsLocalNetworkPIE())
 	{
 		ShowInitialOnlineRoomScreen();
@@ -188,6 +200,41 @@ void ALB_MainMenuPlayerController::BeginOnlinePlay()
 		return;
 	}
 
+	if (ULB_LocalPlayerProfileSubsystem* Profile = GetLocalPlayerProfile())
+	{
+		// A new explicit GAME START always asks for a name. The cache only
+		// carries the accepted value through the upcoming non-seamless travel.
+		Profile->ClearCodename();
+	}
+	bOpenMultiplayerAfterSignIn = false;
+	bCachedCodenameAutoSubmitAttempted = false;
+	bCancellingCodenameFlow = false;
+	CodenameEntryPurpose = ECodenameEntryPurpose::BeforeOnlinePlay;
+	ResetCodenameSubmissionState();
+	SetMenuScreen(ELBMainMenuScreen::Codename);
+}
+
+void ALB_MainMenuPlayerController::ContinueOnlinePlayAfterCodename()
+{
+	if (!IsLocalController() || bMenuUITeardown || IsLocalNetworkPIE())
+	{
+		return;
+	}
+
+	ULB_OnlineSessionSubsystem* OnlineSubsystem = GetGameInstance()
+		? GetGameInstance()->GetSubsystem<ULB_OnlineSessionSubsystem>()
+		: nullptr;
+	if (!IsValid(OnlineSubsystem))
+	{
+		UE_LOG(LogLBMainMenuPlayerController, Error, TEXT("EOS session subsystem is unavailable."));
+		return;
+	}
+	if (OnlineSubsystem->IsInRoom())
+	{
+		ShowInitialOnlineRoomScreen();
+		return;
+	}
+
 	switch (OnlineSubsystem->GetState())
 	{
 	case ELBOnlineState::Ready:
@@ -196,10 +243,12 @@ void ALB_MainMenuPlayerController::BeginOnlinePlay()
 		break;
 	case ELBOnlineState::SigningIn:
 		bOpenMultiplayerAfterSignIn = true;
+		SetMenuScreen(ELBMainMenuScreen::Multiplayer);
 		break;
 	case ELBOnlineState::SignedOut:
 	case ELBOnlineState::Error:
 		bOpenMultiplayerAfterSignIn = true;
+		SetMenuScreen(ELBMainMenuScreen::Multiplayer);
 		if (!OnlineSubsystem->SignIn() && OnlineSubsystem->GetState() == ELBOnlineState::Error)
 		{
 			bOpenMultiplayerAfterSignIn = false;
@@ -247,6 +296,20 @@ void ALB_MainMenuPlayerController::ShowRoomEntryScreen()
 		return;
 	}
 
+	if (ULB_OnlineSessionSubsystem* OnlineSubsystem = GetGameInstance()
+		? GetGameInstance()->GetSubsystem<ULB_OnlineSessionSubsystem>()
+		: nullptr;
+		IsValid(OnlineSubsystem) && !OnlineSubsystem->IsInRoom())
+	{
+		if (ULB_LocalPlayerProfileSubsystem* Profile = GetLocalPlayerProfile())
+		{
+			Profile->ClearCodename();
+		}
+	}
+	CodenameEntryPurpose = ECodenameEntryPurpose::None;
+	bCachedCodenameAutoSubmitAttempted = false;
+	bCancellingCodenameFlow = false;
+	ResetCodenameSubmissionState();
 	bShowRoomEntryAfterMainLoad = true;
 	SetMenuScreen(ELBMainMenuScreen::Main);
 }
@@ -257,15 +320,132 @@ void ALB_MainMenuPlayerController::SubmitCodename(const FText& RawCodename)
 	{
 		return;
 	}
-
-	const FString RawCodenameString = RawCodename.ToString();
-	if (HasAuthority())
+	if (bCancellingCodenameFlow || CodenameApplyState == ECodenameApplyState::Submitting)
 	{
-		HandleCodenameSubmission_ServerOnly(RawCodenameString);
+		return;
+	}
+	if (CodenameEntryPurpose != ECodenameEntryPurpose::BeforeOnlinePlay
+		&& CodenameEntryPurpose != ECodenameEntryPurpose::InRoom)
+	{
+		OnCodenameSubmissionResult.Broadcast(ELBCodenameSubmitResult::NotInLobby, FString());
+		return;
+	}
+	if (CodenameEntryPurpose == ECodenameEntryPurpose::InRoom && !HasCodenameRoomContext())
+	{
+		OnCodenameSubmissionResult.Broadcast(ELBCodenameSubmitResult::NotInLobby, FString());
 		return;
 	}
 
-	ServerSubmitCodename(RawCodenameString);
+	const FString RawCodenameString = RawCodename.ToString();
+	ULB_LocalPlayerProfileSubsystem* Profile = GetLocalPlayerProfile();
+	if (!IsValid(Profile))
+	{
+		OnCodenameSubmissionResult.Broadcast(ELBCodenameSubmitResult::NotInLobby, FString());
+		return;
+	}
+
+	FString SanitizedCodename;
+	const ELBCodenameSubmitResult LocalResult =
+		Profile->TrySetCodename(RawCodenameString, SanitizedCodename);
+	if (LocalResult != ELBCodenameSubmitResult::Accepted)
+	{
+		// An explicit invalid edit must invalidate any value cached before
+		// travel; otherwise an earlier name could be submitted behind the
+		// player's back when PlayerState becomes ready.
+		Profile->ClearCodename();
+		bCachedCodenameAutoSubmitAttempted = true;
+		OnCodenameSubmissionResult.Broadcast(LocalResult, SanitizedCodename);
+		return;
+	}
+
+	if (CodenameEntryPurpose == ECodenameEntryPurpose::BeforeOnlinePlay)
+	{
+		CodenameEntryPurpose = ECodenameEntryPurpose::None;
+		OnCodenameSubmissionResult.Broadcast(ELBCodenameSubmitResult::Accepted, SanitizedCodename);
+		ContinueOnlinePlayAfterCodename();
+		return;
+	}
+
+	if (!CanSubmitCodenameToCurrentRoom())
+	{
+		CodenameEntryPurpose = ECodenameEntryPurpose::InRoom;
+		CodenameApplyState = ECodenameApplyState::WaitingForPlayerState;
+		bCachedCodenameAutoSubmitAttempted = false;
+		SetMenuScreen(ELBMainMenuScreen::Codename);
+		return;
+	}
+
+	StartCodenameServerSubmission(SanitizedCodename, Profile->GetCodenameRevision());
+}
+
+void ALB_MainMenuPlayerController::NotifyCodenameDraftChanged(const FText& DraftCodename)
+{
+	if (!IsLocalController()
+		|| bMenuUITeardown
+		|| CodenameEntryPurpose != ECodenameEntryPurpose::InRoom
+		|| CodenameApplyState == ECodenameApplyState::Submitting)
+	{
+		return;
+	}
+
+	ULB_LocalPlayerProfileSubsystem* Profile = GetLocalPlayerProfile();
+	if (!IsValid(Profile) || !Profile->HasCodename())
+	{
+		return;
+	}
+
+	FString SanitizedDraft;
+	const ELBCodenameSubmitResult DraftResult =
+		ALB_MainMenuGameMode::ValidateCodename(DraftCodename.ToString(), SanitizedDraft);
+	if (DraftResult != ELBCodenameSubmitResult::Accepted
+		|| SanitizedDraft != Profile->GetCodename())
+	{
+		// Editing is intent. Once the draft no longer represents the cached
+		// value, never auto-submit that older value after a late OnRep/state event.
+		Profile->ClearCodename();
+		bCachedCodenameAutoSubmitAttempted = true;
+	}
+}
+
+bool ALB_MainMenuPlayerController::CancelCodenameEntry()
+{
+	if (!IsLocalController() || bMenuUITeardown)
+	{
+		return false;
+	}
+
+	if (CodenameEntryPurpose == ECodenameEntryPurpose::BeforeOnlinePlay)
+	{
+		ShowRoomEntryScreen();
+		return true;
+	}
+
+	ULB_OnlineSessionSubsystem* OnlineSubsystem = GetGameInstance()
+		? GetGameInstance()->GetSubsystem<ULB_OnlineSessionSubsystem>()
+		: nullptr;
+	if (CodenameEntryPurpose != ECodenameEntryPurpose::InRoom
+		|| !IsValid(OnlineSubsystem)
+		|| (!IsLocalNetworkPIE() && !OnlineSubsystem->IsInRoom()))
+	{
+		return false;
+	}
+	if (IsLocalNetworkPIE())
+	{
+		// PIE networking has no EOS session to destroy. Consume Back instead
+		// of letting Blueprint hide a still-connected room behind the main UI.
+		return true;
+	}
+
+	bCancellingCodenameFlow = true;
+	CodenameEntryPurpose = ECodenameEntryPurpose::None;
+	ResetCodenameSubmissionState();
+	if (!OnlineSubsystem->LeaveRoom())
+	{
+		bCancellingCodenameFlow = false;
+		CodenameEntryPurpose = ECodenameEntryPurpose::InRoom;
+		ReconcileInRoomCodenameFlow();
+	}
+	return true;
 }
 
 void ALB_MainMenuPlayerController::RequestStartCharacterSelect()
@@ -338,6 +518,9 @@ void ALB_MainMenuPlayerController::TeardownMenuUI()
 	DesiredScreen = ELBMainMenuScreen::None;
 	VisibleScreen = ELBMainMenuScreen::None;
 	bShowRoomEntryAfterMainLoad = false;
+	CodenameEntryPurpose = ECodenameEntryPurpose::None;
+	bCachedCodenameAutoSubmitAttempted = false;
+	ResetCodenameSubmissionState();
 }
 
 void ALB_MainMenuPlayerController::ShowDesiredMenuScreen()
@@ -396,6 +579,10 @@ void ALB_MainMenuPlayerController::ShowDesiredMenuScreen()
 			}
 		}
 		ApplyMenuInputMode(ExistingWidget);
+		if (VisibleScreen == ELBMainMenuScreen::Codename)
+		{
+			TrySubmitCachedCodenameIfReady();
+		}
 		return;
 	}
 
@@ -557,6 +744,191 @@ void ALB_MainMenuPlayerController::ApplyMenuInputMode(UUserWidget* FocusWidget)
 	SetInputMode(InputMode);
 }
 
+ULB_LocalPlayerProfileSubsystem* ALB_MainMenuPlayerController::GetLocalPlayerProfile() const
+{
+	return GetGameInstance()
+		? GetGameInstance()->GetSubsystem<ULB_LocalPlayerProfileSubsystem>()
+		: nullptr;
+}
+
+bool ALB_MainMenuPlayerController::HasCodenameRoomContext() const
+{
+	if (IsLocalNetworkPIE())
+	{
+		return true;
+	}
+
+	const ULB_OnlineSessionSubsystem* OnlineSubsystem = GetGameInstance()
+		? GetGameInstance()->GetSubsystem<ULB_OnlineSessionSubsystem>()
+		: nullptr;
+	return IsValid(OnlineSubsystem) && OnlineSubsystem->IsInRoom();
+}
+
+bool ALB_MainMenuPlayerController::CanSubmitCodenameToCurrentRoom() const
+{
+	if (!HasCodenameRoomContext())
+	{
+		return false;
+	}
+
+	if (!IsLocalNetworkPIE())
+	{
+		const ULB_OnlineSessionSubsystem* OnlineSubsystem = GetGameInstance()
+			? GetGameInstance()->GetSubsystem<ULB_OnlineSessionSubsystem>()
+			: nullptr;
+		if (!IsValid(OnlineSubsystem) || OnlineSubsystem->GetState() != ELBOnlineState::InRoom)
+		{
+			return false;
+		}
+	}
+
+	const ALB_PlayerState* LBPlayerState = GetPlayerState<ALB_PlayerState>();
+	return IsValid(LBPlayerState)
+		&& LBPlayerState->GetWorld() == GetWorld()
+		&& !LBPlayerState->IsOnlyASpectator();
+}
+
+void ALB_MainMenuPlayerController::ResetCodenameSubmissionState()
+{
+	CodenameApplyState = ECodenameApplyState::Idle;
+	ActiveCodenameRequestId = 0;
+	ActiveCodenameRevision = 0;
+	ActiveSubmittedCodename.Reset();
+	ActiveCodenameTarget.Reset();
+}
+
+void ALB_MainMenuPlayerController::RefreshCodenamePlayerStateBinding()
+{
+	ALB_PlayerState* CurrentPlayerState = GetPlayerState<ALB_PlayerState>();
+	if (BoundCodenamePlayerState.Get() == CurrentPlayerState)
+	{
+		return;
+	}
+
+	UnbindCodenamePlayerState();
+	if (IsValid(CurrentPlayerState))
+	{
+		CurrentPlayerState->OnCodenameConfirmedChanged.AddUniqueDynamic(
+			this,
+			&ThisClass::HandleCodenameConfirmedChanged);
+		BoundCodenamePlayerState = CurrentPlayerState;
+	}
+}
+
+void ALB_MainMenuPlayerController::UnbindCodenamePlayerState()
+{
+	if (ALB_PlayerState* PreviousPlayerState = BoundCodenamePlayerState.Get())
+	{
+		PreviousPlayerState->OnCodenameConfirmedChanged.RemoveDynamic(
+			this,
+			&ThisClass::HandleCodenameConfirmedChanged);
+	}
+	BoundCodenamePlayerState.Reset();
+}
+
+void ALB_MainMenuPlayerController::ReconcileInRoomCodenameFlow()
+{
+	if (!IsLocalController() || bMenuUITeardown || bCancellingCodenameFlow)
+	{
+		return;
+	}
+
+	const ALB_PlayerState* LBPlayerState = GetPlayerState<ALB_PlayerState>();
+	if (IsValid(LBPlayerState) && LBPlayerState->IsCodenameConfirmed())
+	{
+		CodenameEntryPurpose = ECodenameEntryPurpose::None;
+		bCachedCodenameAutoSubmitAttempted = false;
+		// On a listen host the replicated delegate fires synchronously inside
+		// the server confirmation call. Preserve the active request until its
+		// matching client result arrives so the Accepted delegate still fires.
+		if (CodenameApplyState != ECodenameApplyState::Submitting)
+		{
+			ResetCodenameSubmissionState();
+		}
+		SetMenuScreen(ELBMainMenuScreen::Waiting);
+		return;
+	}
+
+	CodenameEntryPurpose = ECodenameEntryPurpose::InRoom;
+	if (CodenameApplyState != ECodenameApplyState::Submitting)
+	{
+		CodenameApplyState = IsValid(LBPlayerState)
+			? ECodenameApplyState::Idle
+			: ECodenameApplyState::WaitingForPlayerState;
+	}
+	// The widget is shown before auto-submit so a server rejection always has
+	// a live result listener and the cached value can be edited and retried.
+	SetMenuScreen(ELBMainMenuScreen::Codename);
+}
+
+void ALB_MainMenuPlayerController::TrySubmitCachedCodenameIfReady()
+{
+	if (CodenameEntryPurpose != ECodenameEntryPurpose::InRoom
+		|| bCancellingCodenameFlow
+		|| bCachedCodenameAutoSubmitAttempted
+		|| CodenameApplyState == ECodenameApplyState::Submitting)
+	{
+		return;
+	}
+
+	ULB_LocalPlayerProfileSubsystem* Profile = GetLocalPlayerProfile();
+	if (!IsValid(Profile) || !Profile->HasCodename())
+	{
+		return;
+	}
+	if (!CanSubmitCodenameToCurrentRoom())
+	{
+		CodenameApplyState = ECodenameApplyState::WaitingForPlayerState;
+		return;
+	}
+
+	bCachedCodenameAutoSubmitAttempted = true;
+	StartCodenameServerSubmission(Profile->GetCodename(), Profile->GetCodenameRevision());
+}
+
+void ALB_MainMenuPlayerController::StartCodenameServerSubmission(
+	const FString& SanitizedCodename,
+	const uint32 CodenameRevision)
+{
+	if (CodenameApplyState == ECodenameApplyState::Submitting
+		|| bCancellingCodenameFlow
+		|| !CanSubmitCodenameToCurrentRoom())
+	{
+		return;
+	}
+
+	ULB_LocalPlayerProfileSubsystem* Profile = GetLocalPlayerProfile();
+	ALB_PlayerState* LBPlayerState = GetPlayerState<ALB_PlayerState>();
+	if (!IsValid(Profile)
+		|| !IsValid(LBPlayerState)
+		|| !Profile->HasCodename()
+		|| Profile->GetCodenameRevision() != CodenameRevision
+		|| Profile->GetCodename() != SanitizedCodename)
+	{
+		return;
+	}
+
+	++NextCodenameRequestId;
+	if (NextCodenameRequestId == 0)
+	{
+		++NextCodenameRequestId;
+	}
+	ActiveCodenameRequestId = NextCodenameRequestId;
+	ActiveCodenameRevision = CodenameRevision;
+	ActiveSubmittedCodename = SanitizedCodename;
+	ActiveCodenameTarget = LBPlayerState;
+	CodenameApplyState = ECodenameApplyState::Submitting;
+	CodenameEntryPurpose = ECodenameEntryPurpose::InRoom;
+
+	if (HasAuthority())
+	{
+		HandleCodenameSubmission_ServerOnly(SanitizedCodename, ActiveCodenameRequestId);
+		return;
+	}
+
+	ServerSubmitCodename(SanitizedCodename, ActiveCodenameRequestId);
+}
+
 void ALB_MainMenuPlayerController::BindOnlineSubsystem()
 {
 	if (ULB_OnlineSessionSubsystem* OnlineSubsystem = GetGameInstance()
@@ -581,10 +953,7 @@ void ALB_MainMenuPlayerController::ShowInitialOnlineRoomScreen()
 {
 	if (IsLocalNetworkPIE())
 	{
-		const ALB_PlayerState* LBPlayerState = GetPlayerState<ALB_PlayerState>();
-		SetMenuScreen(IsValid(LBPlayerState) && LBPlayerState->IsCodenameConfirmed()
-			? ELBMainMenuScreen::Waiting
-			: ELBMainMenuScreen::Codename);
+		ReconcileInRoomCodenameFlow();
 		return;
 	}
 
@@ -598,16 +967,16 @@ void ALB_MainMenuPlayerController::ShowInitialOnlineRoomScreen()
 	}
 	if (!OnlineSubsystem->IsInRoom())
 	{
+		CodenameEntryPurpose = ECodenameEntryPurpose::None;
+		bCachedCodenameAutoSubmitAttempted = false;
+		ResetCodenameSubmissionState();
 		SetMenuScreen(OnlineSubsystem->GetState() == ELBOnlineState::Error
 			? ELBMainMenuScreen::Multiplayer
 			: ELBMainMenuScreen::Main);
 		return;
 	}
 
-	const ALB_PlayerState* LBPlayerState = GetPlayerState<ALB_PlayerState>();
-	SetMenuScreen(IsValid(LBPlayerState) && LBPlayerState->IsCodenameConfirmed()
-		? ELBMainMenuScreen::Waiting
-		: ELBMainMenuScreen::Codename);
+	ReconcileInRoomCodenameFlow();
 }
 
 bool ALB_MainMenuPlayerController::IsLocalNetworkPIE() const
@@ -630,7 +999,15 @@ void ALB_MainMenuPlayerController::HandleOnlineStateChanged(
 	if (NewState == ELBOnlineState::InRoom)
 	{
 		bOpenMultiplayerAfterSignIn = false;
+		bCancellingCodenameFlow = false;
 		ShowInitialOnlineRoomScreen();
+		return;
+	}
+	if (NewState == ELBOnlineState::Leaving)
+	{
+		bCancellingCodenameFlow = true;
+		CodenameEntryPurpose = ECodenameEntryPurpose::None;
+		ResetCodenameSubmissionState();
 		return;
 	}
 
@@ -644,6 +1021,20 @@ void ALB_MainMenuPlayerController::HandleOnlineStateChanged(
 		bOpenMultiplayerAfterSignIn = false;
 		SetMenuScreen(ELBMainMenuScreen::Multiplayer);
 	}
+}
+
+void ALB_MainMenuPlayerController::HandleCodenameConfirmedChanged(const bool bConfirmed)
+{
+	if (!bConfirmed
+		|| !IsLocalController()
+		|| bMenuUITeardown
+		|| bCancellingCodenameFlow
+		|| IsCharacterSelectLevel())
+	{
+		return;
+	}
+
+	ReconcileInRoomCodenameFlow();
 }
 
 bool ALB_MainMenuPlayerController::IsCharacterSelectLevel() const
@@ -712,7 +1103,9 @@ void ALB_MainMenuPlayerController::ServerCancelReady_Implementation()
 }
 
 
-void ALB_MainMenuPlayerController::HandleCodenameSubmission_ServerOnly(const FString& RawCodename)
+void ALB_MainMenuPlayerController::HandleCodenameSubmission_ServerOnly(
+	const FString& RawCodename,
+	const uint32 RequestId)
 {
 	if (!HasAuthority())
 	{
@@ -724,22 +1117,62 @@ void ALB_MainMenuPlayerController::HandleCodenameSubmission_ServerOnly(const FSt
 	const ELBCodenameSubmitResult Result = IsValid(MainMenuGameMode)
 		? MainMenuGameMode->TryConfirmCodename(this, RawCodename, SanitizedCodename)
 		: ELBCodenameSubmitResult::NotInLobby;
-	ClientReceiveCodenameSubmissionResult(Result, SanitizedCodename);
+	ClientReceiveCodenameSubmissionResult(Result, SanitizedCodename, RequestId);
 }
 
-void ALB_MainMenuPlayerController::ServerSubmitCodename_Implementation(const FString& RawCodename)
+void ALB_MainMenuPlayerController::ServerSubmitCodename_Implementation(
+	const FString& RawCodename,
+	const uint32 RequestId)
 {
-	HandleCodenameSubmission_ServerOnly(RawCodename);
+	HandleCodenameSubmission_ServerOnly(RawCodename, RequestId);
 }
 
 void ALB_MainMenuPlayerController::ClientReceiveCodenameSubmissionResult_Implementation(
 	ELBCodenameSubmitResult Result,
-	const FString& SanitizedCodename)
+	const FString& SanitizedCodename,
+	const uint32 RequestId)
 {
-	if (Result == ELBCodenameSubmitResult::Accepted)
+	if (RequestId == 0
+		|| RequestId != ActiveCodenameRequestId
+		|| CodenameApplyState != ECodenameApplyState::Submitting)
 	{
-		SetMenuScreen(ELBMainMenuScreen::Waiting);
+		UE_LOG(
+			LogLBMainMenuPlayerController,
+			Verbose,
+			TEXT("Ignoring stale codename result. Request=%u Active=%u Result=%d"),
+			RequestId,
+			ActiveCodenameRequestId,
+			static_cast<int32>(Result));
+		return;
 	}
 
+	ULB_LocalPlayerProfileSubsystem* Profile = GetLocalPlayerProfile();
+	const bool bCurrentRequest = !bCancellingCodenameFlow
+		&& IsValid(Profile)
+		&& Profile->GetCodenameRevision() == ActiveCodenameRevision
+		&& Profile->GetCodename() == ActiveSubmittedCodename
+		&& ActiveCodenameTarget.Get() == GetPlayerState<ALB_PlayerState>();
+	ResetCodenameSubmissionState();
+	if (!bCurrentRequest)
+	{
+		return;
+	}
+
+	if (Result == ELBCodenameSubmitResult::Accepted)
+	{
+		CodenameEntryPurpose = ECodenameEntryPurpose::None;
+		SetMenuScreen(ELBMainMenuScreen::Waiting);
+		OnCodenameSubmissionResult.Broadcast(Result, SanitizedCodename);
+		return;
+	}
+
+	if (Result == ELBCodenameSubmitResult::TooShort
+		|| Result == ELBCodenameSubmitResult::TooLong
+		|| Result == ELBCodenameSubmitResult::InvalidCharacters)
+	{
+		Profile->ClearCodename();
+	}
+	CodenameEntryPurpose = ECodenameEntryPurpose::InRoom;
+	SetMenuScreen(ELBMainMenuScreen::Codename);
 	OnCodenameSubmissionResult.Broadcast(Result, SanitizedCodename);
 }

@@ -1,12 +1,15 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Engine/EngineBaseTypes.h"
+#include "Engine/GameInstance.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/ConfigCacheIni.h"
+#include "UObject/UObjectGlobals.h"
 
 #include "GameMode/LB_MainMenuGameMode.h"
 #include "GameState/LB_MainMenuGameState.h"
 #include "Player/LB_MainMenuPlayerController.h"
+#include "System/MainMenu/LB_LocalPlayerProfileSubsystem.h"
 #include "System/Online/LB_OnlineInvitePolicy.h"
 #include "System/Online/LB_OnlineLoginPolicy.h"
 #include "System/Online/LB_OnlineSessionSubsystem.h"
@@ -130,6 +133,53 @@ bool FLBMainMenuCodenameValidationTest::RunTest(const FString& Parameters)
 		ALB_MainMenuGameMode::ValidateCodename(TEXT("헌터"), Sanitized),
 		ELBCodenameSubmitResult::Accepted);
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FLBMainMenuCodenameCacheTest,
+	"LeftBehind.MainMenu.Codename.Cache",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FLBMainMenuCodenameCacheTest::RunTest(const FString& Parameters)
+{
+	(void)Parameters;
+	UGameInstance* FirstGameInstance = NewObject<UGameInstance>(GetTransientPackage());
+	UGameInstance* SecondGameInstance = NewObject<UGameInstance>(GetTransientPackage());
+	ULB_LocalPlayerProfileSubsystem* FirstProfile =
+		NewObject<ULB_LocalPlayerProfileSubsystem>(FirstGameInstance);
+	ULB_LocalPlayerProfileSubsystem* SecondProfile =
+		NewObject<ULB_LocalPlayerProfileSubsystem>(SecondGameInstance);
+	TestNotNull(TEXT("A local profile cache can be created without online services"), FirstProfile);
+	TestNotNull(TEXT("Each game instance receives an independent cache object"), SecondProfile);
+	if (!FirstProfile || !SecondProfile)
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("A new profile has no cached codename"), FirstProfile->HasCodename());
+	const uint32 InitialRevision = FirstProfile->GetCodenameRevision();
+	FString Sanitized;
+	TestEqual(
+		TEXT("Invalid input is rejected before it can enter the travel cache"),
+		FirstProfile->TrySetCodename(TEXT("A"), Sanitized),
+		ELBCodenameSubmitResult::TooShort);
+	TestFalse(TEXT("Rejected input leaves the cache empty"), FirstProfile->HasCodename());
+	TestEqual(TEXT("Rejected input does not advance the cache revision"), FirstProfile->GetCodenameRevision(), InitialRevision);
+
+	TestEqual(
+		TEXT("Accepted input is sanitized while it is stored"),
+		FirstProfile->TrySetCodename(TEXT("  Raider  "), Sanitized),
+		ELBCodenameSubmitResult::Accepted);
+	TestEqual(TEXT("The sanitized value is returned"), Sanitized, FString(TEXT("Raider")));
+	TestEqual(TEXT("Only the sanitized value is cached"), FirstProfile->GetCodename(), FString(TEXT("Raider")));
+	TestTrue(TEXT("A successful update advances the cache revision"), FirstProfile->GetCodenameRevision() > InitialRevision);
+	TestFalse(TEXT("Another local profile does not share the cached value"), SecondProfile->HasCodename());
+
+	const uint32 StoredRevision = FirstProfile->GetCodenameRevision();
+	FirstProfile->ClearCodename();
+	TestFalse(TEXT("Clearing removes the cached codename"), FirstProfile->HasCodename());
+	TestTrue(TEXT("Clearing invalidates in-flight submissions through the revision"), FirstProfile->GetCodenameRevision() > StoredRevision);
 	return true;
 }
 
