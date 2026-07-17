@@ -12,11 +12,6 @@ namespace LBOnlineLoginPolicy
 		Invalid
 	};
 
-	/**
-	 * UE's EOS AutoLogin reads the AUTH_TYPE, AUTH_LOGIN, and AUTH_PASSWORD
-	 * command-line arguments. Partial credentials or an empty AUTH_TYPE are
-	 * invalid so they cannot silently fall through to another mechanism.
-	 */
 	inline ELoginRoute SelectLoginRoute(const TCHAR* CommandLine)
 	{
 		FString AuthType;
