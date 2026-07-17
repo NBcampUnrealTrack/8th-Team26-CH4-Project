@@ -26,6 +26,15 @@ struct FLBCharacterSelectPlayerInfo
 	ELBRoleType RoleType = ELBRoleType::DPS;
 };
 
+
+UENUM(BlueprintType)
+enum class ELBCharacterSelectPhase : uint8
+{
+	Waiting = 0,
+	AllReady = 1,
+	Traveling = 2
+};
+
 // 캐릭터 선택 화면 전체 상태.
 // GameState가 복제하는 데이터.
 USTRUCT(BlueprintType)
@@ -44,6 +53,10 @@ struct FLBCharacterSelectSnapshot
 	// 변경 감지용 Revision
 	UPROPERTY(BlueprintReadOnly)
 	int32 Revision = 0;
+	
+	UPROPERTY(BlueprintReadOnly)
+	ELBCharacterSelectPhase Phase =
+		ELBCharacterSelectPhase::Waiting;
 };
 
 UENUM(BlueprintType)

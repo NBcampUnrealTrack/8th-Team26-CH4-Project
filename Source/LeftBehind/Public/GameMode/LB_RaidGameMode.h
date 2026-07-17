@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/GameModeBase.h"
+#include "System/Character/LBCharacterTypes.h"
 #include "LB_RaidGameMode.generated.h"
 
 class ALB_RaidGameState;
@@ -34,10 +35,12 @@ public:
 
     // 레이드 GameState를 초기화하고 설정에 따라 자동 카운트다운을 시작한다.
     virtual void BeginPlay() override;
-
+    
     // 월드 종료 시 타이머, 보스 델리게이트, 비동기 로드 요청을 명시적으로 정리한다.
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
+    virtual APawn* SpawnDefaultPawnFor_Implementation(AController* NewPlayer, AActor* StartSpot) override;
+    
     // Waiting 상태에서 Countdown 상태로 전환하고 전투 시작 타이머를 예약한다.
     UFUNCTION(BlueprintCallable, Category = "LB|Raid")
     void StartCountdown();
@@ -79,6 +82,12 @@ public:
     TSoftObjectPtr<UWorld> GetMainMenuMap() const { return MainMenuMap; }
 
 protected:
+    
+    UPROPERTY(EditDefaultsOnly)
+    TObjectPtr<UDataTable> CharacterDataTable;
+    
+    const FLBCharacterData* FindCharacterData(ELBCharacterID CharacterID) const;
+    
     // BeginPlay에서 자동으로 카운트다운을 시작할지 여부.
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Raid")
     bool bAutoStartOnBeginPlay = true;

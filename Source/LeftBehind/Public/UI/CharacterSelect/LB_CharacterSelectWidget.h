@@ -15,6 +15,9 @@
 class UWrapBox;
 class ULB_CharacterCardWidget;
 class UDataTable;
+class ALB_CharacterSelectGameState;
+class UHorizontalBox;
+class ULB_CharacterSelectSlotWidget;
 
 UCLASS()
 class LEFTBEHIND_API ULB_CharacterSelectWidget : public ULB_BaseUserWidget
@@ -31,6 +34,17 @@ protected:
 	
 	UFUNCTION()
 	void HandleCharacterSelectResult(ELBCharacterSelectResult Result);
+	
+	UFUNCTION()
+	void HandleSnapshotChanged(const FLBCharacterSelectSnapshot& Snapshot);
+	
+	UFUNCTION()
+	void ApplySnapshot(const FLBCharacterSelectSnapshot& Snapshot);
+	
+	UFUNCTION()
+	void UpdatePartySlots(const FLBCharacterSelectSnapshot& Snapshot);
+	
+	const FLBCharacterData* FindCharacterData(ELBCharacterID CharacterID) const;
 	
 	// 버튼 이벤트 ------------------------------------
 	
@@ -69,7 +83,16 @@ protected:
 	void BP_OnBasicViewRequested();
 
 	UFUNCTION(BlueprintImplementableEvent, Category="LB|CharacterSelect")
+	void BP_OnCharacterConfirmed();
+	
+	UFUNCTION(BlueprintImplementableEvent, Category="LB|CharacterSelect")
 	void BP_OnCharacterSelectFailed(ELBCharacterSelectResult Result);
+	
+	UFUNCTION(BlueprintImplementableEvent, Category="LB|CharacterSelect")
+	void BP_OnSnapshotUpdated(const FLBCharacterSelectSnapshot& Snapshot);
+	
+	UFUNCTION(BlueprintImplementableEvent, Category="LB|CharacterSelect")
+	void BP_OnEveryoneReady();
 	
 	// 바인드 위젯 ----------------------------------------
 	
@@ -81,11 +104,19 @@ protected:
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UWrapBox> HealerCardContainer;
 	
+	// 파티원 캐릭터 선택 현황 컨테이너
+	UPROPERTY(meta=(BindWidget))
+	TObjectPtr<UHorizontalBox> HB_PartyStatus;
+	
 	// Class Defaults 지정 --------------------------------
 	
 	// 캐릭터 카드 BP 클래스
 	UPROPERTY(EditDefaultsOnly, Category="LB|CharacterSelect")
 	TSubclassOf<ULB_CharacterCardWidget> CharacterCardClass;
+	
+	// 파티원 슬롯 BP 클래스
+	UPROPERTY(EditDefaultsOnly, Category="LB|CharacterSelect")
+	TSubclassOf<ULB_CharacterSelectSlotWidget> PartySlotWidgetClass;
 	
 	// 캐릭터 데이터 테이블
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="LB|CharacterSelect")
@@ -95,10 +126,17 @@ protected:
 	UPROPERTY(BlueprintReadOnly, Category="LB|CharacterSelect")
 	TArray<TObjectPtr<ULB_CharacterCardWidget>> AllCards;
 	
+	UPROPERTY(BlueprintReadOnly, Category="LB|CharacterSelect")
+	ELBCharacterID SelectedCharacterID = ELBCharacterID::None;
+	
+	UPROPERTY()
+	TArray<TObjectPtr<ULB_CharacterSelectSlotWidget>> PartySlots;
+	
 private:
 	UPROPERTY()
 	TObjectPtr<ULB_CharacterCardWidget> PreviousSelectedCard = nullptr;
 	
-	UPROPERTY()
-	ELBCharacterID SelectedCharacterID = ELBCharacterID::None;
+	ELBCharacterSelectPhase CurrentPhase = ELBCharacterSelectPhase::Waiting;
+	
+	int32 LastRevision = INDEX_NONE;
 };

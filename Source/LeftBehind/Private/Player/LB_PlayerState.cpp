@@ -36,7 +36,7 @@ void ALB_PlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 	DOREPLIFETIME_CONDITION(ALB_PlayerState, TotalDamageDealt, COND_OwnerOnly);
 	DOREPLIFETIME_CONDITION(ALB_PlayerState, TotalHealingDone, COND_OwnerOnly);
 	DOREPLIFETIME(ALB_PlayerState, bIsMVP);
-	DOREPLIFETIME(ALB_PlayerState, CharacterID);
+	DOREPLIFETIME(ALB_PlayerState, SelectedCharacterID);
 	DOREPLIFETIME(ALB_PlayerState, bCharacterReady);
 	DOREPLIFETIME(ALB_PlayerState, bCodenameConfirmed);
 }
@@ -64,7 +64,7 @@ void ALB_PlayerState::CopyProperties(APlayerState* PlayerState)
 	{
 		// PlayerName은 Super가 복사한다. 레이드 누적 통계는 의도적으로 넘기지 않는다.
 		TargetPlayerState->RoleType = RoleType;
-		TargetPlayerState->CharacterID = CharacterID;
+		TargetPlayerState->SelectedCharacterID = SelectedCharacterID;
 		TargetPlayerState->bCharacterReady = bCharacterReady;
 		TargetPlayerState->bCodenameConfirmed = bCodenameConfirmed;
 	}
@@ -77,7 +77,7 @@ void ALB_PlayerState::OverrideWith(APlayerState* PlayerState)
 	if (const ALB_PlayerState* SourcePlayerState = Cast<ALB_PlayerState>(PlayerState))
 	{
 		RoleType = SourcePlayerState->RoleType;
-		CharacterID = SourcePlayerState->CharacterID;
+		SelectedCharacterID = SourcePlayerState->SelectedCharacterID;
 		bCharacterReady = SourcePlayerState->bCharacterReady;
 		bCodenameConfirmed = SourcePlayerState->bCodenameConfirmed;
 	}
@@ -148,12 +148,12 @@ void ALB_PlayerState::SetCharacterID_ServerOnly(ELBCharacterID NewCharacterID)
 		return;
 	}
 
-	if (CharacterID == NewCharacterID)
+	if (SelectedCharacterID == NewCharacterID)
 	{
 		return;
 	}
 	
-	CharacterID = NewCharacterID;
+	SelectedCharacterID = NewCharacterID;
 	
 	OnRep_CharacterID();
 	
@@ -300,10 +300,10 @@ void ALB_PlayerState::ResetCharacterSelection_ServerOnly()
 		return;
 	}
 
-	const bool bCharacterChanged = CharacterID != ELBCharacterID::None;
+	const bool bCharacterChanged = SelectedCharacterID != ELBCharacterID::None;
 	const bool bReadyChanged = bCharacterReady;
 
-	CharacterID = ELBCharacterID::None;
+	SelectedCharacterID = ELBCharacterID::None;
 	bCharacterReady = false;
 
 	if (bCharacterChanged)
@@ -340,7 +340,7 @@ void ALB_PlayerState::OnRep_IsDead()
 void ALB_PlayerState::OnRep_CharacterID()
 {
 	// 캐릭터 선택 UI와 파티 슬롯은 이 이벤트만 구독하면 되므로 매 프레임 PlayerState를 조회할 필요가 없다.
-	OnCharacterIDChanged.Broadcast(CharacterID);
+	OnCharacterIDChanged.Broadcast(SelectedCharacterID);
 }
 
 void ALB_PlayerState::OnRep_CodenameConfirmed()

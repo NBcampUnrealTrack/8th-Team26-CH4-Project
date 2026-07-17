@@ -29,20 +29,21 @@ ALB_MainMenuPlayerController::ALB_MainMenuPlayerController()
 		TEXT("/Game/LeftBehind/UI/MainMenu/WBP_WaitingRoom.WBP_WaitingRoom_C")));
 }
 
-void ALB_MainMenuPlayerController::SelectCharacter(ELBCharacterID CharacterID)
+void ALB_MainMenuPlayerController::SelectCharacterAndReady(ELBCharacterID CharacterID)
 {
 	if (!IsLocalController())
-	{
-		return;
-	}
+    {
+        return;
+    }
 
-	if (HasAuthority())
-	{
-		ServerSelectCharacter_Implementation(CharacterID);
-		return;
-	}
-
-	ServerSelectCharacter(CharacterID);
+    if (HasAuthority())
+    {
+        ServerSelectCharacterAndReady_Implementation(CharacterID);
+    }
+    else
+    {
+        ServerSelectCharacterAndReady(CharacterID);
+    }
 }
 
 void ALB_MainMenuPlayerController::ReadyCharacter()
@@ -646,6 +647,43 @@ void ALB_MainMenuPlayerController::HandleOnlineStateChanged(
 	}
 }
 
+void ALB_MainMenuPlayerController::ServerSelectCharacterAndReady_Implementation(ELBCharacterID CharacterID)
+{
+	ALB_CharacterSelectGameMode* GameMode =
+		GetWorld()
+		? GetWorld()->GetAuthGameMode<ALB_CharacterSelectGameMode>()
+		: nullptr;
+
+	if (!IsValid(GameMode))
+	{
+		return;
+	}
+
+	const ELBCharacterSelectResult Result =
+		GameMode->TrySelectCharacter(this, CharacterID);
+
+	ClientReceiveCharacterSelectResult(Result);
+
+	if (Result == ELBCharacterSelectResult::Success)
+	{
+		GameMode->TrySetCharacterReady(this);
+	}
+}
+
+void ALB_MainMenuPlayerController::Server_SelectCharacterPreview_Implementation(ELBCharacterID CharacterID)
+{
+	if (ALB_PlayerState* PS = GetPlayerState<ALB_PlayerState>())
+	{
+		PS->SetCharacterID_ServerOnly(CharacterID);
+	}
+
+	if (ALB_CharacterSelectGameMode* GM =
+		GetWorld()->GetAuthGameMode<ALB_CharacterSelectGameMode>())
+	{
+		GM->RefreshSnapshot();
+	}
+}
+
 bool ALB_MainMenuPlayerController::IsCharacterSelectLevel() const
 {
 	const UWorld* World = GetWorld();
@@ -662,28 +700,6 @@ void ALB_MainMenuPlayerController::ClientReceiveCharacterSelectResult_Implementa
 {
 	OnCharacterSelectResult.Broadcast(Result);
 }
-
-void ALB_MainMenuPlayerController::ServerSelectCharacter_Implementation(ELBCharacterID CharacterID)
-{
-	ALB_CharacterSelectGameMode* GameMode =
-		GetWorld() ? GetWorld()->GetAuthGameMode<ALB_CharacterSelectGameMode>() : nullptr;
-
-	if (!IsValid(GameMode))
-	{
-		return;
-	}
-
-	const ELBCharacterSelectResult Result =
-		GameMode->TrySelectCharacter(this, CharacterID);
-
-	if (Result == ELBCharacterSelectResult::Success)
-	{
-		return;
-	}
-
-	ClientReceiveCharacterSelectResult(Result);
-}
-
 
 void ALB_MainMenuPlayerController::ServerReadyCharacter_Implementation()
 {
