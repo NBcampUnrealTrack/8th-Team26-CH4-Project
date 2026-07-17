@@ -60,10 +60,17 @@ void ALB_MainMenuGameMode::Logout(AController* Exiting)
 
 void ALB_MainMenuGameMode::HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer)
 {
-	(void)NewPlayer;
 	// The menu intentionally has no Pawn. Skipping the base RestartPlayer call avoids
 	// a failed spawn while keeping the PlayerState as an active non-spectator.
 	// 이 콜백은 클라이언트가 현재 월드 로드를 마친 뒤에도 호출되므로 Ready 상태를 다시 계산한다.
+	if (ALB_PlayerState* PlayerState = IsValid(NewPlayer)
+		? NewPlayer->GetPlayerState<ALB_PlayerState>()
+		: nullptr)
+	{
+		// Lobby readiness is valid for only one visit and must not survive a
+		// seamless return from character select or the raid.
+		PlayerState->SetLobbyReady_ServerOnly(false);
+	}
 	RefreshLobbySnapshot();
 }
 
@@ -86,6 +93,8 @@ bool ALB_MainMenuGameMode::CanStartCharacterSelect(const APlayerController* Requ
 
 	int32 ConnectedPlayers = 0;
 	int32 ConfirmedPlayers = 0;
+	int32 ReadyPlayers = 0;
+	int32 RequiredReadyPlayers = 0;
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{
 		APlayerController* PlayerController = It->Get();
@@ -99,13 +108,57 @@ bool ALB_MainMenuGameMode::CanStartCharacterSelect(const APlayerController* Requ
 
 		++ConnectedPlayers;
 		ConfirmedPlayers += PlayerState->IsCodenameConfirmed() ? 1 : 0;
+		if (!IsLobbyHostController(PlayerController))
+		{
+			++RequiredReadyPlayers;
+			ReadyPlayers += PlayerState->IsLobbyReady() ? 1 : 0;
+		}
 	}
 
 	FString CharacterSelectPackageName;
 	return ConnectedPlayers >= GetMinPlayersToStart()
 		&& ConfirmedPlayers == ConnectedPlayers
+		&& ReadyPlayers == RequiredReadyPlayers
 		&& AreAllActivePlayersLoaded()
 		&& GetCharacterSelectMapPackageName(CharacterSelectPackageName);
+}
+
+bool ALB_MainMenuGameMode::TrySetLobbyReady(
+	ALB_MainMenuPlayerController* RequestingController,
+	const bool bReady)
+{
+	if (!HasAuthority()
+		|| bTravelInProgress
+		|| !IsValid(RequestingController)
+		|| RequestingController->GetWorld() != GetWorld()
+		|| IsLobbyHostController(RequestingController))
+	{
+		return false;
+	}
+
+	ALB_PlayerState* PlayerState = RequestingController->GetPlayerState<ALB_PlayerState>();
+	if (!IsValid(PlayerState)
+		|| PlayerState->IsOnlyASpectator()
+		|| !PlayerState->IsCodenameConfirmed())
+	{
+		return false;
+	}
+
+	if (PlayerState->IsLobbyReady() == bReady)
+	{
+		return true;
+	}
+
+	PlayerState->SetLobbyReady_ServerOnly(bReady);
+	RefreshLobbySnapshot();
+
+	UE_LOG(
+		LogLBMainMenuGameMode,
+		Log,
+		TEXT("Lobby ready changed. PlayerState=%s Ready=%d"),
+		*GetNameSafe(PlayerState),
+		bReady ? 1 : 0);
+	return true;
 }
 
 bool ALB_MainMenuGameMode::TryStartCharacterSelect(APlayerController* RequestingController)
@@ -189,6 +242,7 @@ ELBCodenameSubmitResult ALB_MainMenuGameMode::TryConfirmCodename(
 	}
 
 	PlayerState->SetPlayerName(OutSanitizedCodename);
+	PlayerState->SetLobbyReady_ServerOnly(false);
 	PlayerState->SetCodenameConfirmed_ServerOnly(true);
 	RefreshLobbySnapshot();
 
@@ -267,6 +321,15 @@ FLBMainMenuSnapshot ALB_MainMenuGameMode::BuildLobbySnapshot(bool bAdvanceRevisi
 
 		++Snapshot.ConnectedPlayers;
 		Snapshot.ConfirmedPlayers += PlayerState->IsCodenameConfirmed() ? 1 : 0;
+		if (IsLobbyHostController(PlayerController))
+		{
+			Snapshot.HostPlayerId = PlayerState->GetPlayerId();
+		}
+		else
+		{
+			++Snapshot.RequiredReadyPlayers;
+			Snapshot.ReadyPlayers += PlayerState->IsLobbyReady() ? 1 : 0;
+		}
 	}
 
 	if (bTravelInProgress)
@@ -275,6 +338,7 @@ FLBMainMenuSnapshot ALB_MainMenuGameMode::BuildLobbySnapshot(bool bAdvanceRevisi
 	}
 	else if (Snapshot.ConnectedPlayers >= Snapshot.MinPlayersToStart
 		&& Snapshot.ConfirmedPlayers == Snapshot.ConnectedPlayers
+		&& Snapshot.ReadyPlayers == Snapshot.RequiredReadyPlayers
 		&& AreAllActivePlayersLoaded())
 	{
 		Snapshot.Phase = ELBMainMenuPhase::Ready;
@@ -290,6 +354,15 @@ FLBMainMenuSnapshot ALB_MainMenuGameMode::BuildLobbySnapshot(bool bAdvanceRevisi
 	}
 	Snapshot.Revision = SnapshotRevision;
 	return Snapshot;
+}
+
+bool ALB_MainMenuGameMode::IsLobbyHostController(const APlayerController* PlayerController) const
+{
+	const ENetMode NetMode = GetNetMode();
+	return IsValid(PlayerController)
+		&& PlayerController->HasAuthority()
+		&& PlayerController->IsLocalController()
+		&& (NetMode == NM_ListenServer || NetMode == NM_Standalone);
 }
 
 bool ALB_MainMenuGameMode::AreAllActivePlayersLoaded() const

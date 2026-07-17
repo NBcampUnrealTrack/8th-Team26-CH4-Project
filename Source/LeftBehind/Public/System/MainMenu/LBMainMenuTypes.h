@@ -45,6 +45,18 @@ struct FLBMainMenuSnapshot
 	UPROPERTY(BlueprintReadOnly, Category="LB|MainMenu")
 	int32 ConfirmedPlayers = 0;
 
+	/** Number of non-host squad members who explicitly marked themselves ready. */
+	UPROPERTY(BlueprintReadOnly, Category="LB|MainMenu")
+	int32 ReadyPlayers = 0;
+
+	/** Number of non-host squad members who must be ready before the host can start. */
+	UPROPERTY(BlueprintReadOnly, Category="LB|MainMenu")
+	int32 RequiredReadyPlayers = 0;
+
+	/** Replicated APlayerState::PlayerId used to label the listen host in the roster. */
+	UPROPERTY(BlueprintReadOnly, Category="LB|MainMenu")
+	int32 HostPlayerId = INDEX_NONE;
+
 	UPROPERTY(BlueprintReadOnly, Category="LB|MainMenu")
 	int32 MinPlayersToStart = 1;
 
@@ -62,6 +74,9 @@ struct FLBMainMenuSnapshot
 	{
 		return ConnectedPlayers == Other.ConnectedPlayers
 			&& ConfirmedPlayers == Other.ConfirmedPlayers
+			&& ReadyPlayers == Other.ReadyPlayers
+			&& RequiredReadyPlayers == Other.RequiredReadyPlayers
+			&& HostPlayerId == Other.HostPlayerId
 			&& MinPlayersToStart == Other.MinPlayersToStart
 			&& TargetMapName == Other.TargetMapName
 			&& Phase == Other.Phase

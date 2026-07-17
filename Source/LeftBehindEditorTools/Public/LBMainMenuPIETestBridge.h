@@ -21,6 +21,9 @@ public:
 	static bool ScheduleStartRequests(ALB_MainMenuPlayerController* Controller, int32 RequestCount = 1);
 
 	UFUNCTION(BlueprintCallable, Category="LB|Tests")
+	static bool ScheduleLobbyReady(ALB_MainMenuPlayerController* Controller, bool bReady = true);
+
+	UFUNCTION(BlueprintCallable, Category="LB|Tests")
 	static bool ScheduleWidgetClick(UUserWidget* Widget, FName ButtonWidgetName);
 
 	UFUNCTION(BlueprintCallable, Category="LB|Tests")

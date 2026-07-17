@@ -5,6 +5,7 @@
 #include "Engine/StreamableManager.h"
 #include "GameMode/LB_MainMenuGameMode.h"
 #include "GameMode/LB_CharacterSelectGameMode.h"
+#include "GameState/LB_MainMenuGameState.h"
 #include "Player/LB_PlayerState.h"
 #include "System/MainMenu/LB_LocalPlayerProfileSubsystem.h"
 #include "System/Online/LB_OnlineSessionSubsystem.h"
@@ -298,6 +299,16 @@ void ALB_MainMenuPlayerController::ShowRoomEntryScreen()
 		return;
 	}
 
+	// WBP_MainMenu's transition animations keep their final render state. The
+	// instance that opened the codename screen can therefore still have faded or
+	// translated children when it is added to the viewport again. Recreate the
+	// widget so the designer defaults are restored before selecting Start panel.
+	if (IsValid(MainMenuWidget))
+	{
+		MainMenuWidget->RemoveFromParent();
+		MainMenuWidget = nullptr;
+	}
+
 	if (ULB_OnlineSessionSubsystem* OnlineSubsystem = GetGameInstance()
 		? GetGameInstance()->GetSubsystem<ULB_OnlineSessionSubsystem>()
 		: nullptr;
@@ -535,6 +546,56 @@ bool ALB_MainMenuPlayerController::CanRequestStartCharacterSelect() const
 		? GetWorld()->GetAuthGameMode<ALB_MainMenuGameMode>()
 		: nullptr;
 	return IsValid(MainMenuGameMode) && MainMenuGameMode->CanStartCharacterSelect(this);
+}
+
+void ALB_MainMenuPlayerController::RequestSetLobbyReady(const bool bReady)
+{
+	if (!CanRequestLobbyReady())
+	{
+		UE_LOG(
+			LogLBMainMenuPlayerController,
+			Verbose,
+			TEXT("Lobby ready request rejected locally. Controller=%s Ready=%d"),
+			*GetNameSafe(this),
+			bReady ? 1 : 0);
+		return;
+	}
+
+	if (HasAuthority())
+	{
+		ServerSetLobbyReady_Implementation(bReady);
+		return;
+	}
+
+	ServerSetLobbyReady(bReady);
+}
+
+bool ALB_MainMenuPlayerController::CanRequestLobbyReady() const
+{
+	if (!IsLocalController() || IsLocalListenHost() || IsCharacterSelectLevel())
+	{
+		return false;
+	}
+
+	const ALB_PlayerState* LBPlayerState = GetPlayerState<ALB_PlayerState>();
+	const ALB_MainMenuGameState* MainMenuGameState = GetWorld()
+		? GetWorld()->GetGameState<ALB_MainMenuGameState>()
+		: nullptr;
+	if (!IsValid(LBPlayerState)
+		|| LBPlayerState->IsOnlyASpectator()
+		|| !LBPlayerState->IsCodenameConfirmed()
+		|| !IsValid(MainMenuGameState)
+		|| MainMenuGameState->GetMainMenuSnapshot().Phase == ELBMainMenuPhase::Traveling)
+	{
+		return false;
+	}
+
+	// The replicated lobby actors are the authoritative indication that this
+	// controller is in a ready-capable waiting room. The local EOS subsystem can
+	// still be reconciling its post-travel state when the waiting UI appears, so
+	// using it as an additional UI gate can leave a valid party member disabled.
+	// The server validates the room, player, codename, and travel state again.
+	return true;
 }
 
 bool ALB_MainMenuPlayerController::IsLocalListenHost() const
@@ -1211,6 +1272,22 @@ void ALB_MainMenuPlayerController::ServerSubmitCodename_Implementation(
 	const uint32 RequestId)
 {
 	HandleCodenameSubmission_ServerOnly(RawCodename, RequestId);
+}
+
+void ALB_MainMenuPlayerController::ServerSetLobbyReady_Implementation(const bool bReady)
+{
+	ALB_MainMenuGameMode* MainMenuGameMode = GetWorld()
+		? GetWorld()->GetAuthGameMode<ALB_MainMenuGameMode>()
+		: nullptr;
+	if (!IsValid(MainMenuGameMode) || !MainMenuGameMode->TrySetLobbyReady(this, bReady))
+	{
+		UE_LOG(
+			LogLBMainMenuPlayerController,
+			Verbose,
+			TEXT("Lobby ready request did not pass server policy. Controller=%s Ready=%d"),
+			*GetNameSafe(this),
+			bReady ? 1 : 0);
+	}
 }
 
 void ALB_MainMenuPlayerController::ClientReceiveCodenameSubmissionResult_Implementation(

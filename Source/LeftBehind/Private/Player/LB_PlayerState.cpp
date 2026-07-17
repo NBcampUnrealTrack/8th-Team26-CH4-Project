@@ -39,6 +39,7 @@ void ALB_PlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 	DOREPLIFETIME(ALB_PlayerState, SelectedCharacterID);
 	DOREPLIFETIME(ALB_PlayerState, bCharacterReady);
 	DOREPLIFETIME(ALB_PlayerState, bCodenameConfirmed);
+	DOREPLIFETIME(ALB_PlayerState, bLobbyReady);
 }
 
 UAbilitySystemComponent* ALB_PlayerState::GetAbilitySystemComponent() const
@@ -81,6 +82,12 @@ void ALB_PlayerState::OverrideWith(APlayerState* PlayerState)
 		bCharacterReady = SourcePlayerState->bCharacterReady;
 		bCodenameConfirmed = SourcePlayerState->bCodenameConfirmed;
 	}
+}
+
+void ALB_PlayerState::OnRep_PlayerName()
+{
+	Super::OnRep_PlayerName();
+	OnPlayerNameChanged.Broadcast();
 }
 
 void ALB_PlayerState::ResetRaidStats_ServerOnly()
@@ -269,6 +276,18 @@ void ALB_PlayerState::SetCodenameConfirmed_ServerOnly(bool bConfirmed)
 	ForceNetUpdate();
 }
 
+void ALB_PlayerState::SetLobbyReady_ServerOnly(bool bReady)
+{
+	if (!HasAuthority() || bLobbyReady == bReady)
+	{
+		return;
+	}
+
+	bLobbyReady = bReady;
+	OnRep_LobbyReady();
+	ForceNetUpdate();
+}
+
 void ALB_PlayerState::SetCharacterReady_ServerOnly(bool bNewReady)
 {
 	if (!HasAuthority())
@@ -346,4 +365,9 @@ void ALB_PlayerState::OnRep_CharacterID()
 void ALB_PlayerState::OnRep_CodenameConfirmed()
 {
 	OnCodenameConfirmedChanged.Broadcast(bCodenameConfirmed);
+}
+
+void ALB_PlayerState::OnRep_LobbyReady()
+{
+	OnLobbyReadyChanged.Broadcast(bLobbyReady);
 }

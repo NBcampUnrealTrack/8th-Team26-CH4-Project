@@ -88,6 +88,27 @@ bool ULBMainMenuPIETestBridge::ScheduleStartRequests(
 	return true;
 }
 
+bool ULBMainMenuPIETestBridge::ScheduleLobbyReady(
+	ALB_MainMenuPlayerController* Controller,
+	const bool bReady)
+{
+	if (!IsValid(Controller) || !IsValid(Controller->GetWorld()))
+	{
+		return false;
+	}
+
+	const TWeakObjectPtr<ALB_MainMenuPlayerController> WeakController(Controller);
+	Controller->GetWorld()->GetTimerManager().SetTimerForNextTick(
+		FTimerDelegate::CreateLambda([WeakController, bReady]()
+		{
+			if (ALB_MainMenuPlayerController* StrongController = WeakController.Get())
+			{
+				StrongController->RequestSetLobbyReady(bReady);
+			}
+		}));
+	return true;
+}
+
 bool ULBMainMenuPIETestBridge::ScheduleWidgetClick(UUserWidget* Widget, FName ButtonWidgetName)
 {
 	if (!IsValid(Widget) || !IsValid(Widget->GetWorld()))
