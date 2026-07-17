@@ -46,7 +46,7 @@ private:
 	
 	TMap<ALB_BaseCharacter*, float> ThreatMap;
 	TMap<ALB_BaseCharacter*, float> DamageMap;
-	TArray<ALB_PlayerCharacter*> CachedPlayer;
+
 	
 	//Behavior Tree와의 연계를 위해서 필요.
 	AActor* Target;

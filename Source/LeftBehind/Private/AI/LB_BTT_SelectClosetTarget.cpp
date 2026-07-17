@@ -13,7 +13,7 @@ EBTNodeResult::Type ULB_BTT_SelectClosetTarget::ExecuteTask(UBehaviorTreeCompone
 	AAIController* AICon = OwnerComp.GetAIOwner();
 	if (!IsValid(AICon)) return EBTNodeResult::Failed;
 	
-	ALB_EnemyCharacter* EnemyCharacter = Cast<ALB_EnemyCharacter>(OwnerComp.GetAIOwner()->GetPawn());
+	ALB_BaseCharacter* EnemyCharacter = Cast<ALB_BaseCharacter>(OwnerComp.GetAIOwner()->GetPawn());
 	if (!IsValid(EnemyCharacter)) return EBTNodeResult::Failed;
 	
 	UAbilitySystemComponent* ASC = EnemyCharacter->GetAbilitySystemComponent();
@@ -21,7 +21,11 @@ EBTNodeResult::Type ULB_BTT_SelectClosetTarget::ExecuteTask(UBehaviorTreeCompone
 	
 	AActor* Target = EnemyCharacter->GetThreatComponent()->ClosestPlayerCharacter();
 	
-	if (!Target) return EBTNodeResult::Failed;
+	if (!Target)
+	{
+		UE_LOG(LogTemp,Warning,TEXT("[LB_BTT_SelectCloestTarget] Target is nullptr"));
+		return EBTNodeResult::Failed;
+	}
 	
 	if (UBlackboardComponent* BlackboardComponent = OwnerComp.GetBlackboardComponent())
 	{
