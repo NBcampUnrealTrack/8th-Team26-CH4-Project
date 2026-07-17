@@ -20,31 +20,28 @@ void ULB_CharacterSelectWidget::NativeConstruct()
 	BuildCharacterCards();
 	InitLocalCharacterPreview();
 	
-	ALB_MainMenuPlayerController* PC =
-	Cast<ALB_MainMenuPlayerController>(CachedPlayerController.Get());
+	ALB_MainMenuPlayerController* PC = Cast<ALB_MainMenuPlayerController>(CachedPlayerController.Get());
 
 	if (!IsValid(PC))
 	{
+		TryBindGameState();
 		return;
 	}
 
-	PC->OnCharacterSelectResult.AddDynamic(
-		this,
-		&ThisClass::HandleCharacterSelectResult);
+	PC->OnCharacterSelectResult.AddUniqueDynamic(
+		this, &ThisClass::HandleCharacterSelectResult);
 	
-	if (ALB_CharacterSelectGameState* GS =
-	GetWorld()->GetGameState<ALB_CharacterSelectGameState>())
-	{
-		GS->OnSnapshotChanged.AddDynamic(
-			this,
-			&ThisClass::HandleSnapshotChanged);
-
-		HandleSnapshotChanged(GS->GetSnapshot());
-	}
+	TryBindGameState();
 }
 
 void ULB_CharacterSelectWidget::NativeDestruct()
 {
+	// 재시도 타이머 정리
+	if (GetWorld())
+	{
+		GetWorld()->GetTimerManager().ClearTimer(GameStateBindRetryHandle);
+	}
+	
 	// 각 캐릭터 카드마다 클릭이벤트를 구독하고 있기 때문에 for문으로 바인딩 해제
 	
 	for (ULB_CharacterCardWidget* Card : AllCards)
@@ -65,12 +62,14 @@ void ULB_CharacterSelectWidget::NativeDestruct()
 			&ThisClass::HandleCharacterSelectResult);
 	}
 	
-	if (ALB_CharacterSelectGameState* GS =
-	GetWorld()->GetGameState<ALB_CharacterSelectGameState>())
+	if (UWorld* World = GetWorld())
 	{
-		GS->OnSnapshotChanged.RemoveDynamic(
-			this,
-			&ThisClass::HandleSnapshotChanged);
+		if (ALB_CharacterSelectGameState* GS =
+			World->GetGameState<ALB_CharacterSelectGameState>())
+		{
+			GS->OnSnapshotChanged.RemoveDynamic(
+				this, &ThisClass::HandleSnapshotChanged);
+		}
 	}
 	
 	LastRevision = INDEX_NONE;
@@ -134,6 +133,12 @@ void ULB_CharacterSelectWidget::BuildCharacterCards()
 	}
 	
 	BP_OnCardsBuilt();
+	
+	// 첫 번째 카드 자동 선택
+	if (AllCards.Num() > 0 && IsValid(AllCards[0]))
+	{
+		OnCharacterCardClicked(AllCards[0]->GetCharacterID());
+	}
 }
 
 void ULB_CharacterSelectWidget::HandleCharacterSelectResult(ELBCharacterSelectResult Result)
@@ -149,7 +154,7 @@ void ULB_CharacterSelectWidget::HandleCharacterSelectResult(ELBCharacterSelectRe
 
 void ULB_CharacterSelectWidget::HandleSnapshotChanged(const FLBCharacterSelectSnapshot& Snapshot)
 {
-	if (Snapshot.Revision <= LastRevision)
+	if (LastRevision != INDEX_NONE && Snapshot.Revision <= LastRevision)
 	{
 		return;
 	}
@@ -423,4 +428,29 @@ void ULB_CharacterSelectWidget::InitLocalCharacterPreview()
 		Preview->Initialize(*Data);
 		LocalCharacterPreviews.Add(Preview);
 	}
+}
+
+void ULB_CharacterSelectWidget::TryBindGameState()
+{
+	ALB_CharacterSelectGameState* GS =
+		GetWorld()->GetGameState<ALB_CharacterSelectGameState>();
+
+	if (!IsValid(GS))
+	{
+		// GameState 아직 복제 안 됨 → 0.1초 후 재시도
+		GetWorld()->GetTimerManager().SetTimer(
+			GameStateBindRetryHandle,
+			this,
+			&ThisClass::TryBindGameState,
+			0.1f,
+			false);
+		return;
+	}
+
+	// AddUniqueDynamic → 이미 바인딩돼 있으면 중복 등록 안 함
+	GS->OnSnapshotChanged.AddUniqueDynamic(
+		this, &ThisClass::HandleSnapshotChanged);
+
+	// 현재 스냅샷으로 즉시 갱신
+	HandleSnapshotChanged(GS->GetSnapshot());
 }
