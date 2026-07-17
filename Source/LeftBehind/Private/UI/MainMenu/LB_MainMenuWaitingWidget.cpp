@@ -130,13 +130,13 @@ TSharedRef<SWidget> ULB_MainMenuWaitingWidget::RebuildWidget()
 			[
 				SNew(SBorder)
 				.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
-				.BorderBackgroundColor(FLinearColor(0.012f, 0.009f, 0.008f, 0.46f))
+				.BorderBackgroundColor(FLinearColor::Transparent)
 			]
 			+ SHorizontalBox::Slot().FillWidth(0.28f)
 			[
 				SNew(SBorder)
 				.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
-				.BorderBackgroundColor(FLinearColor(0.012f, 0.009f, 0.008f, 0.18f))
+				.BorderBackgroundColor(FLinearColor::Transparent)
 			]
 		]
 		+ SOverlay::Slot().VAlign(VAlign_Top)

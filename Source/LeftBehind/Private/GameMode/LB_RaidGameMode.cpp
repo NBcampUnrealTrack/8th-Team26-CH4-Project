@@ -132,6 +132,8 @@ void ALB_RaidGameMode::BeginPlay()
     {
         LBRaidDebug(GetWorld(), TEXT("[RaidGM] bAutoStartOnBeginPlay is false. Countdown will not start."), FColor::Orange, 10.f);
     }
+    
+    //UE_LOG(LogTemp, Warning, TEXT("RaidGameMode BeginPlay"));
 }
 
 void ALB_RaidGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -152,6 +154,66 @@ void ALB_RaidGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
     CachedRaidGameState.Reset();
 
     Super::EndPlay(EndPlayReason);
+}
+
+APawn* ALB_RaidGameMode::SpawnDefaultPawnFor_Implementation(AController* NewPlayer, AActor* StartSpot)
+{
+    if (!IsValid(NewPlayer) || !IsValid(StartSpot))
+    {
+        //UE_LOG(LogTemp, Warning, TEXT("SpawnDefaultPawnFor-1"));
+        return Super::SpawnDefaultPawnFor_Implementation(NewPlayer, StartSpot);
+    }
+
+    ALB_PlayerState* PS = NewPlayer->GetPlayerState<ALB_PlayerState>();
+
+    if (!IsValid(PS))
+    {
+        //UE_LOG(LogTemp, Warning, TEXT("SpawnDefaultPawnFor-2"));
+        return Super::SpawnDefaultPawnFor_Implementation(NewPlayer, StartSpot);
+    }
+
+    UE_LOG(LogTemp, Warning, TEXT("SelectedCharacterID=%d"), (int32)PS->GetCharacterID());
+    
+    const FLBCharacterData* Data = FindCharacterData(PS->GetCharacterID());
+    
+    if (!Data)
+    {
+        //UE_LOG(LogTemp, Warning, TEXT("SpawnDefaultPawnFor-3"));
+        return Super::SpawnDefaultPawnFor_Implementation(NewPlayer, StartSpot);
+    }
+
+    //UE_LOG(LogTemp, Warning, TEXT("%s"), *GetNameSafe(Data->CharacterClass.Get()));
+    
+    
+    UClass* PawnClass = Data->CharacterClass.LoadSynchronous();
+    
+    if (!IsValid(PawnClass))
+    {
+        //UE_LOG(LogTemp, Warning, TEXT("SpawnDefaultPawnFor-4"));
+        return Super::SpawnDefaultPawnFor_Implementation(NewPlayer, StartSpot);
+    }
+
+    UWorld* World = GetWorld();
+
+    if (!World)
+    {
+        return nullptr;
+    }
+
+    FActorSpawnParameters Params;
+    Params.Owner = NewPlayer;
+    Params.SpawnCollisionHandlingOverride =
+        ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+
+    APawn* Pawn = World->SpawnActor<APawn>(
+        PawnClass,
+        StartSpot->GetActorTransform(),
+        Params);
+
+    //UE_LOG(LogTemp, Warning, TEXT("Pawn=%s"), *GetNameSafe(Pawn));
+    
+    return Pawn ? Pawn
+                : Super::SpawnDefaultPawnFor_Implementation(NewPlayer, StartSpot);
 }
 
 bool ALB_RaidGameMode::CanReturnToMainMenu(const APlayerController* RequestingController) const
@@ -319,6 +381,32 @@ bool ALB_RaidGameMode::TryAbortRaidToRoom(APlayerController* RequestingControlle
     }
 
     return false;
+}
+
+const FLBCharacterData* ALB_RaidGameMode::FindCharacterData(ELBCharacterID CharacterID) const
+{
+    if (!CharacterDataTable)
+    {
+        return nullptr;
+    }
+
+    //UE_LOG(LogTemp, Warning, TEXT("CharacterDataTable=%s"), *GetNameSafe(CharacterDataTable));
+    
+    const UEnum* Enum = StaticEnum<ELBCharacterID>();
+
+    if (!Enum)
+    {
+        return nullptr;
+    }
+
+    const FName RowName(
+        *Enum->GetNameStringByValue((int64)CharacterID));
+
+    //UE_LOG(LogTemp, Warning, TEXT("SelectedCharacterID=%d Row=%s"),(int32)SelectedCharacterID, *RowName.ToString());
+    
+    return CharacterDataTable->FindRow<FLBCharacterData>(
+        RowName,
+        TEXT("FindCharacterData"));
 }
 
 ALB_RaidGameState* ALB_RaidGameMode::GetLBRaidGameState()

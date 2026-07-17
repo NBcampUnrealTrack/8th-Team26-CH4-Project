@@ -91,6 +91,9 @@ struct FLBCharacterData : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	TSubclassOf<UAnimInstance> PreviewAnimClass;
 	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	TSoftClassPtr<APawn> CharacterClass;
+	
 	// true면 캐릭터 선택창에서 선택 불가 상태로 표시
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	bool bLocked = false;
