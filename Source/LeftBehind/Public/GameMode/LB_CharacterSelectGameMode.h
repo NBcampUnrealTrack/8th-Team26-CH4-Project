@@ -57,8 +57,6 @@ protected:
 	
 private:
 
-	void GetTargetPoints();
-	void InitCharacterPreview();
 	void GetCharacterRows(TArray<FName>& OutRows) const;
 	
 	bool GetRaidMapPackageName(FString& OutPackageName) const;
@@ -71,23 +69,9 @@ private:
 	ALB_CharacterSelectGameState* GetCharacterSelectGameState() const;
 	
 private:
-	UPROPERTY()
-	TArray<TObjectPtr<ATargetPoint>> TargetPoints;
-	
 	// 캐릭터 데이터 테이블
 	UPROPERTY(EditDefaultsOnly, Category="LB|Character")
 	TObjectPtr<UDataTable> CharacterDataTable;
-
-	UPROPERTY(EditDefaultsOnly, Category="UI")
-	TSubclassOf<ULB_CharacterSelectWidget> CharacterSelectWidgetClass;
-	
-	// Preview Actor BP
-	UPROPERTY(EditDefaultsOnly, Category="LB|Character")
-	TSubclassOf<ALB_CharacterPreview> CharacterPreviewClass;
-
-	// 생성된 Preview Actor
-	UPROPERTY()
-	TArray<TObjectPtr<ALB_CharacterPreview>> CharacterPreviews;
 
 	int32 SnapshotRevision = 0;
 	

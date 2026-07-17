@@ -68,6 +68,13 @@ public:
 	UFUNCTION(BlueprintPure, Category="LB|MainMenu|Travel")
 	bool CanRequestStartCharacterSelect() const;
 
+	/** Sets this non-host client's explicit ready state in the waiting room. */
+	UFUNCTION(BlueprintCallable, Category="LB|MainMenu|Ready")
+	void RequestSetLobbyReady(bool bReady);
+
+	UFUNCTION(BlueprintPure, Category="LB|MainMenu|Ready")
+	bool CanRequestLobbyReady() const;
+
 	UFUNCTION(BlueprintPure, Category="LB|MainMenu|Network")
 	bool IsLocalListenHost() const;
 
@@ -206,6 +213,9 @@ private:
 
 	UFUNCTION(Server, Reliable)
 	void ServerSubmitCodename(const FString& RawCodename, uint32 RequestId);
+
+	UFUNCTION(Server, Reliable)
+	void ServerSetLobbyReady(bool bReady);
 
 	UFUNCTION(Client, Reliable)
 	void ClientReceiveCodenameSubmissionResult(

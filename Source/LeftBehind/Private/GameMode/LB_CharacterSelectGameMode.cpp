@@ -4,9 +4,6 @@
 #include "GameMode/LB_CharacterSelectGameMode.h"
 #include "Engine/DataTable.h"
 #include "System/Character/LBCharacterTypes.h"
-#include "UI/CharacterSelect/LB_CharacterPreview.h"
-#include "Engine/TargetPoint.h"
-#include "EngineUtils.h"
 #include "Player/LB_PlayerState.h"
 #include "Player/LB_MainMenuPlayerController.h"
 #include "GameState/LB_CharacterSelectGameState.h"
@@ -44,11 +41,7 @@ void ALB_CharacterSelectGameMode::BeginPlay()
 			LBPlayerState->ResetCharacterSelection_ServerOnly();
 		}
 	}
-
-	GetTargetPoints();
-
-	InitCharacterPreview();
-
+	
 	RefreshSnapshot();
 }
 
@@ -246,62 +239,6 @@ bool ALB_CharacterSelectGameMode::TryStartRaid(APlayerController* RequestingCont
 	}
 
 	return StartRaidTravel();
-}
-
-void ALB_CharacterSelectGameMode::GetTargetPoints()
-{
-	TargetPoints.Empty();
-
-	for (TActorIterator<ATargetPoint> It(GetWorld()); It; ++It)
-	{
-		TargetPoints.Add(*It);
-	}
-
-	TargetPoints.Sort([](
-		const ATargetPoint& A,
-		const ATargetPoint& B)
-	{
-		return A.GetName() < B.GetName();
-	});
-}
-
-void ALB_CharacterSelectGameMode::InitCharacterPreview()
-{
-	if (!CharacterDataTable || !CharacterPreviewClass) return;
-
-	CharacterPreviews.Empty();
-
-	TArray<FName> RowNames;
-	GetCharacterRows(RowNames);
-
-	for (int32 Index = 0; Index < RowNames.Num(); Index++)
-	{
-		const FLBCharacterData* Data = CharacterDataTable->FindRow<FLBCharacterData>(
-			RowNames[Index], TEXT("CharacterPreview"));
-		if (!Data) continue;
-
-		// TargetPoint 없으면 경고 후 스킵
-		if (!TargetPoints.IsValidIndex(Index))
-		{
-			UE_LOG(LogTemp, Warning,
-				TEXT("[CharacterSelectGameMode] TargetPoint 부족. Index: %d"), Index);
-			continue;
-		}
-
-		FTransform SpawnTransform = TargetPoints[Index]->GetActorTransform();
-
-		FActorSpawnParameters SpawnParams;
-		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-		ALB_CharacterPreview* Preview = GetWorld()->SpawnActor<ALB_CharacterPreview>(
-			CharacterPreviewClass,
-			SpawnTransform,   // ← TargetPoint 위치에 스폰
-			SpawnParams);
-
-		if (!Preview) continue;
-
-		Preview->Initialize(*Data);
-		CharacterPreviews.Add(Preview);
-	}
 }
 
 void ALB_CharacterSelectGameMode::GetCharacterRows(TArray<FName>& OutRows) const
