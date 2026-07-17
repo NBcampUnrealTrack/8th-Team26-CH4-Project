@@ -150,4 +150,9 @@ private:
 	ELBCharacterSelectPhase CurrentPhase = ELBCharacterSelectPhase::Waiting;
 	
 	int32 LastRevision = INDEX_NONE;
+	
+	FTimerHandle GameStateBindRetryHandle;
+	
+	UFUNCTION()
+	void TryBindGameState();
 };
