@@ -62,7 +62,7 @@ public:
 	FLBOnCharacterSelectResult OnCharacterSelectResult;
 	
 	UFUNCTION(BlueprintCallable, Category="LB|MainMenu|Character")
-	void SelectCharacter(ELBCharacterID CharacterID);
+	void SelectCharacterAndReady(ELBCharacterID CharacterID);
 	
 	UFUNCTION(BlueprintCallable, Category="LB|MainMenu|Character")
 	void ReadyCharacter();
@@ -70,6 +70,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category="LB|MainMenu|Character")
 	void CancelReady();
 
+	UFUNCTION(Server, Reliable)
+	void Server_SelectCharacterPreview(ELBCharacterID CharacterID);
+	
+	
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
@@ -143,10 +147,7 @@ private:
 	void ClientReceiveCodenameSubmissionResult(
 		ELBCodenameSubmitResult Result,
 		const FString& SanitizedCodename);
-	
-	UFUNCTION(Server, Reliable)
-	void ServerSelectCharacter(ELBCharacterID CharacterID);
-	
+
 	UFUNCTION(Server, Reliable)
 	void ServerReadyCharacter();
 
@@ -155,6 +156,9 @@ private:
 	
 	UFUNCTION(Client, Reliable)
 	void ClientReceiveCharacterSelectResult(ELBCharacterSelectResult Result);
+	
+	UFUNCTION(Server, Reliable)
+	void ServerSelectCharacterAndReady(ELBCharacterID CharacterID);
 	
 	// CharacterSelect 레벨인지 판단
 	bool IsCharacterSelectLevel() const;

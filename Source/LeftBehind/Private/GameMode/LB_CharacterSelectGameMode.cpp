@@ -24,24 +24,43 @@ ALB_CharacterSelectGameMode::ALB_CharacterSelectGameMode()
 	HUDClass = nullptr;
 
 	RaidMap = TSoftObjectPtr<UWorld>(FSoftObjectPath(
-		TEXT("/Game/LeftBehind/Maps/Blockout/Lv_Boss1_Blockout.Lv_Boss1_Blockout")));
+		TEXT("/Game/LeftBehind/Maps/Lv_Boss.Lv_Boss")));
 }
 
 void ALB_CharacterSelectGameMode::BeginPlay()
 {
 	Super::BeginPlay();
 	
-	if (HasAuthority())
+	if (!HasAuthority())
 	{
-		GetTargetPoints();
-		InitCharacterPreview();
-		RefreshSnapshot();
+		return;
 	}
+
+	// 캐릭터 선택 맵에 들어올 때마다 모든 플레이어 선택 상태 초기화
+	for (APlayerState* PlayerState : GameState->PlayerArray)
+	{
+		if (ALB_PlayerState* LBPlayerState = Cast<ALB_PlayerState>(PlayerState))
+		{
+			LBPlayerState->ResetCharacterSelection_ServerOnly();
+		}
+	}
+
+	GetTargetPoints();
+
+	InitCharacterPreview();
+
+	RefreshSnapshot();
 }
 
 void ALB_CharacterSelectGameMode::PostLogin(APlayerController* NewPlayer)
 {
 	Super::PostLogin(NewPlayer);
+	
+	if (ALB_PlayerState* PS =
+		NewPlayer->GetPlayerState<ALB_PlayerState>())
+	{
+		PS->ResetCharacterSelection_ServerOnly();
+	}
 	
 	RefreshSnapshot();
 }
@@ -90,17 +109,6 @@ ELBCharacterSelectResult ALB_CharacterSelectGameMode::TrySelectCharacter(ALB_Mai
 
 	RefreshSnapshot();
 	
-	///////////////////////
-	// 1차 테스트: 캐릭터 선택 즉시 전투 맵 이동
-	if (!StartRaidTravel())
-	{
-		UE_LOG(LogTemp, Warning,
-			TEXT("[CharacterSelect] Failed to travel after character select."));
-	
-		return ELBCharacterSelectResult::Failed;
-	}
-	///////////////////////
-
 	return ELBCharacterSelectResult::Success;
 }
 
@@ -128,21 +136,22 @@ bool ALB_CharacterSelectGameMode::TrySetCharacterReady(ALB_MainMenuPlayerControl
 
 	PS->SetCharacterReady_ServerOnly(true);
 
-	const FLBCharacterSelectSnapshot Snapshot = BuildSnapshot(true);
+	
 
-	if (ALB_CharacterSelectGameState* GS = GetCharacterSelectGameState())
+	if (AreAllPlayersReady() && CurrentPhase == ELBCharacterSelectPhase::Waiting)
 	{
-		GS->SetSnapshot_ServerOnly(Snapshot);
+		SetPhase(ELBCharacterSelectPhase::AllReady);
+
+		GetWorldTimerManager().SetTimer(
+			TravelTimerHandle,
+			this,
+			&ThisClass::DelayedStartRaidTravel,
+			2.f,
+			false);
 	}
-
-	if (Snapshot.bEveryoneReady)
+	else
 	{
-		if (!StartRaidTravel())
-		{
-			PS->SetCharacterReady_ServerOnly(false);
-			RefreshSnapshot();
-			return false;
-		}
+		RefreshSnapshot();
 	}
 
 	return true;
@@ -167,8 +176,14 @@ bool ALB_CharacterSelectGameMode::TryCancelCharacterReady(ALB_MainMenuPlayerCont
 
 	PS->SetCharacterReady_ServerOnly(false);
 
-	RefreshSnapshot();
+	if (CurrentPhase != ELBCharacterSelectPhase::Traveling)
+	{
+		SetPhase(ELBCharacterSelectPhase::Waiting);
 
+		GetWorldTimerManager().ClearTimer(TravelTimerHandle);
+
+		bTravelStarted = false;
+	}
 	return true;
 }
 
@@ -243,10 +258,10 @@ void ALB_CharacterSelectGameMode::GetTargetPoints()
 	}
 
 	TargetPoints.Sort([](
-		const TObjectPtr<ATargetPoint>& A,
-		const TObjectPtr<ATargetPoint>& B)
+		const ATargetPoint& A,
+		const ATargetPoint& B)
 	{
-		return A->GetName() < B->GetName();
+		return A.GetName() < B.GetName();
 	});
 }
 
@@ -350,6 +365,42 @@ bool ALB_CharacterSelectGameMode::StartRaidTravel()
 	return true;
 }
 
+void ALB_CharacterSelectGameMode::SetPhase(ELBCharacterSelectPhase NewPhase)
+{
+	if (CurrentPhase == NewPhase)
+	{
+		return;
+	}
+
+	CurrentPhase = NewPhase;
+
+	RefreshSnapshot();
+}
+
+void ALB_CharacterSelectGameMode::DelayedStartRaidTravel()
+{
+	if (bTravelStarted)
+	{
+		return;
+	}
+
+	if (!AreAllPlayersReady())
+	{
+		SetPhase(ELBCharacterSelectPhase::Waiting);
+		return;
+	}
+
+	bTravelStarted = true;
+
+	SetPhase(ELBCharacterSelectPhase::Traveling);
+
+	if (!StartRaidTravel())
+	{
+		bTravelStarted = false;
+		SetPhase(ELBCharacterSelectPhase::Waiting);
+	}
+}
+
 
 void ALB_CharacterSelectGameMode::RefreshSnapshot()
 {
@@ -391,6 +442,7 @@ FLBCharacterSelectSnapshot ALB_CharacterSelectGameMode::BuildSnapshot(bool bAdva
 	}
 
 	Snapshot.bEveryoneReady = AreAllPlayersReady();
+	Snapshot.Phase = CurrentPhase;
 
 	if (bAdvanceRevision)
 	{

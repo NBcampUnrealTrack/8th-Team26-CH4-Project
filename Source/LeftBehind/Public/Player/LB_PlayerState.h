@@ -120,7 +120,7 @@ public:
     
     // 현재 캐릭터 ID를 읽는다.
     UFUNCTION(BlueprintPure, Category="LB|PlayerState")
-    ELBCharacterID GetCharacterID() const { return CharacterID; }
+    ELBCharacterID GetCharacterID() const { return SelectedCharacterID; }
     
     // 현재 플레이어 이름을 반환한다.
     UFUNCTION(BlueprintPure, Category="LB|PlayerState")
@@ -179,7 +179,7 @@ protected:
     
     // 선택한 캐릭터 ID
     UPROPERTY(ReplicatedUsing=OnRep_CharacterID, BlueprintReadOnly, Category="LB|Raid")
-    ELBCharacterID CharacterID = ELBCharacterID::None;
+    ELBCharacterID SelectedCharacterID = ELBCharacterID::None;
 
     UPROPERTY(ReplicatedUsing=OnRep_CharacterReady)
     bool bCharacterReady = false;

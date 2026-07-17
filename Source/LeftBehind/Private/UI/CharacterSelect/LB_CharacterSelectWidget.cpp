@@ -6,8 +6,11 @@
 #include "Components/WrapBox.h"
 #include "UI/CharacterSelect/LB_CharacterCardWidget.h"
 #include "Engine/DataTable.h"
+#include "GameState/LB_CharacterSelectGameState.h"
 #include "Player/LB_MainMenuPlayerController.h"
-#include "Player/LB_PlayerState.h"
+#include "Components/HorizontalBox.h"
+#include "GameMode/LB_CharacterSelectGameMode.h"
+#include "UI/CharacterSelect/LB_CharacterSelectSlotWidget.h"
 
 void ULB_CharacterSelectWidget::NativeConstruct()
 {
@@ -17,11 +20,9 @@ void ULB_CharacterSelectWidget::NativeConstruct()
 	ALB_MainMenuPlayerController* PC =
 	Cast<ALB_MainMenuPlayerController>(CachedPlayerController.Get());
 	
-	UE_LOG(LogTemp, Warning, TEXT("CachedPC = %s"),
-	*GetNameSafe(CachedPlayerController.Get()));
+	//UE_LOG(LogTemp, Warning, TEXT("CachedPC = %s"), *GetNameSafe(CachedPlayerController.Get()));
 
-	UE_LOG(LogTemp, Warning, TEXT("Cast = %s"),
-		*GetNameSafe(Cast<ALB_MainMenuPlayerController>(CachedPlayerController.Get())));
+	//UE_LOG(LogTemp, Warning, TEXT("Cast = %s"), *GetNameSafe(Cast<ALB_MainMenuPlayerController>(CachedPlayerController.Get())));
 
 	if (!IsValid(PC))
 	{
@@ -31,6 +32,16 @@ void ULB_CharacterSelectWidget::NativeConstruct()
 	PC->OnCharacterSelectResult.AddDynamic(
 		this,
 		&ThisClass::HandleCharacterSelectResult);
+	
+	if (ALB_CharacterSelectGameState* GS =
+	GetWorld()->GetGameState<ALB_CharacterSelectGameState>())
+	{
+		GS->OnSnapshotChanged.AddDynamic(
+			this,
+			&ThisClass::HandleSnapshotChanged);
+
+		HandleSnapshotChanged(GS->GetSnapshot());
+	}
 }
 
 void ULB_CharacterSelectWidget::NativeDestruct()
@@ -54,6 +65,18 @@ void ULB_CharacterSelectWidget::NativeDestruct()
 			this,
 			&ThisClass::HandleCharacterSelectResult);
 	}
+	
+	if (ALB_CharacterSelectGameState* GS =
+	GetWorld()->GetGameState<ALB_CharacterSelectGameState>())
+	{
+		GS->OnSnapshotChanged.RemoveDynamic(
+			this,
+			&ThisClass::HandleSnapshotChanged);
+	}
+	
+	LastRevision = INDEX_NONE;
+	
+	PartySlots.Empty();
 	
 	Super::NativeDestruct();
 }
@@ -118,16 +141,138 @@ void ULB_CharacterSelectWidget::HandleCharacterSelectResult(ELBCharacterSelectRe
 {
 	if (Result == ELBCharacterSelectResult::Success)
 	{
+		BP_OnCharacterConfirmed();
 		return;
 	}
 
 	BP_OnCharacterSelectFailed(Result);
 }
 
+void ULB_CharacterSelectWidget::HandleSnapshotChanged(const FLBCharacterSelectSnapshot& Snapshot)
+{
+	if (Snapshot.Revision <= LastRevision)
+	{
+		return;
+	}
+
+	LastRevision = Snapshot.Revision;
+	
+	ApplySnapshot(Snapshot);
+}
+
+void ULB_CharacterSelectWidget::ApplySnapshot(const FLBCharacterSelectSnapshot& Snapshot)
+{
+	UpdatePartySlots(Snapshot);
+	
+	BP_OnSnapshotUpdated(Snapshot);
+	
+	if (CurrentPhase != Snapshot.Phase)
+	{
+		CurrentPhase = Snapshot.Phase;
+
+		switch (CurrentPhase)
+		{
+		case ELBCharacterSelectPhase::Waiting:
+			break;
+
+		case ELBCharacterSelectPhase::AllReady:
+			BP_OnEveryoneReady();
+			break;
+
+		case ELBCharacterSelectPhase::Traveling:
+			break;
+		}
+	}
+}
+
+void ULB_CharacterSelectWidget::UpdatePartySlots(
+	const FLBCharacterSelectSnapshot& Snapshot)
+{
+	if (!HB_PartyStatus ||
+		!PartySlotWidgetClass ||
+		!CharacterDataTable)
+	{
+		return;
+	}
+
+	const int32 PlayerCount = Snapshot.Players.Num();
+
+	// 부족한 슬롯만 생성 (최초 1회 또는 플레이어 증가 시)
+	while (PartySlots.Num() < PlayerCount)
+	{
+		ULB_CharacterSelectSlotWidget* NewSlot =
+			CreateWidget<ULB_CharacterSelectSlotWidget>(
+				GetOwningPlayer(),
+				PartySlotWidgetClass);
+
+		if (!NewSlot)
+		{
+			break;
+		}
+
+		PartySlots.Add(NewSlot);
+		HB_PartyStatus->AddChild(NewSlot);
+	}
+
+	// 플레이어 수에 맞게 슬롯 표시/숨김
+	for (int32 i = 0; i < PartySlots.Num(); ++i)
+	{
+		if (PartySlots[i])
+		{
+			PartySlots[i]->SetVisibility(
+				i < PlayerCount
+				? ESlateVisibility::Visible
+				: ESlateVisibility::Collapsed);
+		}
+	}
+
+	// 슬롯 내용만 갱신
+	for (int32 i = 0; i < PlayerCount; ++i)
+	{
+		if (!PartySlots.IsValidIndex(i) || !PartySlots[i])
+		{
+			continue;
+		}
+
+		const FLBCharacterSelectPlayerInfo& PlayerInfo = Snapshot.Players[i];
+
+		const FLBCharacterData* CharacterData = nullptr;
+
+		if (PlayerInfo.CharacterID != ELBCharacterID::None)
+		{
+			CharacterData = FindCharacterData(PlayerInfo.CharacterID);
+		}
+
+		PartySlots[i]->UpdateSlot(PlayerInfo, CharacterData);
+	}
+}
+
+const FLBCharacterData* ULB_CharacterSelectWidget::FindCharacterData(ELBCharacterID CharacterID) const
+{
+	if (!CharacterDataTable)
+	{
+		return nullptr;
+	}
+
+	const UEnum* Enum = StaticEnum<ELBCharacterID>();
+
+	if (!Enum)
+	{
+		return nullptr;
+	}
+
+	const FName RowName(
+		*Enum->GetNameStringByValue((int64)CharacterID));
+
+	return CharacterDataTable->FindRow<FLBCharacterData>(
+		RowName,
+		TEXT("FindCharacterData"));
+}
+
 void ULB_CharacterSelectWidget::OnCharacterCardClicked(ELBCharacterID ClickedID)
 {
-	UE_LOG(LogTemp, Log, TEXT("[SelectWidget] OnCharacterCardClicked: %d"),
-		static_cast<int32>(ClickedID));
+	//UE_LOG(LogTemp, Log, TEXT("[SelectWidget] OnCharacterCardClicked: %d"), static_cast<int32>(ClickedID));
+	
 	if (IsValid(PreviousSelectedCard))
 	{
 		PreviousSelectedCard->SetSelected(false);
@@ -145,6 +290,16 @@ void ULB_CharacterSelectWidget::OnCharacterCardClicked(ELBCharacterID ClickedID)
 	
 	SelectedCharacterID = ClickedID;
 	
+	if (CachedPlayerController.IsValid())
+	{
+		if (ALB_MainMenuPlayerController* PC =
+			Cast<ALB_MainMenuPlayerController>(
+				CachedPlayerController.Get()))
+		{
+			PC->Server_SelectCharacterPreview(ClickedID);
+		}
+	}
+	
 	if (!CharacterDataTable)
 	{
 		return;
@@ -152,31 +307,24 @@ void ULB_CharacterSelectWidget::OnCharacterCardClicked(ELBCharacterID ClickedID)
 	
 	// ELBCharacterID -> DT_CharacterData의 RowName (FName) 변환 과정
 	// [1] ELBCharacterID Enum 정보를 가져옴
-	const UEnum* CharEnum = StaticEnum<ELBCharacterID>();
-	if (!CharEnum)if (!CharEnum)
-	{ 
+	const UEnum* CharacterEnum = StaticEnum<ELBCharacterID>();
+
+	if (!CharacterEnum)
+	{
 		return;
 	}
 	
-	// [2] 숫자값으로 Row Name 조회
-	TArray<FName> RowNames = CharacterDataTable->GetRowNames();
-	int32 EnumIndex = static_cast<int32>(ClickedID) - 1; // None(0) 제외
-	if (RowNames.IsValidIndex(EnumIndex))
-	{
-		FName RowName = RowNames[EnumIndex];
-		FLBCharacterData* Data = CharacterDataTable->FindRow<FLBCharacterData>(
-			RowName, TEXT(""));
-		
-		if (!Data)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("[SelectWidget] Data 없음 RowName: %s"), *RowName.ToString());
-			return;
-		}
+	const FName RowName(*CharacterEnum->GetNameStringByValue(static_cast<int64>(ClickedID)));
 
-		BP_OnCharacterSelected(SelectedCharacterID, *Data);
+	const FLBCharacterData* Data = CharacterDataTable->FindRow<FLBCharacterData>(RowName,TEXT("CharacterSelected"));
+
+	if (!Data)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[SelectWidget] Data 없음 RowName: %s"), *RowName.ToString());
+		return;
 	}
-	
-	
+
+	BP_OnCharacterSelected(SelectedCharacterID, *Data);
 }
 
 void ULB_CharacterSelectWidget::OnDetailViewClicked()
@@ -200,10 +348,10 @@ void ULB_CharacterSelectWidget::OnConfirmCharacterClicked()
 			return;
 		}
 
-		PC->SelectCharacter(SelectedCharacterID);
+		PC->SelectCharacterAndReady(SelectedCharacterID);
 	}
 	
-	// 이후, 대기실 이동
+	// 모두 캐릭터를 셀렉하면 사냥 시작
 }
 
 void ULB_CharacterSelectWidget::OnBackToBasicClicked()
