@@ -36,5 +36,6 @@ void ALB_CharacterPreview::Initialize(const FLBCharacterData& Data)
 	SceneCapture->ShowOnlyComponents.Empty();
 	SceneCapture->ShowOnlyComponents.Add(SkeletalMeshComp);
 	
-	SceneCapture->CaptureScene();
+	SceneCapture->bCaptureEveryFrame = true;
+	SceneCapture->bCaptureOnMovement = true;
 }
