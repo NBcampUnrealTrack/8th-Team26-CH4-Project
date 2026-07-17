@@ -7,6 +7,7 @@
 #include "LB_MainMenuWaitingWidget.generated.h"
 
 class ALB_MainMenuGameState;
+class ALB_PlayerState;
 class SBorder;
 class SButton;
 class SProgressBar;
@@ -35,6 +36,9 @@ private:
 	TObjectPtr<ULB_OnlineSessionSubsystem> BoundOnlineSubsystem;
 
 	UPROPERTY(Transient)
+	TArray<TObjectPtr<ALB_PlayerState>> BoundPlayerStates;
+
+	UPROPERTY(Transient)
 	TObjectPtr<UObject> TitleFontAsset;
 
 	UPROPERTY(Transient)
@@ -55,6 +59,7 @@ private:
 	TSharedPtr<SProgressBar> ReadyProgressBar;
 	TSharedPtr<SVerticalBox> PlayerListBox;
 	TSharedPtr<SButton> StartButton;
+	TSharedPtr<STextBlock> StartButtonText;
 	TSharedPtr<SButton> InviteButton;
 	TSharedPtr<SButton> LeaveButton;
 	TSharedPtr<FButtonStyle> PrimaryButtonStyle;
@@ -71,8 +76,13 @@ private:
 	UFUNCTION()
 	void HandleOnlineStateChanged(ELBOnlineState NewState, const FText& StatusMessage);
 
+	UFUNCTION()
+	void HandlePlayerLobbyStateChanged(bool bValue);
+
 	void BindGameState();
 	void BindOnlineSubsystem();
+	void RefreshPlayerStateBindings();
+	void UnbindPlayerStateDelegates();
 	void RefreshRoomIdentity();
 	void Refresh(const FLBMainMenuSnapshot& Snapshot);
 	void RefreshOnlineControls(ELBOnlineState State, const FText& StatusMessage);

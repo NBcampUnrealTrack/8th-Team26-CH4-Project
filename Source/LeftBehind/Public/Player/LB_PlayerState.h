@@ -22,6 +22,8 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLBDeadStateChanged, bool, bNewIsD
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLBCharacterIDChanged, ELBCharacterID, NewCharacterID);
 // 코드네임 확정 여부가 바뀌면 대기실 UI가 PlayerState 폴링 없이 반응한다.
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLBCodenameConfirmedChanged, bool, bConfirmed);
+// 메인 메뉴 대기실 준비 여부가 바뀌면 로스터와 액션 버튼을 즉시 갱신한다.
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLBLobbyReadyChanged, bool, bReady);
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCharacterReadyChanged, bool, bReady);
 
@@ -72,6 +74,9 @@ public:
 
     UPROPERTY(BlueprintAssignable)
     FOnLBCodenameConfirmedChanged OnCodenameConfirmedChanged;
+
+    UPROPERTY(BlueprintAssignable, Category="LB|MainMenu")
+    FOnLBLobbyReadyChanged OnLobbyReadyChanged;
 
     UPROPERTY(BlueprintAssignable, Category="LB|Character")
     FOnCharacterReadyChanged OnCharacterReadyChanged;
@@ -132,6 +137,12 @@ public:
     UFUNCTION(BlueprintPure, Category="LB|PlayerState")
     bool IsCodenameConfirmed() const { return bCodenameConfirmed; }
 
+    /** Stores a party member's explicit waiting-room ready state on the server. */
+    void SetLobbyReady_ServerOnly(bool bReady);
+
+    UFUNCTION(BlueprintPure, Category="LB|MainMenu")
+    bool IsLobbyReady() const { return bLobbyReady; }
+
     // 누적 사망 횟수를 읽는다.
     UFUNCTION(BlueprintPure, Category="LB|PlayerState")
     int32 GetDeathCount() const { return DeathCount; }
@@ -186,6 +197,9 @@ protected:
     
     UPROPERTY(ReplicatedUsing=OnRep_CodenameConfirmed, BlueprintReadOnly, Category="LB|MainMenu")
     bool bCodenameConfirmed = false;
+
+    UPROPERTY(ReplicatedUsing=OnRep_LobbyReady, BlueprintReadOnly, Category="LB|MainMenu")
+    bool bLobbyReady = false;
     
     // 보스에게 입힌 누적 총 피해량. 진행 중에는 소유 클라이언트에만 복제하고 최종 전원 값은 Scoreboard로 제공한다.
     UPROPERTY(Replicated, BlueprintReadOnly, Category="LB|Stats")
@@ -217,6 +231,9 @@ protected:
 
     UFUNCTION()
     void OnRep_CodenameConfirmed();
+
+    UFUNCTION()
+    void OnRep_LobbyReady();
     
     UFUNCTION()
     void OnRep_CharacterReady();

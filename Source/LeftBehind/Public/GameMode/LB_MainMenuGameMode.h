@@ -32,6 +32,8 @@ public:
 	bool CanStartCharacterSelect(const APlayerController* RequestingController) const;
 
 	bool TryStartCharacterSelect(APlayerController* RequestingController);
+	/** Applies a non-host party member's explicit waiting-room ready state. */
+	bool TrySetLobbyReady(ALB_MainMenuPlayerController* RequestingController, bool bReady);
 	ELBCodenameSubmitResult TryConfirmCodename(
 		ALB_MainMenuPlayerController* RequestingController,
 		const FString& RawCodename,
@@ -65,6 +67,7 @@ private:
 
 	void RefreshLobbySnapshot();
 	FLBMainMenuSnapshot BuildLobbySnapshot(bool bAdvanceRevision);
+	bool IsLobbyHostController(const APlayerController* PlayerController) const;
 	bool AreAllActivePlayersLoaded() const;
 	bool GetCharacterSelectMapPackageName(FString& OutPackageName) const;
 	ALB_MainMenuGameState* GetMainMenuGameState() const;
