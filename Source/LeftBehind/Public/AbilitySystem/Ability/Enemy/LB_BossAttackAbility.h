@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Abilities/GameplayAbility.h"
+#include "AbilitySystem/Ability/LB_GameplayAbility.h"
 #include "LB_BossAttackAbility.generated.h"
 
 
@@ -13,7 +14,7 @@ class UGameplayEffect;
  * 
  */
 UCLASS()
-class LEFTBEHIND_API ULB_BossAttackAbility : public UGameplayAbility
+class LEFTBEHIND_API ULB_BossAttackAbility : public ULB_GameplayAbility
 {
 	GENERATED_BODY()
 	
