@@ -19,12 +19,6 @@ void ULB_CharacterSelectSlotWidget::UpdateSlot(
 	// 캐릭터 선택 여부
 	if (!CharacterData)
 	{
-		if (IMG_Portrait)
-		{
-			//IMG_Portrait->SetBrush(FSlateNoResource());
-			IMG_Portrait->SetRenderOpacity(0.3f);
-		}
-		
 		if (TXT_ReadyStatus)
 		{
 			TXT_ReadyStatus->SetText(FText::FromString(TEXT("대기 중")));
@@ -32,12 +26,7 @@ void ULB_CharacterSelectSlotWidget::UpdateSlot(
 	}
 	else
 	{
-		if (IMG_Portrait)
-		{
-			IMG_Portrait->SetBrushFromTexture(CharacterData->CardPortraitImage);
-			IMG_Portrait->SetRenderOpacity(1.f);
-
-		}
+		BP_OnUpdateSlot(*CharacterData);
 		
 		if (PlayerInfo.bReady)
 		{

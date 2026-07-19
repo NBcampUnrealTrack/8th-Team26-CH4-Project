@@ -21,15 +21,13 @@ public:
 		const FLBCharacterSelectPlayerInfo& PlayerInfo,
 		const FLBCharacterData* CharacterData);
 
-protected:
-
-	UPROPERTY(meta=(BindWidget))
+	UFUNCTION(BlueprintImplementableEvent, Category="LB|CharacterSelect")
+	void BP_OnUpdateSlot(const FLBCharacterData& CharacterData);
+	
+	UPROPERTY(BlueprintReadWrite, meta=(BindWidget))
 	TObjectPtr<UTextBlock> TXT_PlayerName;
 	
-	UPROPERTY(meta=(BindWidget))
-	TObjectPtr<UImage> IMG_Portrait;
-
-	UPROPERTY(meta=(BindWidget))
+	UPROPERTY(BlueprintReadWrite, meta=(BindWidget))
 	TObjectPtr<UTextBlock> TXT_ReadyStatus;
 
 };
