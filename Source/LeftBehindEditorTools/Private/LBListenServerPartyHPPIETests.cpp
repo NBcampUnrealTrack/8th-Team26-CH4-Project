@@ -28,15 +28,84 @@ namespace
 	{
 		WaitForLobby,
 		WaitForCodenames,
+		WaitForReady,
 		WaitForRaid,
 	};
 
 	struct FLBPIEPartyHPState
 	{
+		~FLBPIEPartyHPState()
+		{
+			// Last-resort restoration for an externally aborted automation run.
+			// Normal success/failure paths restore immediately after driver creation.
+			if (!bGameNetDriverOverrideActive || !GEngine)
+			{
+				return;
+			}
+
+			for (FNetDriverDefinition& Definition : GEngine->NetDriverDefinitions)
+			{
+				if (Definition.DefName == NAME_GameNetDriver)
+				{
+					Definition.DriverClassName = OriginalGameNetDriverClass;
+					Definition.DriverClassNameFallback = OriginalGameNetDriverFallbackClass;
+					break;
+				}
+			}
+		}
+
 		TStrongObjectPtr<ULevelEditorPlaySettings> PlaySettings;
 		ELBPIEPartyHPStage Stage = ELBPIEPartyHPStage::WaitForLobby;
 		double Deadline = 0.0;
+		FName OriginalGameNetDriverClass;
+		FName OriginalGameNetDriverFallbackClass;
+		bool bGameNetDriverOverrideActive = false;
+		bool bStopAfterCodenames = false;
+		bool bStopAfterReady = false;
 	};
+
+	bool OverrideGameNetDriverForPIE(const TSharedRef<FLBPIEPartyHPState>& State)
+	{
+		if (!GEngine)
+		{
+			return false;
+		}
+
+		for (FNetDriverDefinition& Definition : GEngine->NetDriverDefinitions)
+		{
+			if (Definition.DefName == NAME_GameNetDriver)
+			{
+				State->OriginalGameNetDriverClass = Definition.DriverClassName;
+				State->OriginalGameNetDriverFallbackClass = Definition.DriverClassNameFallback;
+				Definition.DriverClassName = FName(TEXT("/Script/OnlineSubsystemUtils.IpNetDriver"));
+				Definition.DriverClassNameFallback = Definition.DriverClassName;
+				State->bGameNetDriverOverrideActive = true;
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	void RestoreGameNetDriverAfterPIE(const TSharedRef<FLBPIEPartyHPState>& State)
+	{
+		if (!State->bGameNetDriverOverrideActive || !GEngine)
+		{
+			return;
+		}
+
+		for (FNetDriverDefinition& Definition : GEngine->NetDriverDefinitions)
+		{
+			if (Definition.DefName == NAME_GameNetDriver)
+			{
+				Definition.DriverClassName = State->OriginalGameNetDriverClass;
+				Definition.DriverClassNameFallback = State->OriginalGameNetDriverFallbackClass;
+				break;
+			}
+		}
+
+		State->bGameNetDriverOverrideActive = false;
+	}
 
 	void FindNetworkPIEWorlds(UWorld*& OutListenServerWorld, UWorld*& OutClientWorld)
 	{
@@ -164,6 +233,12 @@ namespace
 			Settings->SetServerPort(19077);
 			Settings->bLaunchSeparateServer = false;
 
+			if (!OverrideGameNetDriverForPIE(State))
+			{
+				Test->AddError(TEXT("GameNetDriver was unavailable for the test-only IP override."));
+				return true;
+			}
+
 			FRequestPlaySessionParams Params;
 			Params.SessionDestination = EPlaySessionDestinationType::InProcess;
 			Params.WorldType = EPlaySessionWorldType::PlayInEditor;
@@ -199,12 +274,19 @@ namespace
 				Test->AddError(FString::Printf(
 					TEXT("Two-player listen-server PIE timed out at stage %d."),
 					static_cast<int32>(State->Stage)));
+				RestoreGameNetDriverAfterPIE(State);
 				return true;
 			}
 
 			UWorld* ListenServerWorld = nullptr;
 			UWorld* ClientWorld = nullptr;
 			FindNetworkPIEWorlds(ListenServerWorld, ClientWorld);
+			// The drivers now own their concrete classes. Restore the editor-wide
+			// EOS definition immediately so this test cannot leak its override.
+			if (IsValid(ListenServerWorld) && IsValid(ClientWorld))
+			{
+				RestoreGameNetDriverAfterPIE(State);
+			}
 
 			switch (State->Stage)
 			{
@@ -217,6 +299,10 @@ namespace
 					: nullptr;
 				if (!IsValid(HostController)
 					|| !IsValid(ClientController)
+					|| !HostController->HasActorBegunPlay()
+					|| !ClientController->HasActorBegunPlay()
+					|| !IsValid(HostController->GetPlayerState<ALB_PlayerState>())
+					|| !IsValid(ClientController->GetPlayerState<ALB_PlayerState>())
 					|| !IsValid(ServerGameState)
 					|| ServerGameState->PlayerArray.Num() != 2)
 				{
@@ -238,10 +324,46 @@ namespace
 			{
 				ALB_MainMenuPlayerController* HostController = FindLocalMenuController(ListenServerWorld);
 				if (!IsValid(HostController)
-					|| !HasTwoConfirmedPlayers(ListenServerWorld)
-					|| !HostController->CanRequestStartCharacterSelect())
+					|| !HasTwoConfirmedPlayers(ListenServerWorld))
 				{
 					return false;
+				}
+				if (State->bStopAfterCodenames)
+				{
+					return true;
+				}
+
+				ALB_MainMenuPlayerController* ClientController = FindLocalMenuController(ClientWorld);
+				if (!IsValid(ClientController) || !ClientController->CanRequestLobbyReady())
+				{
+					return false;
+				}
+				Test->TestFalse(
+					TEXT("Listen host cannot start before the remote member is ready"),
+					HostController->CanRequestStartCharacterSelect());
+				if (!ULBMainMenuPIETestBridge::ScheduleLobbyReady(ClientController))
+				{
+					Test->AddError(TEXT("The remote PIE client could not submit lobby readiness."));
+					return true;
+				}
+
+				State->Stage = ELBPIEPartyHPStage::WaitForReady;
+				return false;
+			}
+
+			case ELBPIEPartyHPStage::WaitForReady:
+			{
+				ALB_MainMenuPlayerController* HostController = FindLocalMenuController(ListenServerWorld);
+				if (!IsValid(HostController) || !HostController->CanRequestStartCharacterSelect())
+				{
+					return false;
+				}
+				Test->TestTrue(
+					TEXT("Listen host can start after the remote member is ready"),
+					HostController->CanRequestStartCharacterSelect());
+				if (State->bStopAfterReady)
+				{
+					return true;
 				}
 
 				if (!ULBMainMenuPIETestBridge::ScheduleStartRequests(HostController))
@@ -361,6 +483,42 @@ namespace
 		TSharedRef<FLBPIEPartyHPState> State;
 		FAutomationTestBase* Test;
 	};
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FLBMainMenuCodenameListenServerPIETest,
+	"LeftBehind.MainMenu.Codename.ListenServerPIE",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FLBMainMenuCodenameListenServerPIETest::RunTest(const FString& Parameters)
+{
+	(void)Parameters;
+
+	const TSharedRef<FLBPIEPartyHPState> State = MakeShared<FLBPIEPartyHPState>();
+	State->bStopAfterCodenames = true;
+	ADD_LATENT_AUTOMATION_COMMAND(FStartLBListenServerPIE(State, this));
+	ADD_LATENT_AUTOMATION_COMMAND(FDriveLBListenServerPartyHPPIE(State, this));
+	ADD_LATENT_AUTOMATION_COMMAND(FEndPlayMapCommand());
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(1.0f));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FLBMainMenuReadyListenServerPIETest,
+	"LeftBehind.MainMenu.Ready.ListenServerPIE",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FLBMainMenuReadyListenServerPIETest::RunTest(const FString& Parameters)
+{
+	(void)Parameters;
+
+	const TSharedRef<FLBPIEPartyHPState> State = MakeShared<FLBPIEPartyHPState>();
+	State->bStopAfterReady = true;
+	ADD_LATENT_AUTOMATION_COMMAND(FStartLBListenServerPIE(State, this));
+	ADD_LATENT_AUTOMATION_COMMAND(FDriveLBListenServerPartyHPPIE(State, this));
+	ADD_LATENT_AUTOMATION_COMMAND(FEndPlayMapCommand());
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(1.0f));
+	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(

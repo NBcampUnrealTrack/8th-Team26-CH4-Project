@@ -46,8 +46,9 @@ public:
 	bool CanStartRaid(const APlayerController* RequestingController) const;
 
 	bool TryStartRaid(APlayerController* RequestingController);
-
-
+	
+	void RefreshSnapshot(); 
+	
 protected:
 	// World soft reference이므로 Class Defaults에 맵 에셋 선택기가 나타나며 cooker도 의존성을 추적할 수 있다.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="LB|MainMenu|Travel")
@@ -56,39 +57,31 @@ protected:
 	
 private:
 
-	void GetTargetPoints();
-	void InitCharacterPreview();
 	void GetCharacterRows(TArray<FName>& OutRows) const;
 	
 	bool GetRaidMapPackageName(FString& OutPackageName) const;
 	bool StartRaidTravel();
 	
-private:
-	UPROPERTY()
-	TArray<TObjectPtr<ATargetPoint>> TargetPoints;
+	void SetPhase(ELBCharacterSelectPhase NewPhase);
+	void DelayedStartRaidTravel();
 	
+	FLBCharacterSelectSnapshot BuildSnapshot(bool bAdvanceRevision);
+	ALB_CharacterSelectGameState* GetCharacterSelectGameState() const;
+	
+private:
 	// 캐릭터 데이터 테이블
 	UPROPERTY(EditDefaultsOnly, Category="LB|Character")
 	TObjectPtr<UDataTable> CharacterDataTable;
 
-	UPROPERTY(EditDefaultsOnly, Category="UI")
-	TSubclassOf<ULB_CharacterSelectWidget> CharacterSelectWidgetClass;
-	
-	// Preview Actor BP
-	UPROPERTY(EditDefaultsOnly, Category="LB|Character")
-	TSubclassOf<ALB_CharacterPreview> CharacterPreviewClass;
-
-	// 생성된 Preview Actor
-	UPROPERTY()
-	TArray<TObjectPtr<ALB_CharacterPreview>> CharacterPreviews;
-	
-	void RefreshSnapshot();
-
-	FLBCharacterSelectSnapshot BuildSnapshot(bool bAdvanceRevision);
-
-	ALB_CharacterSelectGameState* GetCharacterSelectGameState() const;
-
 	int32 SnapshotRevision = 0;
 	
 	bool AreAllPlayersReady() const;
+	
+	FTimerHandle TravelTimerHandle;
+
+	bool bTravelStarted = false;
+
+	ELBCharacterSelectPhase CurrentPhase =
+		ELBCharacterSelectPhase::Waiting;
+	
 };

@@ -7,6 +7,8 @@
 #include "LB_CharacterPreview.generated.h"
 
 struct FLBCharacterData;
+class USceneCaptureComponent2D;
+class UMeshComponent;
 
 UCLASS()
 class LEFTBEHIND_API ALB_CharacterPreview : public AActor
@@ -30,9 +32,6 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="LB|Preview")
 	TObjectPtr<UTextureRenderTarget2D> RenderTexture;
 	
-	UFUNCTION(BlueprintImplementableEvent, Category="LB|Preview")
-	void SetupRenderTarget();
-
 protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
@@ -40,4 +39,7 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	TObjectPtr<USkeletalMeshComponent> SkeletalMeshComp;
+	
+	UPROPERTY(VisibleAnywhere)
+	TObjectPtr<USceneCaptureComponent2D> SceneCapture;
 };

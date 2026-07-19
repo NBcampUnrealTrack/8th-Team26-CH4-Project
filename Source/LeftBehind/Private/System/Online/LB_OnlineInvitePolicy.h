@@ -4,11 +4,7 @@
 
 namespace LBOnlineInvitePolicy
 {
-	/**
-	 * Builds a joinable invite payload without requiring the EOS owner lookup to
-	 * have completed. UE 5.7 can return a valid lobby SessionInfo while leaving
-	 * OwningUserId empty when the same lobby already exists in CurrentSessionSearch.
-	 */
+
 	inline bool PrepareAcceptedInvite(
 		const FOnlineSessionSearchResult& InviteResult,
 		const TArray<FOnlineSessionSearchResult>& CachedSearchResults,

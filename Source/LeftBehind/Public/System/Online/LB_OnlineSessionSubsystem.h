@@ -37,6 +37,10 @@ struct LEFTBEHIND_API FLBRoomSummary
 	UPROPERTY(BlueprintReadOnly, Category="LB|Online")
 	FString RoomId;
 
+	/** Human-readable label. Joining must continue to use RoomId. */
+	UPROPERTY(BlueprintReadOnly, Category="LB|Online")
+	FString RoomName;
+
 	UPROPERTY(BlueprintReadOnly, Category="LB|Online")
 	FString HostDisplayName;
 
@@ -90,6 +94,17 @@ public:
 	UFUNCTION(BlueprintCallable, Category="LB|Online")
 	bool CreateRoom();
 
+	/** Creates a room with a public, validated ROOM_NAME session attribute. */
+	UFUNCTION(BlueprintCallable, Category="LB|Online")
+	bool CreateRoomWithName(const FString& RoomName);
+
+	/** Removes whitespace and accepts only 2-24 Korean, English, or numeric characters. */
+	UFUNCTION(BlueprintPure, Category="LB|Online")
+	static bool ValidateRoomName(
+		const FString& RoomName,
+		FString& OutNormalizedRoomName,
+		FText& OutErrorMessage);
+
 	/** Replaces the current room snapshot with a fresh online room search. */
 	UFUNCTION(BlueprintCallable, Category="LB|Online")
 	bool RefreshRooms();
@@ -129,6 +144,10 @@ public:
 
 	UFUNCTION(BlueprintPure, Category="LB|Online")
 	bool IsRoomHost() const;
+
+	/** Returns the current session's public room name, including the legacy host-name fallback. */
+	UFUNCTION(BlueprintPure, Category="LB|Online")
+	FString GetCurrentRoomName() const;
 
 	UFUNCTION(BlueprintPure, Category="LB|Online")
 	TArray<FLBRoomSummary> GetRooms() const { return Rooms; }

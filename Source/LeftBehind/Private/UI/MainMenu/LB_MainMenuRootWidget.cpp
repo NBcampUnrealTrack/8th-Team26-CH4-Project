@@ -113,6 +113,7 @@ void ULB_MainMenuRootWidget::HandleBackClicked()
 
 void ULB_MainMenuRootWidget::ShowRoomEntryPanel()
 {
+	ResetOnlinePlayFlag();
 	if (!RunBlueprintTransition(TEXT("BackToStartPanel")))
 	{
 		ShowRoomEntryPanelFallback();
