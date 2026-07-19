@@ -21,7 +21,7 @@ ALB_CharacterSelectGameMode::ALB_CharacterSelectGameMode()
 	HUDClass = nullptr;
 
 	RaidMap = TSoftObjectPtr<UWorld>(FSoftObjectPath(
-		TEXT("/Game/LeftBehind/Maps/Lv_Boss.Lv_Boss")));
+		TEXT("/Game/LeftBehind/Maps/Blockout/Lv_Boss1_Blockout.Lv_Boss1_Blockout")));
 }
 
 void ALB_CharacterSelectGameMode::BeginPlay()
