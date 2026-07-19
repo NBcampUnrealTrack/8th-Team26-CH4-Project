@@ -15,6 +15,7 @@ class ALB_PlayerState;
 class ULB_AbilitySystemComponent;
 class ULB_AttributeSet;
 struct FOnAttributeChangeData;
+class UDataTable;
 
 class ALB_PlayerState;
 
@@ -64,14 +65,23 @@ protected:
 		float CurrentHP,
 		float MaxHP,
 		bool bDead);
-
-
+	
+	UFUNCTION(BlueprintImplementableEvent, Category="LB|Party")
+	void BP_UpdatePortrait(UTexture2D* PortraitTexture);
+	
 	void RefreshAll();
+	
+	UPROPERTY(BlueprintReadOnly, Category="LB|Party")
+	TObjectPtr<ALB_PlayerState> CachedPlayerState;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="LB|Party")
+	TObjectPtr<UDataTable> CharacterDataTable;
+	
+	UFUNCTION()
+	void OnCharacterIDChanged(ELBCharacterID NewCharacterID);
 	
 private:
 
-	UPROPERTY()
-	TObjectPtr<ALB_PlayerState> CachedPlayerState;
 
 	UPROPERTY()
 	TObjectPtr<ULB_AbilitySystemComponent> CachedASC;

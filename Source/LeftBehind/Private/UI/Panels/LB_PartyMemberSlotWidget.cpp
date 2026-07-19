@@ -6,6 +6,7 @@
 #include "AbilitySystem/LB_AttributeSet.h"
 #include "AbilitySystem/LB_AbilitySystemComponent.h"
 #include "Player/LB_PlayerState.h"
+#include "Engine/DataTable.h"
 
 void ULB_PartyMemberSlotWidget::SetPlayerState(ALB_PlayerState* InPlayerState)
 {
@@ -21,6 +22,7 @@ void ULB_PartyMemberSlotWidget::SetPlayerState(ALB_PlayerState* InPlayerState)
 	BindAttributes();
 
 	RefreshAll();
+	OnCharacterIDChanged(CachedPlayerState->GetCharacterID());
 }
 
 void ULB_PartyMemberSlotWidget::NativeDestruct()
@@ -39,6 +41,10 @@ void ULB_PartyMemberSlotWidget::BindPlayerState()
 		this,
 		&ThisClass::OnRoleChanged);
 
+	CachedPlayerState->OnCharacterIDChanged.AddDynamic(
+		this,
+		&ThisClass::OnCharacterIDChanged);
+	
 	CachedPlayerState->OnDeadStateChanged.AddDynamic(
 		this,
 		&ThisClass::OnDeadStateChanged);
@@ -52,6 +58,10 @@ void ULB_PartyMemberSlotWidget::UnbindPlayerState()
 		this,
 		&ThisClass::OnRoleChanged);
 
+	CachedPlayerState->OnCharacterIDChanged.RemoveDynamic(
+		this,
+		&ThisClass::OnCharacterIDChanged);
+	
 	CachedPlayerState->OnDeadStateChanged.RemoveDynamic(
 		this,
 		&ThisClass::OnDeadStateChanged);
@@ -157,4 +167,22 @@ void ULB_PartyMemberSlotWidget::RefreshAll()
 		CachedAttributeSet->GetMaxHealth(),
 		CachedPlayerState->IsDead()
 		);
+}
+
+void ULB_PartyMemberSlotWidget::OnCharacterIDChanged(ELBCharacterID NewCharacterID)
+{
+	if (!CharacterDataTable)
+	{
+		return;
+	}
+	
+	const FString EnumName = StaticEnum<ELBCharacterID>()->GetNameStringByValue((int64)NewCharacterID);
+	const FLBCharacterData* CharacterData = CharacterDataTable->FindRow<FLBCharacterData>(FName(*EnumName), TEXT("Party"));
+	
+	if (!CharacterData) return;
+	
+	UE_LOG(LogTemp, Warning, TEXT("ULB_PartyMemberSlotWidget::OnCharacterIDChanged : %s"),
+		*GetNameSafe(CharacterData->HUDPortraitImage));
+	
+	BP_UpdatePortrait(CharacterData->HUDPortraitImage);
 }
