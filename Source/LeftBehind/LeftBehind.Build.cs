@@ -26,7 +26,9 @@ public class LeftBehind : ModuleRules
 			"OnlineSubsystemUtils",
 			"Slate",
 			"SlateCore",
-			"NavigationSystem"
+			"NavigationSystem",
+			"LevelSequence",
+			"MovieScene"
 		});
 
 		// Uncomment if you are using Slate UI

@@ -106,6 +106,7 @@ protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void OnRep_PlayerState() override;
 	virtual void PreClientTravel(const FString& PendingURL, ETravelType TravelType, bool bIsSeamlessTravel) override;
+	virtual void NotifyLoadedWorld(FName WorldPackageName, bool bFinalDest) override;
 
 	virtual void BeginPlayingState() override;
 	
@@ -174,6 +175,7 @@ private:
 	bool bCachedCodenameAutoSubmitAttempted = false;
 	bool bCancellingCodenameFlow = false;
 	bool bRoomCreationActive = false;
+	FTimerHandle RaidDestinationLoadedRetryTimerHandle;
 	ECodenameEntryPurpose CodenameEntryPurpose = ECodenameEntryPurpose::None;
 	ECodenameApplyState CodenameApplyState = ECodenameApplyState::Idle;
 	uint32 NextCodenameRequestId = 0;
@@ -205,6 +207,7 @@ private:
 	void UnbindOnlineSubsystem();
 	void ShowInitialOnlineRoomScreen();
 	bool IsLocalNetworkPIE() const;
+	void SendRaidDestinationLoadedNotification();
 
 	UFUNCTION()
 	void HandleOnlineStateChanged(ELBOnlineState NewState, const FText& StatusMessage);
@@ -217,6 +220,9 @@ private:
 
 	UFUNCTION(Server, Reliable)
 	void ServerSetLobbyReady(bool bReady);
+
+	UFUNCTION(Server, Reliable)
+	void ServerNotifyRaidDestinationLoaded();
 
 	UFUNCTION(Client, Reliable)
 	void ClientReceiveCodenameSubmissionResult(

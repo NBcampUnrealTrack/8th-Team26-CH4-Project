@@ -3,8 +3,10 @@
 #include "Blueprint/UserWidget.h"
 #include "Engine/AssetManager.h"
 #include "Engine/StreamableManager.h"
+#include "EngineUtils.h"
 #include "GameMode/LB_MainMenuGameMode.h"
 #include "GameMode/LB_CharacterSelectGameMode.h"
+#include "GameMode/LB_RaidGameMode.h"
 #include "GameState/LB_MainMenuGameState.h"
 #include "Player/LB_PlayerState.h"
 #include "System/MainMenu/LB_LocalPlayerProfileSubsystem.h"
@@ -12,9 +14,50 @@
 #include "UI/MainMenu/LB_MainMenuRootWidget.h"
 #include "UI/MainMenu/LB_MultiplayerHubWidget.h"
 #include "UI/MainMenu/LB_RoomCreationWidget.h"
+#include "LevelSequence.h"
+#include "LevelSequenceActor.h"
+#include "LevelSequencePlayer.h"
+#include "MovieSceneSequencePlayer.h"
+#include "TimerManager.h"
 
 
 DEFINE_LOG_CATEGORY_STATIC(LogLBMainMenuPlayerController, Log, All);
+
+namespace
+{
+	constexpr TCHAR LBRaidIntroSequencePath[] = TEXT("/Game/LeftBehind/Maps/Scene/LS_Boss1.LS_Boss1");
+
+	void LBStopRaidIntroAutoPlay(UWorld* World)
+	{
+		if (!IsValid(World))
+		{
+			return;
+		}
+
+		for (TActorIterator<ALevelSequenceActor> It(World); It; ++It)
+		{
+			ALevelSequenceActor* SequenceActor = *It;
+			ULevelSequence* Sequence = IsValid(SequenceActor) ? SequenceActor->GetSequence() : nullptr;
+			if (!IsValid(Sequence) || Sequence->GetPathName() != LBRaidIntroSequencePath)
+			{
+				continue;
+			}
+
+			SequenceActor->PlaybackSettings.bAutoPlay = false;
+			if (ULevelSequencePlayer* SequencePlayer = SequenceActor->GetSequencePlayer())
+			{
+				if (SequencePlayer->IsPlaying() || SequencePlayer->IsPaused())
+				{
+					SequencePlayer->Stop();
+				}
+				SequencePlayer->SetPlaybackPosition(FMovieSceneSequencePlaybackParams(
+					SequencePlayer->GetStartTime().Time,
+					EUpdatePositionMethod::Jump));
+			}
+			return;
+		}
+	}
+}
 
 ALB_MainMenuPlayerController::ALB_MainMenuPlayerController()
 {
@@ -108,6 +151,10 @@ void ALB_MainMenuPlayerController::BeginPlay()
 
 void ALB_MainMenuPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(RaidDestinationLoadedRetryTimerHandle);
+	}
 	UnbindCodenamePlayerState();
 	UnbindOnlineSubsystem();
 	TeardownMenuUI();
@@ -155,6 +202,58 @@ void ALB_MainMenuPlayerController::PreClientTravel(
 	UnbindOnlineSubsystem();
 	TeardownMenuUI();
 	Super::PreClientTravel(PendingURL, TravelType, bIsSeamlessTravel);
+}
+
+void ALB_MainMenuPlayerController::NotifyLoadedWorld(FName WorldPackageName, bool bFinalDest)
+{
+	Super::NotifyLoadedWorld(WorldPackageName, bFinalDest);
+
+	const bool bLoadedRaidDestination = bFinalDest
+		&& IsLocalController()
+		&& WorldPackageName.ToString().Contains(TEXT("Lv_Boss1_Blockout"));
+	if (!bLoadedRaidDestination)
+	{
+		return;
+	}
+
+	// 레벨 액터의 저장된 AutoPlay 값과 무관하게 모든 로컬 화면은 서버 준비 신호 전 재생을 막는다.
+	LBStopRaidIntroAutoPlay(GetWorld());
+
+	if (GetNetMode() != NM_Client)
+	{
+		return;
+	}
+
+	if (UWorld* World = GetWorld())
+	{
+		// UWorld는 이 override가 반환된 뒤 표준 ServerNotifyLoadedWorld를 전송한다.
+		// 첫 fallback을 다음 네트워크 틱 이후로 미뤄 표준 RPC를 절대 선점하지 않는다.
+		World->GetTimerManager().SetTimer(
+			RaidDestinationLoadedRetryTimerHandle,
+			this,
+			&ThisClass::SendRaidDestinationLoadedNotification,
+			0.5f,
+			true,
+			0.5f);
+	}
+}
+
+void ALB_MainMenuPlayerController::SendRaidDestinationLoadedNotification()
+{
+	if (GetNetMode() == NM_Client && IsLocalController() && IsValid(GetWorld()))
+	{
+		ServerNotifyRaidDestinationLoaded();
+	}
+}
+
+void ALB_MainMenuPlayerController::ServerNotifyRaidDestinationLoaded_Implementation()
+{
+	if (ALB_RaidGameMode* RaidGameMode = GetWorld()
+		? GetWorld()->GetAuthGameMode<ALB_RaidGameMode>()
+		: nullptr)
+	{
+		RaidGameMode->RecoverRaidPlayerAfterClientLoaded(this);
+	}
 }
 
 void ALB_MainMenuPlayerController::BeginPlayingState()

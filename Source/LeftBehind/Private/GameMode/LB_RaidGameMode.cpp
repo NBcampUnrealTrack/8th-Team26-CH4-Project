@@ -14,11 +14,17 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/AssetManager.h"
 #include "Engine/DataTable.h"
+#include "Engine/NetConnection.h"
 #include "Engine/StreamableManager.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/FileManager.h"
 #include "Kismet/GameplayStatics.h"
+#include "LevelSequence.h"
+#include "LevelSequenceActor.h"
+#include "LevelSequencePlayer.h"
+#include "MovieSceneSequencePlayer.h"
 #include "Misc/FileHelper.h"
 #include "Misc/PackageName.h"
 #include "Misc/Paths.h"
@@ -28,6 +34,7 @@ DEFINE_LOG_CATEGORY_STATIC(LogLBRaidGameMode, Log, All);
 namespace
 {
     constexpr float LBFallbackRaidTimeLimitSec = 300.f;
+    constexpr float LBMinimumRaidIntroCountdownSec = 13.5f;
 
     bool LBIsActiveRaidState(const ELBRaidState RaidState)
     {
@@ -91,11 +98,29 @@ ALB_RaidGameMode::ALB_RaidGameMode()
 
     MainMenuMap = TSoftObjectPtr<UWorld>(FSoftObjectPath(
         TEXT("/Game/LeftBehind/Maps/L_MainMenu.L_MainMenu")));
+    RaidIntroSequence = TSoftObjectPtr<ULevelSequence>(FSoftObjectPath(
+        TEXT("/Game/LeftBehind/Maps/Scene/LS_Boss1.LS_Boss1")));
+}
+
+void ALB_RaidGameMode::InitGame(
+    const FString& MapName,
+    const FString& Options,
+    FString& ErrorMessage)
+{
+    Super::InitGame(MapName, Options, ErrorMessage);
+
+    const FString ExpectedPlayersOption = UGameplayStatics::ParseOption(
+        Options,
+        TEXT("ExpectedRaidPlayers"));
+    ExpectedRaidPlayerCount = FMath::Max(0, FCString::Atoi(*ExpectedPlayersOption));
 }
 
 void ALB_RaidGameMode::BeginPlay()
 {
     Super::BeginPlay();
+
+    // LevelSequenceActor 에셋의 AutoPlay가 남아 있어도 준비 barrier 전에 재생되지 않게 한다.
+    ResetRaidIntroSequenceForManualStart();
 
     // 맵에서 GameMode가 정상 적용되었는지 확인하기 위한 시작 로그.
     LBRaidDebug(
@@ -123,10 +148,30 @@ void ALB_RaidGameMode::BeginPlay()
         return;
     }
 
+    bRaidBeginPlayInitialized = true;
+
     if (bAutoStartOnBeginPlay)
     {
-        // 테스트 맵처럼 자동 진행이 필요한 경우 BeginPlay 직후 카운트다운을 시작한다.
-        StartCountdown();
+        // 소유 클라이언트의 새 Raid PlayerController/PlayerState/GameState가 준비되기 전에 AutoPlay하면
+        // seamless travel 중 이전 컨트롤러에 카메라 컷이 걸린다. 준비 RPC를 기다린다.
+        LBRaidDebug(
+            GetWorld(),
+            FString::Printf(
+                TEXT("[RaidGM] Waiting for raid clients. ExpectedPlayers=%d"),
+                ExpectedRaidPlayerCount),
+            FColor::White);
+
+        // BeginPlay보다 먼저 도착한 준비 RPC도 여기서 다시 평가한다.
+        TryStartRaidAfterClientReady();
+        if (!bRaidStartTriggered)
+        {
+            GetWorldTimerManager().SetTimer(
+                RaidClientReadyTimeoutTimerHandle,
+                this,
+                &ThisClass::ForceStartRaidAfterClientReadyTimeout,
+                FMath::Max(30.f, RaidClientReadyTimeoutSec),
+                false);
+        }
     }
     else
     {
@@ -141,8 +186,10 @@ void ALB_RaidGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
     // seamless travel/PIE 종료 중 지연 콜백이 파괴 중인 GameMode를 다시 호출하지 않도록
     // 모든 비동기 진입점을 Super::EndPlay 전에 명시적으로 닫는다.
     GetWorldTimerManager().ClearTimer(CountdownTimerHandle);
+    GetWorldTimerManager().ClearTimer(RaidClientReadyTimeoutTimerHandle);
     GetWorldTimerManager().ClearTimer(TimeLimitTimerHandle);
     CancelBossClassPreload();
+    CancelRaidPlayerClassPreload();
 
     if (ALB_BossCharacter* Boss = SpawnedBoss.Get())
     {
@@ -152,8 +199,27 @@ void ALB_RaidGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
     SpawnedBoss.Reset();
     CachedRaidGameState.Reset();
+    RaidReadyControllers.Reset();
 
     Super::EndPlay(EndPlayReason);
+}
+
+void ALB_RaidGameMode::HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer)
+{
+    const ALB_RaidGameState* RGS = GetLBRaidGameState();
+    if (IsValid(RGS) && RGS->RaidState == ELBRaidState::Battle)
+    {
+        Super::HandleStartingNewPlayer_Implementation(NewPlayer);
+        return;
+    }
+
+    // seamless travel 직후 기본 구현이 RestartPlayer를 호출하면 캐릭터가 컷씬보다 먼저 보인다.
+    // PlayerController/PlayerState만 준비한 채 대기시키고 컷씬 종료 시 StartBattle에서 일괄 생성한다.
+    UE_LOG(
+        LogLBRaidGameMode,
+        Log,
+        TEXT("[RaidGM] Deferred player Pawn until battle. Controller=%s"),
+        *GetNameSafe(NewPlayer));
 }
 
 APawn* ALB_RaidGameMode::SpawnDefaultPawnFor_Implementation(AController* NewPlayer, AActor* StartSpot)
@@ -220,6 +286,187 @@ APawn* ALB_RaidGameMode::SpawnDefaultPawnFor_Implementation(AController* NewPlay
     
     return Pawn ? Pawn
                 : Super::SpawnDefaultPawnFor_Implementation(NewPlayer, StartSpot);
+}
+
+void ALB_RaidGameMode::NotifyRaidClientReady(ALB_PlayerController* ReadyController)
+{
+    if (!HasAuthority()
+        || !bAutoStartOnBeginPlay
+        || !IsValid(ReadyController)
+        || ReadyController->GetWorld() != GetWorld()
+        || !IsValid(ReadyController->GetPlayerState<ALB_PlayerState>()))
+    {
+        return;
+    }
+
+    RaidReadyControllers.Add(ReadyController);
+    UE_LOG(
+        LogLBRaidGameMode,
+        Log,
+        TEXT("[RaidGM] Client ready. Controller=%s Ready=%d Expected=%d"),
+        *GetNameSafe(ReadyController),
+        RaidReadyControllers.Num(),
+        ExpectedRaidPlayerCount);
+    TryStartRaidAfterClientReady();
+}
+
+void ALB_RaidGameMode::RecoverRaidPlayerAfterClientLoaded(APlayerController* LoadedController)
+{
+    if (!HasAuthority()
+        || !bRaidBeginPlayInitialized
+        || !IsValid(LoadedController)
+        || LoadedController->GetWorld() != GetWorld()
+        || LoadedController->IsA(PlayerControllerClass))
+    {
+        return;
+    }
+
+    UNetConnection* Connection = LoadedController->GetNetConnection();
+    if (!IsValid(Connection))
+    {
+        return;
+    }
+
+    // 엔진의 ServerNotifyLoadedWorld와 동일한 복제 gate를 먼저 갱신한다. 이 값 없이
+    // PC만 강제 교체하면 새 PlayerState/GameState/Pawn actor가 owning client에 복제되지 않는다.
+    Connection->SetClientWorldPackageName(GetWorld()->GetOutermost()->GetFName());
+
+    UE_LOG(
+        LogLBRaidGameMode,
+        Warning,
+        TEXT("[RaidGM] Recovering delayed seamless player after destination load. Controller=%s"),
+        *GetNameSafe(LoadedController));
+
+    AController* TravelController = LoadedController;
+    HandleSeamlessTravelPlayer(TravelController);
+}
+
+void ALB_RaidGameMode::TryStartRaidAfterClientReady()
+{
+    if (bRaidStartTriggered || !bAutoStartOnBeginPlay || !bRaidBeginPlayInitialized)
+    {
+        return;
+    }
+
+    for (auto It = RaidReadyControllers.CreateIterator(); It; ++It)
+    {
+        if (!It->IsValid()
+            || It->Get()->GetWorld() != GetWorld()
+            || !IsValid(It->Get()->GetPlayerState<ALB_PlayerState>()))
+        {
+            It.RemoveCurrent();
+        }
+    }
+
+    const int32 RequiredPlayers = ExpectedRaidPlayerCount > 0
+        ? ExpectedRaidPlayerCount
+        : FMath::Max(1, GetNumPlayers());
+    if (RaidReadyControllers.Num() < RequiredPlayers)
+    {
+        return;
+    }
+
+    bRaidStartTriggered = true;
+    GetWorldTimerManager().ClearTimer(RaidClientReadyTimeoutTimerHandle);
+    PlayRaidIntroSequence();
+    StartCountdown();
+}
+
+void ALB_RaidGameMode::ForceStartRaidAfterClientReadyTimeout()
+{
+    if (bRaidStartTriggered || !bAutoStartOnBeginPlay)
+    {
+        return;
+    }
+
+    UE_LOG(
+        LogLBRaidGameMode,
+        Warning,
+        TEXT("[RaidGM] Client-ready timeout. Starting raid with Ready=%d Expected=%d"),
+        RaidReadyControllers.Num(),
+        ExpectedRaidPlayerCount);
+    bRaidStartTriggered = true;
+    PlayRaidIntroSequence();
+    StartCountdown();
+}
+
+void ALB_RaidGameMode::ResetRaidIntroSequenceForManualStart()
+{
+    UWorld* World = GetWorld();
+    const FSoftObjectPath ExpectedSequencePath = RaidIntroSequence.ToSoftObjectPath();
+    if (!IsValid(World) || ExpectedSequencePath.IsNull())
+    {
+        return;
+    }
+
+    for (TActorIterator<ALevelSequenceActor> It(World); It; ++It)
+    {
+        ALevelSequenceActor* SequenceActor = *It;
+        ULevelSequence* Sequence = IsValid(SequenceActor) ? SequenceActor->GetSequence() : nullptr;
+        if (!IsValid(Sequence) || Sequence->GetPathName() != ExpectedSequencePath.ToString())
+        {
+            continue;
+        }
+
+        SequenceActor->PlaybackSettings.bAutoPlay = false;
+        if (ULevelSequencePlayer* SequencePlayer = SequenceActor->GetSequencePlayer())
+        {
+            if (SequencePlayer->IsPlaying() || SequencePlayer->IsPaused())
+            {
+                SequencePlayer->Stop();
+            }
+            SequencePlayer->SetPlaybackPosition(FMovieSceneSequencePlaybackParams(
+                SequencePlayer->GetStartTime().Time,
+                EUpdatePositionMethod::Jump));
+        }
+        return;
+    }
+}
+
+void ALB_RaidGameMode::PlayRaidIntroSequence()
+{
+    UWorld* World = GetWorld();
+    const FSoftObjectPath ExpectedSequencePath = RaidIntroSequence.ToSoftObjectPath();
+    if (!IsValid(World) || ExpectedSequencePath.IsNull())
+    {
+        return;
+    }
+
+    for (TActorIterator<ALevelSequenceActor> It(World); It; ++It)
+    {
+        ALevelSequenceActor* SequenceActor = *It;
+        ULevelSequence* Sequence = IsValid(SequenceActor) ? SequenceActor->GetSequence() : nullptr;
+        if (!IsValid(Sequence) || Sequence->GetPathName() != ExpectedSequencePath.ToString())
+        {
+            continue;
+        }
+
+        // 에셋 설정이 실수로 바뀌어도 서버 권한 재생 상태는 항상 클라이언트에 복제한다.
+        SequenceActor->SetReplicatePlayback(true);
+        if (ULevelSequencePlayer* SequencePlayer = SequenceActor->GetSequencePlayer())
+        {
+            if (SequencePlayer->IsPlaying() || SequencePlayer->IsPaused())
+            {
+                SequencePlayer->Stop();
+            }
+            SequencePlayer->SetPlaybackPosition(FMovieSceneSequencePlaybackParams(
+                SequencePlayer->GetStartTime().Time,
+                EUpdatePositionMethod::Jump));
+            SequencePlayer->Play();
+            for (TActorIterator<ALB_PlayerController> ControllerIt(World); ControllerIt; ++ControllerIt)
+            {
+                ControllerIt->PlayRaidIntroForOwningClient();
+            }
+            UE_LOG(LogLBRaidGameMode, Log, TEXT("[RaidGM] Raid intro started. Actor=%s"), *GetNameSafe(SequenceActor));
+        }
+        return;
+    }
+
+    UE_LOG(
+        LogLBRaidGameMode,
+        Warning,
+        TEXT("[RaidGM] Raid intro sequence actor was not found. Sequence=%s"),
+        *ExpectedSequencePath.ToString());
 }
 
 bool ALB_RaidGameMode::CanReturnToMainMenu(const APlayerController* RequestingController) const
@@ -624,6 +871,55 @@ void ALB_RaidGameMode::CancelBossClassPreload()
     }
 }
 
+void ALB_RaidGameMode::RequestRaidPlayerClassPreload()
+{
+    CancelRaidPlayerClassPreload();
+
+    TArray<FSoftObjectPath> PlayerClassPaths;
+    for (TActorIterator<ALB_PlayerController> It(GetWorld()); It; ++It)
+    {
+        const ALB_PlayerState* PS = It->GetPlayerState<ALB_PlayerState>();
+        const FLBCharacterData* Data = IsValid(PS) ? FindCharacterData(PS->GetCharacterID()) : nullptr;
+        if (!Data || Data->CharacterClass.Get())
+        {
+            continue;
+        }
+
+        const FSoftObjectPath PlayerClassPath = Data->CharacterClass.ToSoftObjectPath();
+        if (PlayerClassPath.IsValid())
+        {
+            PlayerClassPaths.AddUnique(PlayerClassPath);
+        }
+    }
+
+    if (PlayerClassPaths.IsEmpty())
+    {
+        return;
+    }
+
+    PlayerClassLoadHandle = UAssetManager::GetStreamableManager().RequestAsyncLoad(
+        PlayerClassPaths,
+        FStreamableDelegate(),
+        FStreamableManager::DefaultAsyncLoadPriority,
+        false,
+        false,
+        TEXT("LB_RaidPlayerClasses"));
+
+    if (!PlayerClassLoadHandle.IsValid())
+    {
+        UE_LOG(LogLBRaidGameMode, Warning, TEXT("[RaidGM] Failed to queue player class preload. Sync fallback will be used."));
+    }
+}
+
+void ALB_RaidGameMode::CancelRaidPlayerClassPreload()
+{
+    if (PlayerClassLoadHandle.IsValid())
+    {
+        PlayerClassLoadHandle->CancelHandle();
+        PlayerClassLoadHandle.Reset();
+    }
+}
+
 void ALB_RaidGameMode::StartCountdown()
 {
     // 이미 결과가 확정된 뒤에는 타이머를 새로 시작하지 않는다.
@@ -658,8 +954,13 @@ void ALB_RaidGameMode::StartCountdown()
     }
 
     RequestBossClassPreload(*BossRow);
+    RequestRaidPlayerClassPreload();
 
-    const float SafeCountdownSec = FMath::IsFinite(CountdownSec) ? FMath::Max(0.f, CountdownSec) : 0.f;
+    const float ConfiguredCountdownSec = FMath::IsFinite(CountdownSec) ? FMath::Max(0.f, CountdownSec) : 0.f;
+    // BP_GameMode에 남아 있는 이전 12.5초 기본값이 13.47초 시퀀스를 조기 중단하지 않게 한다.
+    const float SafeCountdownSec = bRaidStartTriggered
+        ? FMath::Max(LBMinimumRaidIntroCountdownSec, ConfiguredCountdownSec)
+        : ConfiguredCountdownSec;
     const float Now = GetWorld()->GetTimeSeconds();
 
     // 클라이언트가 같은 서버 시간 기준으로 남은 카운트다운을 계산하도록 종료 시각을 복제한다.
@@ -696,6 +997,74 @@ void ALB_RaidGameMode::StartCountdown()
     );
 }
 
+bool ALB_RaidGameMode::SpawnRaidPlayersForBattle()
+{
+    UWorld* World = GetWorld();
+    if (!IsValid(World))
+    {
+        return false;
+    }
+
+    TArray<ALB_PlayerController*> RaidControllers;
+    for (TActorIterator<ALB_PlayerController> It(World); It; ++It)
+    {
+        ALB_PlayerController* RaidController = *It;
+        ALB_PlayerState* PS = IsValid(RaidController)
+            ? RaidController->GetPlayerState<ALB_PlayerState>()
+            : nullptr;
+        if (!IsValid(RaidController) || !IsValid(PS) || PS->IsOnlyASpectator())
+        {
+            continue;
+        }
+
+        RaidControllers.Add(RaidController);
+    }
+
+    const int32 RequiredPlayers = ExpectedRaidPlayerCount > 0
+        ? ExpectedRaidPlayerCount
+        : FMath::Max(1, GetNumPlayers());
+    if (RaidControllers.Num() < RequiredPlayers)
+    {
+        UE_LOG(
+            LogLBRaidGameMode,
+            Warning,
+            TEXT("[RaidGM] Waiting to spawn battle Pawns. RaidControllers=%d Expected=%d"),
+            RaidControllers.Num(),
+            RequiredPlayers);
+        return false;
+    }
+
+    bool bAllPlayersSpawned = true;
+    for (ALB_PlayerController* RaidController : RaidControllers)
+    {
+        ALB_PlayerState* PS = RaidController->GetPlayerState<ALB_PlayerState>();
+        if (!IsValid(RaidController->GetPawn()))
+        {
+            RestartPlayer(RaidController);
+        }
+
+        if (!IsValid(RaidController->GetPawn()))
+        {
+            bAllPlayersSpawned = false;
+            UE_LOG(
+                LogLBRaidGameMode,
+                Error,
+                TEXT("[RaidGM] Failed to spawn battle Pawn. Controller=%s CharacterID=%d"),
+                *GetNameSafe(RaidController),
+                static_cast<int32>(PS->GetCharacterID()));
+        }
+    }
+
+    if (bAllPlayersSpawned)
+    {
+        // 생성된 Pawn 클래스가 패키지를 참조하므로 프리로드 핸들은 더 이상 필요 없다.
+        PlayerClassLoadHandle.Reset();
+        return true;
+    }
+
+    return false;
+}
+
 void ALB_RaidGameMode::StartBattle()
 {
     // 레이드가 이미 끝났다면 카운트다운 타이머가 늦게 호출되어도 무시한다.
@@ -730,6 +1099,19 @@ void ALB_RaidGameMode::StartBattle()
 
     GetWorldTimerManager().ClearTimer(CountdownTimerHandle);
     LBRaidDebug(GetWorld(), TEXT("[RaidGM] StartBattle called."), FColor::Green);
+
+    // 컷씬이 끝난 이 시점에만 플레이어 캐릭터를 생성한다. 한 명이라도 실패하면
+    // Boss/Battle 상태를 먼저 열지 않고 짧게 재시도해 클라이언트가 관전자 상태에 고착되지 않게 한다.
+    if (!SpawnRaidPlayersForBattle())
+    {
+        GetWorldTimerManager().SetTimer(
+            CountdownTimerHandle,
+            this,
+            &ThisClass::StartBattle,
+            0.25f,
+            false);
+        return;
+    }
 
     // 보스 스폰이 실패하면 Battle 상태로 넘어가지 않는다.
     if (!SpawnBossFromData())
