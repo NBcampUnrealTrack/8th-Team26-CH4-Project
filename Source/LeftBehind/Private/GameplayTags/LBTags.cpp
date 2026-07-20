@@ -24,9 +24,18 @@ namespace LBTags
 
 		}
 
-		
+		namespace CoolDown
+		{
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(AttackCoolDown, "LBTags.LBAbilities.CoolDown.Attack", "Enemy Attack CoolDown Tag");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(SummonCoolDown, "LBTags.LBAbilities.CoolDown.Summon", "Enemy Summon CoolDown Tag");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(ChargeCoolDown, "LBTags.LBAbilities.CoolDown.Charge", "Enemy Charge Attack CoolDown Tag");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(JumpSmashCoolDown, "LBTags.LBAbilities.CoolDown.JumpSmash", "Enemy JumpSmash Attack CoolDown Tag");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(WideAttackCoolDown, "LBTags.LBAbilities.CoolDown.WideAttack", "Enemy Wide Attack CoolDown Tag");
+		}
 
 	}
+	
+
 
 	namespace SetByCaller
 	{
