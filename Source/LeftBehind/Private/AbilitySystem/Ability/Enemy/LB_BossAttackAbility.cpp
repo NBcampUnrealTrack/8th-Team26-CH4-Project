@@ -135,7 +135,7 @@ void ULB_BossAttackAbility::HandleActivateAbility(const FGameplayAbilitySpecHand
 			DamagePayload,
 			LBTags::SetByCaller::Damage,
 			Damage,
-			LBTags::Events::Enemy::HitReact
+			LBTags::Events::Player::HitReact
 			))
 			{
 				++AppliedCount;
