@@ -212,6 +212,12 @@ APawn* ALB_RaidGameMode::SpawnDefaultPawnFor_Implementation(AController* NewPlay
 
     //UE_LOG(LogTemp, Warning, TEXT("Pawn=%s"), *GetNameSafe(Pawn));
     
+    UE_LOG(LogTemp, Warning,
+        TEXT("[ALB_RaidGameMode] Spawn Pawn=%s Class=%s Controller=%s"),
+        *GetNameSafe(Pawn),
+        *GetNameSafe(PawnClass),
+        *GetNameSafe(NewPlayer));
+    
     return Pawn ? Pawn
                 : Super::SpawnDefaultPawnFor_Implementation(NewPlayer, StartSpot);
 }
