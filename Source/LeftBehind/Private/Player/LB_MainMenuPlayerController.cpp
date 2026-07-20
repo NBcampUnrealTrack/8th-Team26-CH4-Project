@@ -1209,7 +1209,7 @@ void ALB_MainMenuPlayerController::Server_SelectCharacterPreview_Implementation(
 {
 	if (ALB_PlayerState* PS = GetPlayerState<ALB_PlayerState>())
 	{
-		PS->SetCharacterID_ServerOnly(CharacterID);
+		PS->SetPreviewCharacterID_ServerOnly(CharacterID);
 	}
 
 	if (ALB_CharacterSelectGameMode* GM =

@@ -100,6 +100,8 @@ public:
     UFUNCTION(BlueprintCallable, Category="LB|PlayerState")
     void SetCharacterID_ServerOnly(ELBCharacterID NewCharacterID);
     
+    void SetPreviewCharacterID_ServerOnly(ELBCharacterID NewCharacterID);
+    
     UFUNCTION(BlueprintCallable, Category="LB|PlayerState")
     void SetCharacterReady_ServerOnly(bool bNewReady);
     
@@ -130,9 +132,13 @@ public:
     UFUNCTION(BlueprintPure, Category="LB|PlayerState")
     ELBRoleType GetRoleType() const { return RoleType; }
     
-    // 현재 캐릭터 ID를 읽는다.
+    // 캐릭터 ID를 읽는다.
     UFUNCTION(BlueprintPure, Category="LB|PlayerState")
     ELBCharacterID GetCharacterID() const { return SelectedCharacterID; }
+    
+    // 캐릭터 ID를 읽는다.
+    UFUNCTION(BlueprintPure, Category="LB|PlayerState")
+    ELBCharacterID GetPreviewCharacterID() const { return PreviewCharacterID ; }
     
     // 현재 플레이어 이름을 반환한다.
     UFUNCTION(BlueprintPure, Category="LB|PlayerState")
@@ -195,6 +201,9 @@ protected:
     UPROPERTY(ReplicatedUsing=OnRep_IsDead, BlueprintReadOnly, Category="LB|Raid")
     bool bIsDead = false;
     
+    UPROPERTY(ReplicatedUsing=OnRep_PreviewCharacterID)
+    ELBCharacterID PreviewCharacterID = ELBCharacterID::None;
+    
     // 선택한 캐릭터 ID
     UPROPERTY(ReplicatedUsing=OnRep_CharacterID, BlueprintReadOnly, Category="LB|Raid")
     ELBCharacterID SelectedCharacterID = ELBCharacterID::None;
@@ -244,4 +253,7 @@ protected:
     
     UFUNCTION()
     void OnRep_CharacterReady();
+    
+    UFUNCTION()
+    void OnRep_PreviewCharacterID();
 };

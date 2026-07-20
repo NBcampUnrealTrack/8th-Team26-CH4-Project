@@ -37,6 +37,7 @@ void ALB_PlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 	DOREPLIFETIME_CONDITION(ALB_PlayerState, TotalHealingDone, COND_OwnerOnly);
 	DOREPLIFETIME(ALB_PlayerState, bIsMVP);
 	DOREPLIFETIME(ALB_PlayerState, SelectedCharacterID);
+	DOREPLIFETIME(ALB_PlayerState, PreviewCharacterID);
 	DOREPLIFETIME(ALB_PlayerState, bCharacterReady);
 	DOREPLIFETIME(ALB_PlayerState, bCodenameConfirmed);
 	DOREPLIFETIME(ALB_PlayerState, bLobbyReady);
@@ -66,6 +67,7 @@ void ALB_PlayerState::CopyProperties(APlayerState* PlayerState)
 		// PlayerName은 Super가 복사한다. 레이드 누적 통계는 의도적으로 넘기지 않는다.
 		TargetPlayerState->RoleType = RoleType;
 		TargetPlayerState->SelectedCharacterID = SelectedCharacterID;
+		TargetPlayerState->PreviewCharacterID = PreviewCharacterID;
 		TargetPlayerState->bCharacterReady = bCharacterReady;
 		TargetPlayerState->bCodenameConfirmed = bCodenameConfirmed;
 	}
@@ -79,6 +81,7 @@ void ALB_PlayerState::OverrideWith(APlayerState* PlayerState)
 	{
 		RoleType = SourcePlayerState->RoleType;
 		SelectedCharacterID = SourcePlayerState->SelectedCharacterID;
+		PreviewCharacterID = SourcePlayerState->PreviewCharacterID;
 		bCharacterReady = SourcePlayerState->bCharacterReady;
 		bCodenameConfirmed = SourcePlayerState->bCodenameConfirmed;
 	}
@@ -164,6 +167,25 @@ void ALB_PlayerState::SetCharacterID_ServerOnly(ELBCharacterID NewCharacterID)
 	
 	OnRep_CharacterID();
 	
+	ForceNetUpdate();
+}
+
+void ALB_PlayerState::SetPreviewCharacterID_ServerOnly(ELBCharacterID NewCharacterID)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	if (PreviewCharacterID == NewCharacterID)
+	{
+		return;
+	}
+
+	PreviewCharacterID = NewCharacterID;
+
+	OnRep_PreviewCharacterID();
+
 	ForceNetUpdate();
 }
 
@@ -312,6 +334,11 @@ void ALB_PlayerState::OnRep_CharacterReady()
 	OnCharacterReadyChanged.Broadcast(bCharacterReady);
 }
 
+void ALB_PlayerState::OnRep_PreviewCharacterID()
+{
+	
+}
+
 void ALB_PlayerState::ResetCharacterSelection_ServerOnly()
 {
 	if (!HasAuthority())
@@ -322,6 +349,7 @@ void ALB_PlayerState::ResetCharacterSelection_ServerOnly()
 	const bool bCharacterChanged = SelectedCharacterID != ELBCharacterID::None;
 	const bool bReadyChanged = bCharacterReady;
 
+	PreviewCharacterID = ELBCharacterID::None;
 	SelectedCharacterID = ELBCharacterID::None;
 	bCharacterReady = false;
 

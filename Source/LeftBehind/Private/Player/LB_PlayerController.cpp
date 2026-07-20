@@ -302,6 +302,14 @@ void ALB_PlayerController::BeginPlayingState()
 		TEXT("[Controller] BeginPlayingState Pawn=%s"),
 		*GetNameSafe(GetPawn()));
 
+	UE_LOG(LogTemp, Warning,
+	TEXT("ViewTarget=%s"),
+	*GetNameSafe(GetViewTarget()));
+	
+	UE_LOG(LogTemp, Warning,
+		TEXT("Pawn=%s"),
+		*GetNameSafe(GetPawn()));
+	
 	// Pawn 전환이 끝난 시점에도 한 번 더 확인한다. InitializeRaidHUD는 중복 생성에 안전하다.
 	InitializeRaidHUD();
 	InitializePauseMenu();

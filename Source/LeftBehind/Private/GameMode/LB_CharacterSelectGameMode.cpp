@@ -370,6 +370,7 @@ FLBCharacterSelectSnapshot ALB_CharacterSelectGameMode::BuildSnapshot(bool bAdva
 			FLBCharacterSelectPlayerInfo Info;
 
 			Info.PlayerName = PS->GetPlayerName();
+			Info.PreviewCharacterID = PS->GetPreviewCharacterID();
 			Info.CharacterID = PS->GetCharacterID();
 			Info.RoleType = PS->GetRoleType();
 			Info.bReady = PS->IsCharacterReady();
