@@ -2,8 +2,10 @@
 
 
 #include "GameObjects/LB_Projectile.h"
+#include "AbilitySystemBlueprintLibrary.h"
 #include "Characters/LB_PlayerCharacter.h"
 #include "AbilitySystem/LB_AbilitySystemComponent.h"
+#include "GameplayTags/LBTags.h"
 #include "Player/LB_PlayerState.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 
@@ -44,7 +46,10 @@ void ALB_Projectile::NotifyActorBeginOverlap(AActor* OtherActor)
 		Destroy();
 		return;
 	}
-	
+
+	// HealEffect가 SetByCaller로 만들어져 있어야, 이 투사체의 Heal 값이 실제 회복량에 반영된다.
+	UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(SpecHandle, LBTags::SetByCaller::Heal, Heal);
+
 	AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
 	
 	if (ALB_PlayerState* PS = Cast<ALB_PlayerState>(PlayerCharacter->GetPlayerState()))
