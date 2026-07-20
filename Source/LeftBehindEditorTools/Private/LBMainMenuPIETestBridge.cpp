@@ -22,7 +22,11 @@ namespace
 		}
 
 		FMulticastDelegateProperty* ClickProperty =
-			FindFProperty<FMulticastDelegateProperty>(ButtonWidget->GetClass(), TEXT("OnBTNClicked"));
+			FindFProperty<FMulticastDelegateProperty>(ButtonWidget->GetClass(), TEXT("OnBackBTNPressed"));
+		if (!ClickProperty)
+		{
+			ClickProperty = FindFProperty<FMulticastDelegateProperty>(ButtonWidget->GetClass(), TEXT("OnBTNClicked"));
+		}
 		if (!ClickProperty)
 		{
 			ClickProperty = FindFProperty<FMulticastDelegateProperty>(ButtonWidget->GetClass(), TEXT("OnClicked"));

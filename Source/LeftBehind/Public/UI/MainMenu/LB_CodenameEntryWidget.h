@@ -3,7 +3,6 @@
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
 #include "System/MainMenu/LBMainMenuTypes.h"
-#include "System/Online/LB_OnlineSessionSubsystem.h"
 #include "LB_CodenameEntryWidget.generated.h"
 
 class UEditableText;
@@ -52,11 +51,6 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> ErrorText;
 
-	UPROPERTY(Transient)
-	TObjectPtr<UTextBlock> CharacterCountText;
-
-	bool bRoomNameMode = false;
-
 	UFUNCTION()
 	void HandleConfirmClicked();
 
@@ -72,11 +66,6 @@ private:
 	UFUNCTION()
 	void HandleSubmissionResult(ELBCodenameSubmitResult Result, const FString& SanitizedCodename);
 
-	UFUNCTION()
-	void HandleOnlineStateChanged(ELBOnlineState NewState, const FText& StatusMessage);
-
-	void ConfigureRoomNamePresentation();
-	void UpdateRoomNameCharacterCount(const FString& RawRoomName);
 	void SetErrorText(const FText& Message);
 	FText SubmissionErrorText(ELBCodenameSubmitResult Result) const;
 };
