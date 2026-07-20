@@ -12,6 +12,7 @@
 #include "Engine/LocalPlayer.h"
 #include "Engine/StreamableManager.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "GameFramework/Character.h"
@@ -20,6 +21,9 @@
 #include "InputCoreTypes.h"
 #include "InputMappingContext.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "LevelSequence.h"
+#include "LevelSequenceActor.h"
+#include "LevelSequencePlayer.h"
 
 #include "GameMode/LB_RaidGameMode.h"
 #include "GameState/LB_RaidGameState.h"
@@ -33,6 +37,12 @@
 #include "UI/Popup/LB_RaidPauseMenuWidget.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogLBRaidUI, Log, All);
+DEFINE_LOG_CATEGORY_STATIC(LogLBRaidCamera, Log, All);
+
+namespace
+{
+	constexpr TCHAR LBRaidIntroSequencePath[] = TEXT("/Game/LeftBehind/Maps/Scene/LS_Boss1.LS_Boss1");
+}
 
 ALB_PlayerController::ALB_PlayerController()
 {
@@ -275,6 +285,7 @@ void ALB_PlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 	CancelRaidHUDClassLoad();
 	CancelPauseMenuClassLoad();
+	UnbindRaidIntroSequenceEvents();
 	UnbindRaidGameState();
 	RemoveAppliedInputMappingContexts();
 	RemoveRaidHUD();
@@ -780,10 +791,22 @@ void ALB_PlayerController::InitializeRaidHUD()
 	// UI 클래스 로드가 늦어져도 현재 Result 상태의 입력 모드는 즉시 적용한다.
 	BindRaidGameState();
 	SyncCurrentRaidState();
+	// 컷씬 시작 준비는 Pawn/HUD 생성과 분리한다. 캐릭터 Pawn은 컷씬이 끝난 뒤 서버가 생성한다.
+	ReportRaidClientReady();
 
 	if (IsValid(RaidHUDWidget))
 	{
-		return;
+		// 컷씬 타이머는 Pawn 없이 먼저 표시한다. 이후 캐릭터가 생성되면 PlayerStatus 등
+		// Pawn/ASC 의존 자식 위젯이 정상 바인딩되도록 HUD를 한 번 재생성한다.
+		if (IsValid(GetPawn()) && RaidHUDInitializedPawn.Get() != GetPawn())
+		{
+			RemoveRaidHUD();
+		}
+		else
+		{
+			InitializePauseMenu();
+			return;
+		}
 	}
 
 	if (!AreRaidHUDDependenciesReady())
@@ -806,6 +829,7 @@ void ALB_PlayerController::InitializeRaidHUD()
 		return;
 	}
 	bRaidHUDDependencyWaitLogged = false;
+	InitializePauseMenu();
 
 	if (UWorld* World = GetWorld())
 	{
@@ -852,6 +876,7 @@ void ALB_PlayerController::InitializeRaidHUD()
 		TEXT("Raid HUD attached to local player screen. Controller=%s Widget=%s"),
 		*GetNameSafe(this),
 		*GetNameSafe(RaidHUDWidget));
+	RaidHUDInitializedPawn = GetPawn();
 	// 생성 시점의 현재 상태를 다시 적용해 Result 도중 로드된 HUD도 버튼 hit-test가 가능하게 한다.
 	SyncCurrentRaidState();
 }
@@ -880,14 +905,21 @@ void ALB_PlayerController::ScheduleRaidHUDInitializationRetry()
 	}
 }
 
-bool ALB_PlayerController::AreRaidHUDDependenciesReady() const
+bool ALB_PlayerController::AreRaidClientReadyDependenciesReady() const
 {
 	const UWorld* World = GetWorld();
+	const ULocalPlayer* LocalPlayer = GetLocalPlayer();
 	return IsValid(World)
-		&& IsValid(GetLocalPlayer())
-		&& IsValid(GetPawn())
+		&& IsValid(LocalPlayer)
+		&& LocalPlayer->GetPlayerController(World) == this
 		&& IsValid(GetPlayerState<ALB_PlayerState>())
 		&& IsValid(World->GetGameState<ALB_RaidGameState>());
+}
+
+bool ALB_PlayerController::AreRaidHUDDependenciesReady() const
+{
+	// Countdown UI는 캐릭터 생성 전에도 GameState의 서버 종료 시각만으로 동작한다.
+	return AreRaidClientReadyDependenciesReady();
 }
 
 void ALB_PlayerController::RequestRaidHUDClassAsync()
@@ -961,12 +993,18 @@ void ALB_PlayerController::RemoveRaidHUD()
 		RaidHUDWidget->RemoveFromParent();
 		RaidHUDWidget = nullptr;
 	}
+	RaidHUDInitializedPawn.Reset();
 }
 
 void ALB_PlayerController::InitializePauseMenu()
 {
 	if (bRaidHUDInitializationStopped || GetNetMode() == NM_DedicatedServer || !IsLocalController())
 	{
+		return;
+	}
+	if (!AreRaidHUDDependenciesReady())
+	{
+		ScheduleRaidHUDInitializationRetry();
 		return;
 	}
 
@@ -1257,6 +1295,137 @@ void ALB_PlayerController::RefreshPauseOverlay()
 	}
 }
 
+void ALB_PlayerController::ReportRaidClientReady()
+{
+	if (bRaidClientReadyReported
+		|| GetNetMode() == NM_DedicatedServer
+		|| !IsLocalController()
+		|| !AreRaidClientReadyDependenciesReady())
+	{
+		return;
+	}
+
+	// 서버 재생보다 먼저 종료 델리게이트를 연결해 아주 짧은 카운트다운 설정에서도 복구를 놓치지 않는다.
+	BindRaidIntroSequenceEvents();
+	if (!BoundRaidIntroSequencePlayer.IsValid())
+	{
+		return;
+	}
+	bRaidClientReadyReported = true;
+	ServerNotifyRaidClientReady();
+}
+
+void ALB_PlayerController::BindRaidIntroSequenceEvents()
+{
+	if (!IsLocalController() || !IsValid(GetWorld()))
+	{
+		return;
+	}
+
+	for (TActorIterator<ALevelSequenceActor> It(GetWorld()); It; ++It)
+	{
+		ALevelSequenceActor* SequenceActor = *It;
+		ULevelSequence* Sequence = IsValid(SequenceActor) ? SequenceActor->GetSequence() : nullptr;
+		if (!IsValid(Sequence) || Sequence->GetPathName() != LBRaidIntroSequencePath)
+		{
+			continue;
+		}
+
+		ULevelSequencePlayer* SequencePlayer = SequenceActor->GetSequencePlayer();
+		if (!IsValid(SequencePlayer))
+		{
+			return;
+		}
+
+		if (BoundRaidIntroSequencePlayer.Get() != SequencePlayer)
+		{
+			UnbindRaidIntroSequenceEvents();
+			BoundRaidIntroSequencePlayer = SequencePlayer;
+		}
+		SequencePlayer->OnFinished.AddUniqueDynamic(this, &ThisClass::HandleRaidIntroEnded);
+		SequencePlayer->OnStop.AddUniqueDynamic(this, &ThisClass::HandleRaidIntroEnded);
+		return;
+	}
+
+	UE_LOG(LogLBRaidCamera, Warning, TEXT("Raid intro sequence actor was not found for controller %s."), *GetNameSafe(this));
+}
+
+void ALB_PlayerController::UnbindRaidIntroSequenceEvents()
+{
+	if (ULevelSequencePlayer* SequencePlayer = BoundRaidIntroSequencePlayer.Get())
+	{
+		SequencePlayer->OnFinished.RemoveDynamic(this, &ThisClass::HandleRaidIntroEnded);
+		SequencePlayer->OnStop.RemoveDynamic(this, &ThisClass::HandleRaidIntroEnded);
+	}
+	BoundRaidIntroSequencePlayer.Reset();
+}
+
+void ALB_PlayerController::RestoreGameplayCamera()
+{
+	if (GetNetMode() == NM_DedicatedServer || !IsLocalController())
+	{
+		return;
+	}
+
+	// Battle 상태가 Pawn 복제보다 먼저 도착해도 Sequencer가 건 이동/회전 차단은 즉시 해제한다.
+	SetCinematicMode(false, true, false, true, true);
+	APawn* ControlledPawn = GetPawn();
+	if (!IsValid(ControlledPawn))
+	{
+		UE_LOG(LogLBRaidCamera, Log, TEXT("Gameplay camera restore waiting for Pawn. Controller=%s"), *GetNameSafe(this));
+		return;
+	}
+
+	// Sequencer는 시작 당시의 MainMenu ViewTarget을 캐시할 수 있다. 종료 후에는 현재 Raid Pawn을
+	// 정답으로 강제하고 컷씬이 숨긴 Pawn/이동/회전 입력도 함께 원복한다.
+	ControlledPawn->SetActorHiddenInGame(false);
+	SetViewTarget(ControlledPawn);
+	UE_LOG(
+		LogLBRaidCamera,
+		Log,
+		TEXT("Gameplay camera restored. Controller=%s Pawn=%s"),
+		*GetNameSafe(this),
+		*GetNameSafe(ControlledPawn));
+}
+
+void ALB_PlayerController::HandleRaidIntroEnded()
+{
+	RestoreGameplayCamera();
+}
+
+void ALB_PlayerController::PlayRaidIntroForOwningClient()
+{
+	if (HasAuthority())
+	{
+		ClientPlayRaidIntroSequence();
+	}
+}
+
+void ALB_PlayerController::ClientPlayRaidIntroSequence_Implementation()
+{
+	if (GetNetMode() == NM_DedicatedServer || !IsLocalController())
+	{
+		return;
+	}
+
+	BindRaidIntroSequenceEvents();
+	if (ULevelSequencePlayer* SequencePlayer = BoundRaidIntroSequencePlayer.Get())
+	{
+		if (!SequencePlayer->IsPlaying())
+		{
+			SequencePlayer->SetPlaybackPosition(FMovieSceneSequencePlaybackParams(
+				SequencePlayer->GetStartTime().Time,
+				EUpdatePositionMethod::Jump));
+			SequencePlayer->Play();
+		}
+		UE_LOG(LogLBRaidCamera, Log, TEXT("Raid intro started locally. Controller=%s"), *GetNameSafe(this));
+	}
+	else
+	{
+		UE_LOG(LogLBRaidCamera, Error, TEXT("Raid intro player missing on owning client. Controller=%s"), *GetNameSafe(this));
+	}
+}
+
 void ALB_PlayerController::BindRaidGameState()
 {
 	ALB_RaidGameState* CurrentRaidGameState = GetWorld()
@@ -1324,6 +1493,16 @@ void ALB_PlayerController::ServerActivateSecondary_Implementation()
 	TryActivateSecondary_ServerOnly();
 }
 
+void ALB_PlayerController::ServerNotifyRaidClientReady_Implementation()
+{
+	if (ALB_RaidGameMode* RaidGameMode = GetWorld()
+		? GetWorld()->GetAuthGameMode<ALB_RaidGameMode>()
+		: nullptr)
+	{
+		RaidGameMode->NotifyRaidClientReady(this);
+	}
+}
+
 void ALB_PlayerController::ApplyRaidStatePresentation(ELBRaidState NewState)
 {
 	if (GetNetMode() == NM_DedicatedServer || !IsLocalController())
@@ -1340,6 +1519,11 @@ void ALB_PlayerController::ApplyRaidStatePresentation(ELBRaidState NewState)
 			ClosePauseMenu();
 		}
 		bPauseMenuOpenPending = false;
+	}
+	else if (NewState == ELBRaidState::Battle)
+	{
+		// 시퀀스 종료 복제와 Battle 상태 복제 순서가 바뀌어도 최종 카메라는 항상 소유 Pawn이다.
+		RestoreGameplayCamera();
 	}
 
 	RefreshLocalInputPresentation();

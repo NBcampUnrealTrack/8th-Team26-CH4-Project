@@ -15,6 +15,7 @@ class ALB_RaidGameState;
 class UAbilitySystemComponent;
 class UInputAction;
 class UInputMappingContext;
+class ULevelSequencePlayer;
 class ULB_RaidHUDWidget;
 class ULB_RaidPauseMenuWidget;
 
@@ -33,6 +34,7 @@ class LEFTBEHIND_API ALB_PlayerController : public APlayerController
 
 public:
 	ALB_PlayerController();
+	void PlayRaidIntroForOwningClient();
 
 	// 원격 클라이언트 RPC 없이 이동을 시작할 수 있는 로컬 Listen Host/Standalone인지 반환한다.
 	UFUNCTION(BlueprintPure, Category = "LB|Raid|Network")
@@ -127,6 +129,8 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<ULB_RaidHUDWidget> RaidHUDWidget;
+	// HUD를 생성할 때 소유하던 Pawn. 컷씬 중 nullptr로 먼저 만든 HUD는 Possess 후 재생성한다.
+	TWeakObjectPtr<APawn> RaidHUDInitializedPawn;
 
 	// 전투 HUD와 독립된 전체 화면 액션 메뉴다. 작은 UI만 로컬 클라이언트에서 비동기 로드한다.
 	UPROPERTY(EditDefaultsOnly, Category = "LB|UI|Raid|Pause")
@@ -155,6 +159,10 @@ private:
 	bool bPauseMenuOpenPending = false;
 	bool bGameplayInputContextsSuspended = false;
 	bool bOwnsHostPause = false;
+	bool bRaidClientReadyReported = false;
+
+	// 컷씬 종료/중단 시 stale MainMenu ViewTarget 대신 현재 소유 Pawn을 복구하기 위한 로컬 바인딩.
+	TWeakObjectPtr<ULevelSequencePlayer> BoundRaidIntroSequencePlayer;
 	
 	void Jump();
 	void StopJumping();
@@ -182,6 +190,7 @@ private:
 	
 	void InitializeRaidHUD();
 	void ScheduleRaidHUDInitializationRetry();
+	bool AreRaidClientReadyDependenciesReady() const;
 	bool AreRaidHUDDependenciesReady() const;
 	void RequestRaidHUDClassAsync();
 	void HandleRaidHUDClassLoaded();
@@ -201,6 +210,13 @@ private:
 	void UnbindRaidGameState();
 	void SyncCurrentRaidState();
 	void ApplyRaidStatePresentation(ELBRaidState NewState);
+	void ReportRaidClientReady();
+	void BindRaidIntroSequenceEvents();
+	void UnbindRaidIntroSequenceEvents();
+	void RestoreGameplayCamera();
+
+	UFUNCTION()
+	void HandleRaidIntroEnded();
 
 	UFUNCTION()
 	void HandleRaidStateChanged(ELBRaidState NewState);
@@ -218,5 +234,11 @@ private:
 	
 	UFUNCTION(Server, Reliable)
 	void ServerActivateSecondary();
+
+	UFUNCTION(Server, Reliable)
+	void ServerNotifyRaidClientReady();
+
+	UFUNCTION(Client, Reliable)
+	void ClientPlayRaidIntroSequence();
 	
 };

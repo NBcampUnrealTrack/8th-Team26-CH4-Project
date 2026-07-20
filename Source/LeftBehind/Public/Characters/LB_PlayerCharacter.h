@@ -27,9 +27,11 @@ public:
 	virtual void OnRep_PlayerState() override;
 
 protected:
+	virtual void PostInitializeComponents() override;
 	virtual void HandleDeath() override;
 
 private:
+	void ApplySharedCameraBoomSettings();
 	void InitializeAbilityActorInfo();
 	void BindHealthChangedDelegate();
 
