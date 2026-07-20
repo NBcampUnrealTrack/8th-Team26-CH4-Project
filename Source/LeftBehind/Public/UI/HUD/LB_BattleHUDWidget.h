@@ -15,6 +15,7 @@ class ULB_PlayerStatusWidget;
 class ULB_PartyStatusWidget;
 class ULB_AttributeSet;
 class UAbilitySystemComponent;
+class ULB_CharacterInputWidget;
 
 UCLASS()
 class LEFTBEHIND_API ULB_BattleHUDWidget : public ULB_BaseRaidWidget
@@ -49,6 +50,9 @@ protected:
 
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<ULB_PartyStatusWidget> PartyWidget;
+	
+	UPROPERTY(meta=(BindWidget))
+	TObjectPtr<ULB_CharacterInputWidget> CharacterInputWidget;
 	
 protected:
 	

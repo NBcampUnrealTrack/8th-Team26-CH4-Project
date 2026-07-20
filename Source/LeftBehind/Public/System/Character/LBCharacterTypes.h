@@ -60,6 +60,19 @@ struct FLBRoleData : public FTableRowBase
 	ELBRoleType RoleType = ELBRoleType::DPS;
 };
 
+USTRUCT(BlueprintType)
+struct FLBSkillInfo
+{
+	GENERATED_BODY()
+
+	// 스킬 아이콘 이미지
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	TObjectPtr<UTexture2D> SkillIcon;
+
+	// 입력 키 이미지
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	TObjectPtr<UTexture2D> InputKeyImage;
+};
 
 // 캐릭터 데이터 테이블 행 구조체 -- DT_CharacterData의 Row Type으로 사용
 USTRUCT(BlueprintType)
@@ -71,6 +84,9 @@ struct FLBCharacterData : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	FText DisplayName;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	TArray<FLBSkillInfo> Skills;
+	
 	// 캐릭터 선택창 카드에 표시할 초상화 이미지.
 	// 선택 화면 진입 전까지 고해상도 이미지를 상주시킬 필요가 없어 Soft reference를 유지한다.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
