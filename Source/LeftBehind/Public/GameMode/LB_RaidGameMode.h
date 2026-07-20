@@ -9,8 +9,10 @@
 
 class ALB_RaidGameState;
 class ALB_BossCharacter;
+class ALB_PlayerController;
 class APlayerController;
 class UDataTable;
+class ULevelSequence;
 class UWorld;
 enum class ELBRaidEndReason : uint8;
 struct FStreamableHandle;
@@ -33,13 +35,25 @@ class LEFTBEHIND_API ALB_RaidGameMode : public AGameModeBase
 public:
     ALB_RaidGameMode();
 
+    // 캐릭터 선택 맵이 전달한 파티 인원을 받아 모든 소유 클라이언트 준비 전 조기 시작을 막는다.
+    virtual void InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage) override;
+
     // 레이드 GameState를 초기화하고 설정에 따라 자동 카운트다운을 시작한다.
     virtual void BeginPlay() override;
     
     // 월드 종료 시 타이머, 보스 델리게이트, 비동기 로드 요청을 명시적으로 정리한다.
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
+    // 레이드 입장 중에는 캐릭터 Pawn 생성을 미루고 Battle 진입 뒤 참가시키도록 한다.
+    virtual void HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer) override;
+
     virtual APawn* SpawnDefaultPawnFor_Implementation(AController* NewPlayer, AActor* StartSpot) override;
+
+    // 소유 클라이언트가 레이드 PlayerController/PlayerState/GameState 준비를 마쳤음을 서버에 기록한다.
+    void NotifyRaidClientReady(ALB_PlayerController* ReadyController);
+
+    // 표준 알림이 서버 transition 중 도착한 원격 플레이어의 seamless 교체를 최종 맵에서 복구한다.
+    void RecoverRaidPlayerAfterClientLoaded(APlayerController* LoadedController);
     
     // Waiting 상태에서 Countdown 상태로 전환하고 전투 시작 타이머를 예약한다.
     UFUNCTION(BlueprintCallable, Category = "LB|Raid")
@@ -114,7 +128,15 @@ protected:
 
     // 전투 시작 전 카운트다운 시간.
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Raid|Time", meta = (ClampMin = "0.0"))
-    float CountdownSec = 5.f;
+    float CountdownSec = 13.5f;
+
+    // 모든 클라이언트가 준비된 뒤 서버가 재생할 보스 등장 시퀀스.
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Raid|Cinematic")
+    TSoftObjectPtr<ULevelSequence> RaidIntroSequence;
+
+    // 비정상 클라이언트 하나가 준비 RPC를 보내지 못해 레이드 전체가 영구 정지하지 않도록 하는 상한 시간.
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Raid|Cinematic", meta = (ClampMin = "0.1"))
+    float RaidClientReadyTimeoutSec = 30.f;
 
     // 보스 데이터가 없을 때 사용할 기본 제한 시간.
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Raid|Time", meta = (ClampMin = "0.01"))
@@ -140,6 +162,8 @@ protected:
 
     // 카운트다운 종료 후 StartBattle을 호출하는 타이머.
     FTimerHandle CountdownTimerHandle;
+    // 준비 RPC가 누락되어도 컷씬/카운트다운을 시작하는 안전 타이머.
+    FTimerHandle RaidClientReadyTimeoutTimerHandle;
     // 전투 제한 시간이 끝났을 때 패배 처리를 호출하는 타이머.
     FTimerHandle TimeLimitTimerHandle;
 
@@ -149,8 +173,17 @@ protected:
     // 빠른 연속 클릭이나 중복 콜백이 ServerTravel을 여러 번 시작하지 못하게 한다.
     bool bReturnTravelInProgress = false;
 
-    // 카운트다운 동안 SoftClass를 미리 읽어 전투 시작 순간의 동기 로드 hitch를 줄인다.
+    // 캐릭터 선택 맵을 떠날 때 확정된 파티 인원. 0이면 현재 서버 인원으로 대체한다.
+    int32 ExpectedRaidPlayerCount = 0;
+
+    // 준비 RPC 중복과 컷씬/카운트다운 중복 시작을 막는다.
+    TSet<TWeakObjectPtr<ALB_PlayerController>> RaidReadyControllers;
+    bool bRaidBeginPlayInitialized = false;
+    bool bRaidStartTriggered = false;
+
+    // 컷씬 동안 SoftClass를 미리 읽어 전투 시작 순간의 동기 로드 hitch를 줄인다.
     TSharedPtr<FStreamableHandle> BossClassLoadHandle;
+    TSharedPtr<FStreamableHandle> PlayerClassLoadHandle;
 
     // 현재 월드의 레이드 전용 GameState를 가져온다.
     ALB_RaidGameState* GetLBRaidGameState();
@@ -170,6 +203,15 @@ protected:
     void RequestBossClassPreload(const FLBBossStatsRow& BossRow);
     // 월드 종료 또는 재요청 시 남아 있는 비동기 핸들을 안전하게 해제한다.
     void CancelBossClassPreload();
+    void RequestRaidPlayerClassPreload();
+    void CancelRaidPlayerClassPreload();
+
+    // 준비 완료 인원수를 검사하고 컷씬과 카운트다운을 같은 서버 프레임에 시작한다.
+    void TryStartRaidAfterClientReady();
+    void ForceStartRaidAfterClientReadyTimeout();
+    void ResetRaidIntroSequenceForManualStart();
+    void PlayRaidIntroSequence();
+    bool SpawnRaidPlayersForBattle();
 
     // 카운트다운 종료 후 보스를 스폰하고 Battle 상태로 전환한다.
     void StartBattle();

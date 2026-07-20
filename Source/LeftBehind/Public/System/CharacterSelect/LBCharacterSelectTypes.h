@@ -9,10 +9,13 @@ USTRUCT(BlueprintType)
 struct FLBCharacterSelectPlayerInfo
 {
 	GENERATED_BODY()
-
 	// 코드네임(PlayerState::PlayerName)
 	UPROPERTY(BlueprintReadOnly)
 	FString PlayerName;
+
+	UPROPERTY(BlueprintReadOnly)
+	ELBCharacterID PreviewCharacterID;
+	
 
 	// 선택한 캐릭터
 	UPROPERTY(BlueprintReadOnly)

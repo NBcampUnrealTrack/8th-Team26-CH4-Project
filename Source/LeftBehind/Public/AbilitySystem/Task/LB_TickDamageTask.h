@@ -11,6 +11,8 @@
  * 
  */
 
+
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FTickDamageResultDelegate);
 
 UCLASS()
@@ -34,9 +36,9 @@ public:
 	
 	
 	void HandleDamageableActorsInHitBox();
-	
+	void RemoveRootMotionSource();
 
-	
+
 	UPROPERTY(BlueprintAssignable)
 	FTickDamageResultDelegate OnTaskCompleted;
 	
@@ -59,6 +61,7 @@ private:
 	//현재 위치
 	FVector StartLocation;
 	
+	uint16 ChargeSourceID = 0;
 
 	FLB_AttackConfig AttackConfig;
 	

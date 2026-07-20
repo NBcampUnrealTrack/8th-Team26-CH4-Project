@@ -24,12 +24,23 @@ namespace LBTags
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(JumpSmash);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Summon);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Buff);
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Invincible);
+		}
+		
+		namespace CoolDown
+		{
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(AttackCoolDown);
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(ChargeCoolDown);
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(JumpSmashCoolDown);
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(WideAttackCoolDown);
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(SummonCoolDown);
 		}
 	}
 
 	namespace SetByCaller
 	{
 		UE_DECLARE_GAMEPLAY_TAG_EXTERN(Damage);
+		UE_DECLARE_GAMEPLAY_TAG_EXTERN(Heal);
 	}
 	
 	namespace Events

@@ -291,13 +291,20 @@ bool ALB_CharacterSelectGameMode::StartRaidTravel()
 		return false;
 	}
 
-	World->ServerTravel(RaidPackageName, false);
+	// 레이드 서버가 기존 컨트롤러 수만 보고 너무 일찍 컷씬을 시작하지 않도록
+	// 출발 시점의 파티 인원을 URL 옵션으로 전달한다.
+	const int32 ExpectedRaidPlayers = FMath::Max(1, GetNumPlayers());
+	const FString RaidTravelURL = FString::Printf(
+		TEXT("%s?ExpectedRaidPlayers=%d"),
+		*RaidPackageName,
+		ExpectedRaidPlayers);
+	World->ServerTravel(RaidTravelURL, false);
 	
 	UE_LOG(
 		LogTemp,
 		Log,
 		TEXT("[CharacterSelect] ServerTravel: %s"),
-		*RaidPackageName);
+		*RaidTravelURL);
 	
 	return true;
 }
@@ -370,6 +377,7 @@ FLBCharacterSelectSnapshot ALB_CharacterSelectGameMode::BuildSnapshot(bool bAdva
 			FLBCharacterSelectPlayerInfo Info;
 
 			Info.PlayerName = PS->GetPlayerName();
+			Info.PreviewCharacterID = PS->GetPreviewCharacterID();
 			Info.CharacterID = PS->GetCharacterID();
 			Info.RoleType = PS->GetRoleType();
 			Info.bReady = PS->IsCharacterReady();

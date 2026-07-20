@@ -13,6 +13,9 @@
 class ULB_BossHPWidget;
 class ULB_PlayerStatusWidget;
 class ULB_PartyStatusWidget;
+class ULB_AttributeSet;
+class UAbilitySystemComponent;
+class ULB_CharacterInputWidget;
 
 UCLASS()
 class LEFTBEHIND_API ULB_BattleHUDWidget : public ULB_BaseRaidWidget
@@ -21,8 +24,24 @@ class LEFTBEHIND_API ULB_BattleHUDWidget : public ULB_BaseRaidWidget
 	
 protected:
 
-	virtual void HandleBossHPChanged(float CurrentHP, float MaxHP) override;
+	virtual void NativeConstruct() override;
+	virtual void NativeDestruct() override;
 
+	void BindPlayerAttributes();
+	void UnbindPlayerAttributes();
+
+	void OnHealthChanged(const struct FOnAttributeChangeData& Data);
+
+	virtual void HandleBossHPChanged(float CurrentHP, float MaxHP) override;
+	
+	UFUNCTION(BlueprintImplementableEvent, Category="LB|BattleHUD")
+	void BP_PlayDamageEffect();
+
+	UFUNCTION(BlueprintImplementableEvent, Category="LB|BattleHUD")
+	void BP_PlayHealEffect();
+
+	void ClearDamagePriority();
+	
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<ULB_BossHPWidget> BossHPWidget;
 	
@@ -31,4 +50,21 @@ protected:
 
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<ULB_PartyStatusWidget> PartyWidget;
+	
+	UPROPERTY(meta=(BindWidget))
+	TObjectPtr<ULB_CharacterInputWidget> CharacterInputWidget;
+	
+protected:
+	
+	UPROPERTY()
+	TObjectPtr<UAbilitySystemComponent> CachedASC;
+
+	UPROPERTY()
+	TObjectPtr<ULB_AttributeSet> CachedAttributeSet;
+
+	FDelegateHandle HealthChangedHandle;
+	
+	bool bDamageEffectPlaying = false;
+
+	FTimerHandle DamagePriorityTimer;
 };

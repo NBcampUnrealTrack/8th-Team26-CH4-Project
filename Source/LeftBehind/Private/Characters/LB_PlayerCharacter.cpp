@@ -12,6 +12,12 @@
 #include "GameMode/LB_RaidGameMode.h"
 #include "Player/LB_PlayerState.h"
 
+namespace
+{
+	constexpr float SharedCameraArmLength = 800.f;
+	const FVector SharedCameraTargetOffset(0.f, 60.f, 180.f);
+}
+
 
 // Sets default values
 ALB_PlayerCharacter::ALB_PlayerCharacter()
@@ -36,12 +42,57 @@ ALB_PlayerCharacter::ALB_PlayerCharacter()
 	
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>("CameraBoom");
 	CameraBoom->SetupAttachment(GetRootComponent());
-	CameraBoom->TargetArmLength = 600.f;
+	ApplySharedCameraBoomSettings();
 	CameraBoom->bUsePawnControlRotation = true;
 	
 	FollowCamera = CreateDefaultSubobject<UCameraComponent>("FollowCamera");
 	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
 	FollowCamera->bUsePawnControlRotation = false;
+}
+
+void ALB_PlayerCharacter::PostInitializeComponents()
+{
+	Super::PostInitializeComponents();
+
+	// Camera components are not replicated, so apply the same final settings to every
+	// local character instance after Blueprint component defaults have been loaded.
+	ApplySharedCameraBoomSettings();
+}
+
+void ALB_PlayerCharacter::ApplySharedCameraBoomSettings()
+{
+	if (!IsValid(CameraBoom))
+	{
+		return;
+	}
+
+	CameraBoom->TargetArmLength = SharedCameraArmLength;
+	CameraBoom->TargetOffset = SharedCameraTargetOffset;
+}
+
+void ALB_PlayerCharacter::BeginPlay()
+{
+	Super::BeginPlay();
+	
+	UE_LOG(LogTemp, Warning,
+		TEXT("[Character BeginPlay] %s"),
+		*GetName());
+
+	UE_LOG(LogTemp, Warning,
+		TEXT("  MeshClass = %s"),
+		*GetClass()->GetName());
+
+	UE_LOG(LogTemp, Warning,
+		TEXT("  BoomLength = %.1f"),
+		CameraBoom->TargetArmLength);
+
+	UE_LOG(LogTemp, Warning,
+		TEXT("  BoomRotation = %s"),
+		*CameraBoom->GetRelativeRotation().ToString());
+
+	UE_LOG(LogTemp, Warning,
+		TEXT("  CameraRelative = %s"),
+		*FollowCamera->GetRelativeLocation().ToString());
 }
 
 UAbilitySystemComponent* ALB_PlayerCharacter::GetAbilitySystemComponent() const
@@ -81,6 +132,10 @@ void ALB_PlayerCharacter::OnRep_PlayerState()
 {
 	Super::OnRep_PlayerState();
 
+	UE_LOG(LogTemp, Warning,
+		TEXT("[Character] OnRep_PlayerState %s"),
+		*GetName());
+	
 	InitializeAbilityActorInfo();
 }
 

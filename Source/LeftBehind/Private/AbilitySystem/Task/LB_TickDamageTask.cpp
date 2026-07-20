@@ -4,6 +4,7 @@
 #include "AbilitySystem/Task/LB_TickDamageTask.h"
 
 #include "Characters/LB_PlayerCharacter.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "GameplayTags/LBTags.h"
 #include "Utils/LB_BlueprintLibrary.h"
 
@@ -37,27 +38,40 @@ void ULB_TickDamageTask::Activate()
 
 	StartLocation = GetAvatarActor()->GetActorLocation();
 	CurrentTime = 0.f;
-	
 	bTickingTask = true;
+
+	if (ACharacter* Character = Cast<ACharacter>(GetAvatarActor()))
+	{
+		FVector Direction = (Destination - StartLocation).GetSafeNormal();
+
+		FRootMotionSource_ConstantForce* ChargeForce = new FRootMotionSource_ConstantForce();
+		ChargeForce->InstanceName = FName("LB_ChargeMove");
+		ChargeForce->AccumulateMode = ERootMotionAccumulateMode::Override;
+		ChargeForce->Priority = 5;
+		ChargeForce->Force = Direction * TaskCharingSpeed;
+		ChargeForce->Duration = TaskMaxDuration;
+
+		ChargeSourceID = Character->GetCharacterMovement()->ApplyRootMotionSource(
+			TSharedPtr<FRootMotionSource>(ChargeForce));
+	}
 }
 
 void ULB_TickDamageTask::TickTask(float DeltaTime)
 {
 	Super::TickTask(DeltaTime);
-	UE_LOG(LogTemp, Warning, TEXT("ULB_TickDamageTask Tick Activate"));
-	StartLocation = GetAvatarActor()->GetActorLocation();
-	FVector Direction = (Destination- StartLocation).GetSafeNormal();
-	float RemainingDistance = FVector::Dist(Destination,StartLocation);
+
 	
-	FVector MoveDelta = Direction* TaskCharingSpeed *DeltaTime;
-	FHitResult HitResult;
-	GetAvatarActor()->SetActorLocation(StartLocation+ MoveDelta,false, &HitResult);
-	
+	const FVector CurrentLocation = GetAvatarActor()->GetActorLocation();
+	float RemainingDistance = FVector::Dist(Destination,CurrentLocation);
 	HandleDamageableActorsInHitBox();
+	
+	UE_LOG(LogTemp, Warning, TEXT("[Charge] Remaining=%.1f, CurrentTime=%.2f/%.2f"),
+	RemainingDistance, CurrentTime, TaskMaxDuration);
 	
 	
 	if (RemainingDistance <= MarginDistance)
 	{
+		RemoveRootMotionSource();
 		OnTaskCompleted.Broadcast();
 		EndTask();
 		return;
@@ -66,6 +80,7 @@ void ULB_TickDamageTask::TickTask(float DeltaTime)
 	CurrentTime +=DeltaTime;
 	if (CurrentTime >= TaskMaxDuration)
 	{
+		RemoveRootMotionSource();
 		OnTimeOut.Broadcast();
 		EndTask();
 		return;
@@ -140,4 +155,13 @@ AttackConfig.bDrawHitDebug
 	UE_LOG(LogTemp, Log, TEXT("[LB ChargingAttack] %s hit %d actor(s). Damage=%.1f"), *GetNameSafe(GetAvatarActor()), AppliedCount, AttackConfig.Damage);
 }
 
+void ULB_TickDamageTask::RemoveRootMotionSource()
+{
+	if (ACharacter* Character = Cast<ACharacter>(GetAvatarActor()))
+	{
+		UCharacterMovementComponent* CMC = Character->GetCharacterMovement();
+		CMC->RemoveRootMotionSourceByID(ChargeSourceID);
+		CMC->Velocity = FVector::ZeroVector;
+	}
+}
 

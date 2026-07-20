@@ -18,7 +18,8 @@ public class LeftBehind : ModuleRules
 			"GameplayTags",
 			"NetCore",
 			"AIModule",
-			"UMG"
+			"UMG",
+			"Niagara"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] {
@@ -26,7 +27,9 @@ public class LeftBehind : ModuleRules
 			"OnlineSubsystemUtils",
 			"Slate",
 			"SlateCore",
-			"NavigationSystem"
+			"NavigationSystem",
+			"LevelSequence",
+			"MovieScene"
 		});
 
 		// Uncomment if you are using Slate UI
