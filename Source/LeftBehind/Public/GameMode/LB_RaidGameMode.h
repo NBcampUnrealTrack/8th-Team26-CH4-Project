@@ -114,7 +114,7 @@ protected:
 
     // 전투 시작 전 카운트다운 시간.
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Raid|Time", meta = (ClampMin = "0.0"))
-    float CountdownSec = 5.f;
+    float CountdownSec = 12.5f;
 
     // 보스 데이터가 없을 때 사용할 기본 제한 시간.
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Raid|Time", meta = (ClampMin = "0.01"))
