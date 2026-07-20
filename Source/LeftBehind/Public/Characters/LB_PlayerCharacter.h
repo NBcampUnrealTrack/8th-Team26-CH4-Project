@@ -20,6 +20,7 @@ class LEFTBEHIND_API ALB_PlayerCharacter : public ALB_BaseCharacter
 public:
 	// Sets default values for this character's properties
 	ALB_PlayerCharacter();
+	virtual void BeginPlay() override;
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 	virtual UAttributeSet* GetAttributeSet() const override;
 	virtual void PossessedBy(AController* NewController) override;

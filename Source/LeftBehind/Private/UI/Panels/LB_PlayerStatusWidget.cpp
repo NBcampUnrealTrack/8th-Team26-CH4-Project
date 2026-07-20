@@ -5,6 +5,7 @@
 #include "AbilitySystemComponent.h"
 #include "AbilitySystem/LB_AttributeSet.h"
 #include "Characters/LB_PlayerCharacter.h"
+#include "Player/LB_PlayerState.h"
 
 void ULB_PlayerStatusWidget::NativeConstruct()
 {
@@ -12,6 +13,7 @@ void ULB_PlayerStatusWidget::NativeConstruct()
 	
 	BindPlayerAttributes();
 	RefreshStatus();
+	RefreshPortrait();
 }
 
 void ULB_PlayerStatusWidget::NativeDestruct()
@@ -78,4 +80,40 @@ void ULB_PlayerStatusWidget::RefreshStatus()
 	BP_OnManaChanged(
 		CachedAttributeSet->GetMana(),
 		CachedAttributeSet->GetMaxMana());
+}
+
+void ULB_PlayerStatusWidget::RefreshPortrait()
+{
+	if (!CharacterDataTable)
+	{
+		return;
+	}
+
+	APlayerController* PC = GetOwningPlayer();
+	if (!PC)
+	{
+		return;
+	}
+
+	ALB_PlayerState* PS = PC->GetPlayerState<ALB_PlayerState>();
+	if (!PS)
+	{
+		return;
+	}
+
+	const FString RowName =
+		StaticEnum<ELBCharacterID>()
+		->GetNameStringByValue((int64)PS->GetCharacterID());
+
+	const FLBCharacterData* CharacterData =
+		CharacterDataTable->FindRow<FLBCharacterData>(
+			FName(*RowName),
+			TEXT("PlayerStatus"));
+
+	if (!CharacterData)
+	{
+		return;
+	}
+
+	BP_UpdatePortrait(CharacterData->HUDPortraitImage);
 }

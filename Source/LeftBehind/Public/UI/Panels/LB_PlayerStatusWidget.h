@@ -38,8 +38,16 @@ protected:
 	UFUNCTION(BlueprintImplementableEvent, Category="LB|Player Status")
 	void BP_OnManaChanged(float CurrentMP, float MaxMP);
 
+	UFUNCTION(BlueprintImplementableEvent, Category="LB|Player Status")
+	void BP_UpdatePortrait(UTexture2D* Portrait);
+	
 	// 현재 Attribute 값으로 UI 갱신
 	void RefreshStatus();
+	
+	void RefreshPortrait();
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="LB|Character")
+	TObjectPtr<UDataTable> CharacterDataTable;
 
 private:
 

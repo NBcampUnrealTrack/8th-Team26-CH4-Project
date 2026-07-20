@@ -44,6 +44,31 @@ ALB_PlayerCharacter::ALB_PlayerCharacter()
 	FollowCamera->bUsePawnControlRotation = false;
 }
 
+void ALB_PlayerCharacter::BeginPlay()
+{
+	Super::BeginPlay();
+	
+	UE_LOG(LogTemp, Warning,
+		TEXT("[Character BeginPlay] %s"),
+		*GetName());
+
+	UE_LOG(LogTemp, Warning,
+		TEXT("  MeshClass = %s"),
+		*GetClass()->GetName());
+
+	UE_LOG(LogTemp, Warning,
+		TEXT("  BoomLength = %.1f"),
+		CameraBoom->TargetArmLength);
+
+	UE_LOG(LogTemp, Warning,
+		TEXT("  BoomRotation = %s"),
+		*CameraBoom->GetRelativeRotation().ToString());
+
+	UE_LOG(LogTemp, Warning,
+		TEXT("  CameraRelative = %s"),
+		*FollowCamera->GetRelativeLocation().ToString());
+}
+
 UAbilitySystemComponent* ALB_PlayerCharacter::GetAbilitySystemComponent() const
 {
 	ALB_PlayerState* LBPlayerState = Cast<ALB_PlayerState>(GetPlayerState());
@@ -81,6 +106,10 @@ void ALB_PlayerCharacter::OnRep_PlayerState()
 {
 	Super::OnRep_PlayerState();
 
+	UE_LOG(LogTemp, Warning,
+		TEXT("[Character] OnRep_PlayerState %s"),
+		*GetName());
+	
 	InitializeAbilityActorInfo();
 }
 

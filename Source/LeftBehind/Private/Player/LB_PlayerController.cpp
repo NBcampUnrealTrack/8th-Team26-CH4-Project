@@ -26,7 +26,9 @@
 #include "GameplayTags/LBTags.h"
 #include "Player/LB_PlayerState.h"
 #include "TimerManager.h"
+#include "Camera/CameraComponent.h"
 #include "Characters/LB_BaseCharacter.h"
+#include "GameFramework/SpringArmComponent.h"
 #include "UI/HUD/LB_RaidHUDWidget.h"
 #include "UI/Popup/LB_RaidPauseMenuWidget.h"
 
@@ -295,6 +297,10 @@ void ALB_PlayerController::ReceivedPlayer()
 void ALB_PlayerController::BeginPlayingState()
 {
 	Super::BeginPlayingState();
+	
+	UE_LOG(LogTemp, Warning,
+		TEXT("[Controller] BeginPlayingState Pawn=%s"),
+		*GetNameSafe(GetPawn()));
 
 	// Pawn 전환이 끝난 시점에도 한 번 더 확인한다. InitializeRaidHUD는 중복 생성에 안전하다.
 	InitializeRaidHUD();
@@ -318,6 +324,33 @@ void ALB_PlayerController::AcknowledgePossession(APawn* P)
 
 	// Pawn/PlayerState/ASC가 늦게 준비될 수 있으므로 Possess 이후에도 HUD 생성을 보장한다.
 	InitializeRaidHUD();
+	
+	UE_LOG(LogTemp, Warning,
+	TEXT("[Controller] Possess Controller=%s  Local=%d  Pawn=%s"),
+	*GetName(),
+	IsLocalController(),
+	*GetNameSafe(P));
+	
+	if (ACharacter* LB_Character = Cast<ACharacter>(P))
+	{
+		if (USpringArmComponent* Arm = LB_Character->FindComponentByClass<USpringArmComponent>())
+		{
+			UE_LOG(LogTemp, Warning,
+				TEXT("  SpringArm Length = %.1f"),
+				Arm->TargetArmLength);
+
+			UE_LOG(LogTemp, Warning,
+				TEXT("  SpringArm Rotation = %s"),
+				*Arm->GetRelativeRotation().ToString());
+		}
+
+		if (UCameraComponent* Camera = LB_Character->FindComponentByClass<UCameraComponent>())
+		{
+			UE_LOG(LogTemp, Warning,
+				TEXT("  Camera Relative = %s"),
+				*Camera->GetRelativeLocation().ToString());
+		}
+	}
 }
 
 
