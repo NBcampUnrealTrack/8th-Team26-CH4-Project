@@ -40,6 +40,7 @@ namespace LBTags
 	namespace SetByCaller
 	{
 		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Damage, "LBTags.SetByCaller.Damage", "Runtime damage magnitude for GameplayEffects")
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Heal, "LBTags.SetByCaller.Heal", "Runtime heal magnitude for GameplayEffects")
 	}
 	
 	
