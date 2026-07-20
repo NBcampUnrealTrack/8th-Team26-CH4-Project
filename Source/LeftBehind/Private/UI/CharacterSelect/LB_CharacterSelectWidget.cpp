@@ -241,9 +241,14 @@ void ULB_CharacterSelectWidget::UpdatePartySlots(
 
 		const FLBCharacterData* CharacterData = nullptr;
 
-		if (PlayerInfo.CharacterID != ELBCharacterID::None)
+		ELBCharacterID DisplayCharacter =
+			PlayerInfo.bReady
+			? PlayerInfo.CharacterID
+			: PlayerInfo.PreviewCharacterID;
+
+		if (DisplayCharacter != ELBCharacterID::None)
 		{
-			CharacterData = FindCharacterData(PlayerInfo.CharacterID);
+			CharacterData = FindCharacterData(DisplayCharacter);
 		}
 
 		PartySlots[i]->UpdateSlot(PlayerInfo, CharacterData);
