@@ -46,7 +46,7 @@ namespace
 TSharedRef<SWidget> ULB_MainMenuWaitingWidget::RebuildWidget()
 {
 	TitleFontAsset = LoadObject<UObject>(
-		nullptr, TEXT("/Game/LeftBehind/UI/Assets/Fonts/F_Title.F_Title"));
+		nullptr, TEXT("/Game/LeftBehind/UI/Assets/Fonts/F_Body.F_Body"));
 	BodyFontAsset = LoadObject<UObject>(
 		nullptr, TEXT("/Game/LeftBehind/UI/Assets/Fonts/F_Body.F_Body"));
 	HudNumberFontAsset = LoadObject<UObject>(
@@ -54,7 +54,7 @@ TSharedRef<SWidget> ULB_MainMenuWaitingWidget::RebuildWidget()
 
 	const FSlateFontInfo EyebrowFont = MakeProjectFont(BodyFontAsset, 12.f, TEXT("Bold"), true);
 	const FSlateFontInfo RoomNameFont = MakeProjectFont(TitleFontAsset, 40.f, TEXT("Default"), true);
-	const FSlateFontInfo BodyFont = MakeProjectFont(BodyFontAsset, 15.f, TEXT("Regular"));
+	const FSlateFontInfo BodyFont = MakeProjectFont(BodyFontAsset, 12.f, TEXT("Regular"));
 	const FSlateFontInfo BodyBoldFont = MakeProjectFont(BodyFontAsset, 15.f, TEXT("Bold"), true);
 	const FSlateFontInfo SmallFont = MakeProjectFont(BodyFontAsset, 11.f, TEXT("Medium"));
 	const FSlateFontInfo NumberFont = MakeProjectFont(HudNumberFontAsset, 27.f, TEXT("SemiBold"), true);
@@ -193,7 +193,7 @@ TSharedRef<SWidget> ULB_MainMenuWaitingWidget::RebuildWidget()
 							.ColorAndOpacity(LBMutedTextColor)
 						]
 					]
-					+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 4.f, 0.f, 0.f)
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 7.f, 0.f, 0.f)
 					[
 						SNew(SBox)
 						.HeightOverride(48.f)
@@ -213,7 +213,7 @@ TSharedRef<SWidget> ULB_MainMenuWaitingWidget::RebuildWidget()
 							]
 						]
 					]
-					+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 1.f, 0.f, 10.f)
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 20.f, 0.f, 10.f)
 					[
 						SNew(STextBlock)
 						.Text(LOCTEXT("WaitingRoomSubtitle", "대원들이 준비되면 방장이 사냥을 시작할 수 있습니다."))
@@ -290,7 +290,7 @@ TSharedRef<SWidget> ULB_MainMenuWaitingWidget::RebuildWidget()
 							]
 						]
 					]
-					+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 10.f, 0.f, 0.f)
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 40.f, 0.f, 20.f)
 					[
 						SNew(SVerticalBox)
 						+ SVerticalBox::Slot().AutoHeight()
