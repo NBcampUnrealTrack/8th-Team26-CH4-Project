@@ -41,7 +41,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category="LB|MainMenu|Online")
 	void BeginOnlinePlay();
 
-	/** Opens the existing registration UI in room-name mode. */
+	/** Opens the standalone room-creation screen. */
 	UFUNCTION(BlueprintCallable, Category="LB|MainMenu|Online")
 	void BeginRoomCreation();
 
@@ -49,8 +49,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category="LB|MainMenu|Online")
 	bool SubmitRoomName(const FText& RawRoomName);
 
-	UFUNCTION(BlueprintPure, Category="LB|MainMenu|Online")
-	bool IsRoomNameEntryActive() const;
+	/** Returns from room creation to the room browser unless creation is already in flight. */
+	UFUNCTION(BlueprintCallable, Category="LB|MainMenu|Online")
+	bool CancelRoomCreation();
 
 	UFUNCTION(BlueprintCallable, Category="LB|MainMenu|Name")
 	void SubmitCodename(const FText& RawCodename);
@@ -114,7 +115,7 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category="LB|MainMenu|UI")
 	TSoftClassPtr<UUserWidget> CodenameWidgetClass;
 
-	/** Reuses the codename designer asset as a separate room-name screen instance. */
+	/** Independent native screen used only for room creation. */
 	UPROPERTY(EditDefaultsOnly, Category="LB|MainMenu|UI")
 	TSoftClassPtr<UUserWidget> RoomNameWidgetClass;
 
@@ -135,8 +136,7 @@ private:
 	{
 		None,
 		BeforeOnlinePlay,
-		InRoom,
-		RoomCreation
+		InRoom
 	};
 
 	enum class ECodenameApplyState : uint8
@@ -173,6 +173,7 @@ private:
 	bool bShowRoomEntryAfterMainLoad = false;
 	bool bCachedCodenameAutoSubmitAttempted = false;
 	bool bCancellingCodenameFlow = false;
+	bool bRoomCreationActive = false;
 	ECodenameEntryPurpose CodenameEntryPurpose = ECodenameEntryPurpose::None;
 	ECodenameApplyState CodenameApplyState = ECodenameApplyState::Idle;
 	uint32 NextCodenameRequestId = 0;

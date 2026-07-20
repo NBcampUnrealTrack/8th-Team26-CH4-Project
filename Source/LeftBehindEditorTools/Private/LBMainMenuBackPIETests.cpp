@@ -28,6 +28,7 @@ namespace LBMainMenuBackPIETest
 		WaitForMainMenu,
 		WaitForCodename,
 		WaitForRestoredMainMenu,
+		WaitForRootMenu,
 	};
 
 	struct FState
@@ -241,6 +242,60 @@ namespace LBMainMenuBackPIETest
 						TEXT("The room-entry Back button is visible"),
 						BackButton->GetVisibility(),
 						ESlateVisibility::Visible);
+					if (!ULBMainMenuPIETestBridge::ScheduleWidgetClick(MainMenu, TEXT("BTN_BackBtn")))
+					{
+						Test->AddError(TEXT("Could not schedule the restored room-entry Back button click."));
+						return true;
+					}
+					State->Stage = EStage::WaitForRootMenu;
+					return false;
+				}
+				return true;
+			}
+
+			case EStage::WaitForRootMenu:
+			{
+				ULB_MainMenuRootWidget* MainMenu = FindVisibleWidget<ULB_MainMenuRootWidget>(World, Controller);
+				if (!IsValid(MainMenu))
+				{
+					return false;
+				}
+
+				UWidget* StartPanel = MainMenu->WidgetTree
+					? MainMenu->WidgetTree->FindWidget(TEXT("SB_StartPanel"))
+					: nullptr;
+				UWidget* RootPanel = MainMenu->WidgetTree
+					? MainMenu->WidgetTree->FindWidget(TEXT("SB_RootMenu"))
+					: nullptr;
+				UWidget* BackButton = MainMenu->WidgetTree
+					? MainMenu->WidgetTree->FindWidget(TEXT("BTN_BackBtn"))
+					: nullptr;
+				Test->TestNotNull(TEXT("The final main menu contains SB_StartPanel"), StartPanel);
+				Test->TestNotNull(TEXT("The final main menu contains SB_RootMenu"), RootPanel);
+				Test->TestNotNull(TEXT("The final main menu contains BTN_BackBtn"), BackButton);
+				if (StartPanel && RootPanel && BackButton)
+				{
+					if (StartPanel->GetVisibility() != ESlateVisibility::Hidden
+						|| RootPanel->GetVisibility() != ESlateVisibility::Visible
+						|| BackButton->GetVisibility() != ESlateVisibility::Hidden)
+					{
+						return false;
+					}
+					Test->TestEqual(
+						TEXT("Second Back hides the room-entry panel"),
+						StartPanel->GetVisibility(),
+						ESlateVisibility::Hidden);
+					Test->TestEqual(
+						TEXT("Second Back restores the root menu"),
+						RootPanel->GetVisibility(),
+						ESlateVisibility::Visible);
+					Test->TestTrue(
+						TEXT("The restored root menu is opaque"),
+						RootPanel->GetRenderOpacity() > 0.0f);
+					Test->TestEqual(
+						TEXT("Second Back hides the room-entry Back button"),
+						BackButton->GetVisibility(),
+						ESlateVisibility::Hidden);
 				}
 				return true;
 			}

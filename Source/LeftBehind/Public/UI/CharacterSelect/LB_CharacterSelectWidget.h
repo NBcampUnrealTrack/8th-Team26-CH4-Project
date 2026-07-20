@@ -17,7 +17,7 @@ class UWrapBox;
 class ULB_CharacterCardWidget;
 class UDataTable;
 class ALB_CharacterSelectGameState;
-class UHorizontalBox;
+class UVerticalBox;
 class ULB_CharacterSelectSlotWidget;
 class ALB_CharacterPreview;
 
@@ -53,19 +53,11 @@ protected:
 	// 캐릭터 카드 클릭
 	UFUNCTION()
 	void OnCharacterCardClicked(ELBCharacterID ClickedID);
-	
-	// 상세정보 버튼 클릭
-	UFUNCTION(BlueprintCallable, Category="LB|CharacterSelect")
-	void OnDetailViewClicked();
-	
+
 	// 캐릭터 확정
 	UFUNCTION(BlueprintCallable, Category="LB|CharacterSelect")
 	void OnConfirmCharacterClicked();
-	
-	// 상세 화면에서 기본 화면으로 복귀
-	UFUNCTION(BlueprintCallable, Category="LB|CharacterSelect")
-	void OnBackToBasicClicked();
-	
+
 	// BP 확장지점 ----------------------------------
 	
 	// 카드 생성 완료 후, 카드 등장 애니메이션
@@ -75,15 +67,7 @@ protected:
 	// 3D 프리뷰 갱신, 상세정보 버튼 활성화
 	UFUNCTION(BlueprintImplementableEvent, Category="LB|CharacterSelect")
 	void BP_OnCharacterSelected(ELBCharacterID SelectedID, const FLBCharacterData& Data);
-
-	// 3D 프리뷰 갱신, 대각 와이프 애니메이션, 상세정보 표시
-	UFUNCTION(BlueprintImplementableEvent, Category="LB|CharacterSelect")
-	void BP_OnDetailViewRequested();
-
-	// 역방향 와이프 애니메이션 후, 기본 화면 복귀
-	UFUNCTION(BlueprintImplementableEvent, Category="LB|CharacterSelect")
-	void BP_OnBasicViewRequested();
-
+	
 	UFUNCTION(BlueprintImplementableEvent, Category="LB|CharacterSelect")
 	void BP_OnCharacterConfirmed();
 	
@@ -108,7 +92,7 @@ protected:
 	
 	// 파티원 캐릭터 선택 현황 컨테이너
 	UPROPERTY(meta=(BindWidget))
-	TObjectPtr<UHorizontalBox> HB_PartyStatus;
+	TObjectPtr<UVerticalBox> VB_PartyStatus;
 	
 	// Class Defaults 지정 --------------------------------
 	

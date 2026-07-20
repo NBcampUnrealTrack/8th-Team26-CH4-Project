@@ -11,6 +11,7 @@
 #include "System/Online/LB_OnlineSessionSubsystem.h"
 #include "UI/MainMenu/LB_MainMenuRootWidget.h"
 #include "UI/MainMenu/LB_MultiplayerHubWidget.h"
+#include "UI/MainMenu/LB_RoomCreationWidget.h"
 
 
 DEFINE_LOG_CATEGORY_STATIC(LogLBMainMenuPlayerController, Log, All);
@@ -25,7 +26,7 @@ ALB_MainMenuPlayerController::ALB_MainMenuPlayerController()
 	MultiplayerWidgetClass = ULB_MultiplayerHubWidget::StaticClass();
 	CodenameWidgetClass = TSoftClassPtr<UUserWidget>(FSoftObjectPath(
 		TEXT("/Game/LeftBehind/UI/MainMenu/WBP_CodenameEntry.WBP_CodenameEntry_C")));
-	RoomNameWidgetClass = CodenameWidgetClass;
+	RoomNameWidgetClass = ULB_RoomCreationWidget::StaticClass();
 	CharacterSelectWidgetClass = TSoftClassPtr<UUserWidget>(FSoftObjectPath(
 		TEXT("/Game/LeftBehind/UI/CharacterSelect/WBP_LB_CharacterSelectWidget.WBP_LB_CharacterSelectWidget_C")));
 	WaitingWidgetClass = TSoftClassPtr<UUserWidget>(FSoftObjectPath(
@@ -147,6 +148,7 @@ void ALB_MainMenuPlayerController::PreClientTravel(
 		bIsSeamlessTravel ? 1 : 0,
 		*PendingURL);
 	bCancellingCodenameFlow = true;
+	bRoomCreationActive = false;
 	CodenameEntryPurpose = ECodenameEntryPurpose::None;
 	ResetCodenameSubmissionState();
 	UnbindCodenamePlayerState();
@@ -212,6 +214,7 @@ void ALB_MainMenuPlayerController::BeginOnlinePlay()
 	bOpenMultiplayerAfterSignIn = false;
 	bCachedCodenameAutoSubmitAttempted = false;
 	bCancellingCodenameFlow = false;
+	bRoomCreationActive = false;
 	CodenameEntryPurpose = ECodenameEntryPurpose::BeforeOnlinePlay;
 	ResetCodenameSubmissionState();
 	SetMenuScreen(ELBMainMenuScreen::Codename);
@@ -322,6 +325,7 @@ void ALB_MainMenuPlayerController::ShowRoomEntryScreen()
 	CodenameEntryPurpose = ECodenameEntryPurpose::None;
 	bCachedCodenameAutoSubmitAttempted = false;
 	bCancellingCodenameFlow = false;
+	bRoomCreationActive = false;
 	ResetCodenameSubmissionState();
 	bShowRoomEntryAfterMainLoad = true;
 	SetMenuScreen(ELBMainMenuScreen::Main);
@@ -345,7 +349,8 @@ void ALB_MainMenuPlayerController::BeginRoomCreation()
 	}
 
 	bCancellingCodenameFlow = false;
-	CodenameEntryPurpose = ECodenameEntryPurpose::RoomCreation;
+	bRoomCreationActive = true;
+	CodenameEntryPurpose = ECodenameEntryPurpose::None;
 	ResetCodenameSubmissionState();
 	SetMenuScreen(ELBMainMenuScreen::RoomName);
 }
@@ -354,7 +359,7 @@ bool ALB_MainMenuPlayerController::SubmitRoomName(const FText& RawRoomName)
 {
 	if (!IsLocalController()
 		|| bMenuUITeardown
-		|| CodenameEntryPurpose != ECodenameEntryPurpose::RoomCreation)
+		|| !bRoomCreationActive)
 	{
 		return false;
 	}
@@ -363,12 +368,30 @@ bool ALB_MainMenuPlayerController::SubmitRoomName(const FText& RawRoomName)
 		? GetGameInstance()->GetSubsystem<ULB_OnlineSessionSubsystem>()
 		: nullptr;
 	return IsValid(OnlineSubsystem)
+		&& OnlineSubsystem->GetState() == ELBOnlineState::Ready
 		&& OnlineSubsystem->CreateRoomWithName(RawRoomName.ToString());
 }
 
-bool ALB_MainMenuPlayerController::IsRoomNameEntryActive() const
+bool ALB_MainMenuPlayerController::CancelRoomCreation()
 {
-	return CodenameEntryPurpose == ECodenameEntryPurpose::RoomCreation;
+	if (!IsLocalController() || bMenuUITeardown || !bRoomCreationActive)
+	{
+		return false;
+	}
+
+	if (const ULB_OnlineSessionSubsystem* OnlineSubsystem = GetGameInstance()
+		? GetGameInstance()->GetSubsystem<ULB_OnlineSessionSubsystem>()
+		: nullptr;
+		IsValid(OnlineSubsystem)
+		&& (OnlineSubsystem->GetState() == ELBOnlineState::Creating
+			|| OnlineSubsystem->GetState() == ELBOnlineState::Traveling))
+	{
+		return true;
+	}
+
+	bRoomCreationActive = false;
+	SetMenuScreen(ELBMainMenuScreen::Multiplayer);
+	return true;
 }
 
 void ALB_MainMenuPlayerController::SubmitCodename(const FText& RawCodename)
@@ -476,22 +499,6 @@ bool ALB_MainMenuPlayerController::CancelCodenameEntry()
 		ShowRoomEntryScreen();
 		return true;
 	}
-	if (CodenameEntryPurpose == ECodenameEntryPurpose::RoomCreation)
-	{
-		if (ULB_OnlineSessionSubsystem* OnlineSubsystem = GetGameInstance()
-			? GetGameInstance()->GetSubsystem<ULB_OnlineSessionSubsystem>()
-			: nullptr;
-			IsValid(OnlineSubsystem) && OnlineSubsystem->GetState() == ELBOnlineState::Creating)
-		{
-			return true;
-		}
-
-		CodenameEntryPurpose = ECodenameEntryPurpose::None;
-		ResetCodenameSubmissionState();
-		SetMenuScreen(ELBMainMenuScreen::Multiplayer);
-		return true;
-	}
-
 	ULB_OnlineSessionSubsystem* OnlineSubsystem = GetGameInstance()
 		? GetGameInstance()->GetSubsystem<ULB_OnlineSessionSubsystem>()
 		: nullptr;
@@ -642,6 +649,7 @@ void ALB_MainMenuPlayerController::TeardownMenuUI()
 	DesiredScreen = ELBMainMenuScreen::None;
 	VisibleScreen = ELBMainMenuScreen::None;
 	bShowRoomEntryAfterMainLoad = false;
+	bRoomCreationActive = false;
 	CodenameEntryPurpose = ECodenameEntryPurpose::None;
 	bCachedCodenameAutoSubmitAttempted = false;
 	ResetCodenameSubmissionState();
@@ -964,6 +972,7 @@ void ALB_MainMenuPlayerController::ReconcileInRoomCodenameFlow()
 	{
 		return;
 	}
+	bRoomCreationActive = false;
 
 	const ALB_PlayerState* LBPlayerState = GetPlayerState<ALB_PlayerState>();
 	if (IsValid(LBPlayerState) && LBPlayerState->IsCodenameConfirmed())
@@ -1094,11 +1103,13 @@ void ALB_MainMenuPlayerController::ShowInitialOnlineRoomScreen()
 		: nullptr;
 	if (!IsValid(OnlineSubsystem))
 	{
+		bRoomCreationActive = false;
 		SetMenuScreen(ELBMainMenuScreen::Main);
 		return;
 	}
 	if (!OnlineSubsystem->IsInRoom())
 	{
+		bRoomCreationActive = false;
 		CodenameEntryPurpose = ECodenameEntryPurpose::None;
 		bCachedCodenameAutoSubmitAttempted = false;
 		ResetCodenameSubmissionState();
@@ -1132,12 +1143,14 @@ void ALB_MainMenuPlayerController::HandleOnlineStateChanged(
 	{
 		bOpenMultiplayerAfterSignIn = false;
 		bCancellingCodenameFlow = false;
+		bRoomCreationActive = false;
 		ShowInitialOnlineRoomScreen();
 		return;
 	}
 	if (NewState == ELBOnlineState::Leaving)
 	{
 		bCancellingCodenameFlow = true;
+		bRoomCreationActive = false;
 		CodenameEntryPurpose = ECodenameEntryPurpose::None;
 		ResetCodenameSubmissionState();
 		return;

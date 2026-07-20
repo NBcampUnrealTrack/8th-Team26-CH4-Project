@@ -2,7 +2,6 @@
 
 
 #include "UI/CharacterSelect/LB_CharacterSelectWidget.h"
-
 #include "EngineUtils.h"
 #include "Components/WrapBox.h"
 #include "UI/CharacterSelect/LB_CharacterCardWidget.h"
@@ -10,7 +9,7 @@
 #include "Engine/TargetPoint.h"
 #include "GameState/LB_CharacterSelectGameState.h"
 #include "Player/LB_MainMenuPlayerController.h"
-#include "Components/HorizontalBox.h"
+#include "Components/VerticalBox.h"
 #include "UI/CharacterSelect/LB_CharacterPreview.h"
 #include "UI/CharacterSelect/LB_CharacterSelectSlotWidget.h"
 
@@ -192,7 +191,7 @@ void ULB_CharacterSelectWidget::ApplySnapshot(const FLBCharacterSelectSnapshot& 
 void ULB_CharacterSelectWidget::UpdatePartySlots(
 	const FLBCharacterSelectSnapshot& Snapshot)
 {
-	if (!HB_PartyStatus ||
+	if (!VB_PartyStatus ||
 		!PartySlotWidgetClass ||
 		!CharacterDataTable)
 	{
@@ -215,7 +214,7 @@ void ULB_CharacterSelectWidget::UpdatePartySlots(
 		}
 
 		PartySlots.Add(NewSlot);
-		HB_PartyStatus->AddChild(NewSlot);
+		VB_PartyStatus->AddChild(NewSlot);
 	}
 
 	// 플레이어 수에 맞게 슬롯 표시/숨김
@@ -331,13 +330,6 @@ void ULB_CharacterSelectWidget::OnCharacterCardClicked(ELBCharacterID ClickedID)
 	BP_OnCharacterSelected(SelectedCharacterID, *Data);
 }
 
-void ULB_CharacterSelectWidget::OnDetailViewClicked()
-{
-	if (SelectedCharacterID == ELBCharacterID::None) return;
-	
-	BP_OnDetailViewRequested();
-}
-
 void ULB_CharacterSelectWidget::OnConfirmCharacterClicked()
 {
 	if (SelectedCharacterID == ELBCharacterID::None) return;
@@ -358,10 +350,6 @@ void ULB_CharacterSelectWidget::OnConfirmCharacterClicked()
 	// 모두 캐릭터를 셀렉하면 사냥 시작
 }
 
-void ULB_CharacterSelectWidget::OnBackToBasicClicked()
-{
-	BP_OnBasicViewRequested();
-}
 
 void ULB_CharacterSelectWidget::InitLocalCharacterPreview()
 {
