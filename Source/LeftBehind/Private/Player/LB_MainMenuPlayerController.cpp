@@ -25,7 +25,7 @@ DEFINE_LOG_CATEGORY_STATIC(LogLBMainMenuPlayerController, Log, All);
 
 namespace
 {
-	constexpr TCHAR LBRaidIntroSequencePath[] = TEXT("/Game/LeftBehind/Maps/Scene/LS_Boss1.LS_Boss1");
+	constexpr TCHAR LBMainMenuRaidIntroSequencePath[] = TEXT("/Game/LeftBehind/Maps/Scene/LS_Boss1.LS_Boss1");
 
 	void LBStopRaidIntroAutoPlay(UWorld* World)
 	{
@@ -38,7 +38,7 @@ namespace
 		{
 			ALevelSequenceActor* SequenceActor = *It;
 			ULevelSequence* Sequence = IsValid(SequenceActor) ? SequenceActor->GetSequence() : nullptr;
-			if (!IsValid(Sequence) || Sequence->GetPathName() != LBRaidIntroSequencePath)
+		if (!IsValid(Sequence) || Sequence->GetPathName() != LBMainMenuRaidIntroSequencePath)
 			{
 				continue;
 			}
