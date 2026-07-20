@@ -50,6 +50,7 @@ namespace
 void ULB_MainMenuRootWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
+	bRoomEntryUsesNativeBack = false;
 
 	StartButton = WidgetTree ? WidgetTree->FindWidget(TEXT("BTN_Start_Start")) : nullptr;
 	BackButton = WidgetTree ? WidgetTree->FindWidget(TEXT("BTN_BackBtn")) : nullptr;
@@ -79,6 +80,7 @@ void ULB_MainMenuRootWidget::NativeDestruct()
 	}
 	StartButton = nullptr;
 	BackButton = nullptr;
+	bRoomEntryUsesNativeBack = false;
 	Super::NativeDestruct();
 }
 
@@ -105,6 +107,13 @@ void ULB_MainMenuRootWidget::HandleStartClicked()
 
 void ULB_MainMenuRootWidget::HandleBackClicked()
 {
+	if (bRoomEntryUsesNativeBack)
+	{
+		bRoomEntryUsesNativeBack = false;
+		ShowRootPanelFallback();
+		return;
+	}
+
 	if (!RunBlueprintTransition(TEXT("GoBack")))
 	{
 		ShowRootPanelFallback();
@@ -114,7 +123,8 @@ void ULB_MainMenuRootWidget::HandleBackClicked()
 void ULB_MainMenuRootWidget::ShowRoomEntryPanel()
 {
 	ResetOnlinePlayFlag();
-	if (!RunBlueprintTransition(TEXT("BackToStartPanel")))
+	bRoomEntryUsesNativeBack = !RunBlueprintTransition(TEXT("BackToStartPanel"));
+	if (bRoomEntryUsesNativeBack)
 	{
 		ShowRoomEntryPanelFallback();
 	}
@@ -134,6 +144,7 @@ bool ULB_MainMenuRootWidget::RunBlueprintTransition(const FName FunctionName)
 
 void ULB_MainMenuRootWidget::ShowRootPanelFallback()
 {
+	bRoomEntryUsesNativeBack = false;
 	if (IsValid(BackButton))
 	{
 		BackButton->SetVisibility(ESlateVisibility::Hidden);
@@ -159,6 +170,8 @@ void ULB_MainMenuRootWidget::ShowRootPanelFallback()
 	if (UWidget* RootPanel = WidgetTree ? WidgetTree->FindWidget(TEXT("SB_RootMenu")) : nullptr)
 	{
 		RootPanel->SetVisibility(ESlateVisibility::Visible);
+		RootPanel->SetRenderOpacity(1.0f);
+		RootPanel->SetRenderTransform(FWidgetTransform());
 	}
 }
 
@@ -171,9 +184,14 @@ void ULB_MainMenuRootWidget::ShowRoomEntryPanelFallback()
 	if (UWidget* StartPanel = WidgetTree ? WidgetTree->FindWidget(TEXT("SB_StartPanel")) : nullptr)
 	{
 		StartPanel->SetVisibility(ESlateVisibility::Visible);
+		StartPanel->SetRenderOpacity(1.0f);
+		StartPanel->SetRenderTransform(FWidgetTransform());
 	}
 	if (IsValid(BackButton))
 	{
 		BackButton->SetVisibility(ESlateVisibility::Visible);
+		BackButton->SetIsEnabled(true);
+		BackButton->SetRenderOpacity(1.0f);
+		BackButton->SetRenderTransform(FWidgetTransform());
 	}
 }

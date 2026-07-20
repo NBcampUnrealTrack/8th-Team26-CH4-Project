@@ -2,14 +2,12 @@
 
 #include "Engine/EngineBaseTypes.h"
 #include "Engine/GameInstance.h"
-#include "Misc/AutomationTest.h"
-#include "Misc/ConfigCacheIni.h"
 #include "Blueprint/WidgetBlueprintGeneratedClass.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/EditableText.h"
-#include "Components/PanelWidget.h"
-#include "Components/TextBlock.h"
 #include "Components/Widget.h"
+#include "Misc/AutomationTest.h"
+#include "Misc/ConfigCacheIni.h"
 #include "UObject/UnrealType.h"
 #include "UObject/UObjectGlobals.h"
 
@@ -25,6 +23,7 @@
 #include "UI/MainMenu/LB_CodenameEntryWidget.h"
 #include "UI/MainMenu/LB_MainMenuWaitingWidget.h"
 #include "UI/MainMenu/LB_MultiplayerHubWidget.h"
+#include "UI/MainMenu/LB_RoomCreationWidget.h"
 
 namespace
 {
@@ -258,9 +257,15 @@ bool FLBMainMenuNativeDefaultsTest::RunTest(const FString& Parameters)
 	TestNotNull(
 		TEXT("The room-name entry screen can submit its draft"),
 		ALB_MainMenuPlayerController::StaticClass()->FindFunctionByName(TEXT("SubmitRoomName")));
+	TestNotNull(
+		TEXT("The room-name entry screen has an independent cancel path"),
+		ALB_MainMenuPlayerController::StaticClass()->FindFunctionByName(TEXT("CancelRoomCreation")));
 	TestFalse(
 		TEXT("The native multiplayer hub can be instantiated without a Blueprint asset"),
 		ULB_MultiplayerHubWidget::StaticClass()->HasAnyClassFlags(CLASS_Abstract));
+	TestFalse(
+		TEXT("The standalone room-creation screen can be instantiated without a Blueprint asset"),
+		ULB_RoomCreationWidget::StaticClass()->HasAnyClassFlags(CLASS_Abstract));
 	TestNotNull(
 		TEXT("The legacy CreateRoom Blueprint entry point remains available"),
 		ULB_OnlineSessionSubsystem::StaticClass()->FindFunctionByName(TEXT("CreateRoom")));
@@ -451,71 +456,85 @@ bool FLBRoomNameWidgetContractTest::RunTest(const FString& Parameters)
 {
 	(void)Parameters;
 
+	const UClass* RoomCreationClass = ULB_RoomCreationWidget::StaticClass();
+	TestFalse(
+		TEXT("The room-creation screen is a concrete native widget"),
+		RoomCreationClass->HasAnyClassFlags(CLASS_Abstract));
+	TestTrue(
+		TEXT("Room creation no longer uses the codename widget class"),
+		RoomCreationClass != ULB_CodenameEntryWidget::StaticClass());
+
+	const FSoftClassProperty* RoomNameClassProperty = FindFProperty<FSoftClassProperty>(
+		ALB_MainMenuPlayerController::StaticClass(),
+		TEXT("RoomNameWidgetClass"));
+	TestNotNull(
+		TEXT("The controller keeps an explicit room-creation widget class slot"),
+		RoomNameClassProperty);
+	if (!RoomNameClassProperty)
+	{
+		return false;
+	}
+
+	const TSoftClassPtr<UUserWidget>* ConfiguredRoomClass =
+		RoomNameClassProperty->ContainerPtrToValuePtr<TSoftClassPtr<UUserWidget>>(
+			GetDefault<ALB_MainMenuPlayerController>());
+	TestNotNull(TEXT("The room-creation widget class is configured"), ConfiguredRoomClass);
+	if (!ConfiguredRoomClass)
+	{
+		return false;
+	}
+	TestTrue(
+		TEXT("The controller routes RoomName to the standalone native screen"),
+		ConfiguredRoomClass->Get() == RoomCreationClass);
+	TestTrue(
+		TEXT("The room-creation class has no codename designer-asset dependency"),
+		!ConfiguredRoomClass->ToSoftObjectPath().ToString().Contains(TEXT("WBP_CodenameEntry")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FLBCodenameWidgetContractTest,
+	"LeftBehind.MainMenu.Network.CodenameWidgetContract",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FLBCodenameWidgetContractTest::RunTest(const FString& Parameters)
+{
+	(void)Parameters;
+
 	const TCHAR* WidgetClassPath =
 		TEXT("/Game/LeftBehind/UI/MainMenu/WBP_CodenameEntry.WBP_CodenameEntry_C");
 	UClass* WidgetClass = LoadClass<ULB_CodenameEntryWidget>(nullptr, WidgetClassPath);
-	TestNotNull(TEXT("The existing codename-entry designer asset loads"), WidgetClass);
+	TestNotNull(TEXT("The dedicated codename designer asset still loads"), WidgetClass);
 	if (!WidgetClass)
 	{
 		return false;
 	}
 
 	TestTrue(
-		TEXT("The designer asset directly uses the native reusable entry widget"),
+		TEXT("The codename asset keeps its native codename-only behavior"),
 		WidgetClass->GetSuperClass() == ULB_CodenameEntryWidget::StaticClass());
 	const UWidgetBlueprintGeneratedClass* GeneratedClass =
 		Cast<UWidgetBlueprintGeneratedClass>(WidgetClass);
-	TestNotNull(TEXT("The entry asset is a Widget Blueprint generated class"), GeneratedClass);
+	TestNotNull(TEXT("The codename asset is a Widget Blueprint generated class"), GeneratedClass);
 	if (!GeneratedClass)
 	{
 		return false;
 	}
 
 	const UWidgetTree* WidgetTree = GeneratedClass->GetWidgetTreeArchetype();
-	TestNotNull(TEXT("The entry asset owns a widget tree"), WidgetTree);
+	TestNotNull(TEXT("The codename asset owns a widget tree"), WidgetTree);
 	if (!WidgetTree)
 	{
 		return false;
 	}
-	TestNotNull(
-		TEXT("The entry root can host the native validation message"),
-		Cast<UPanelWidget>(WidgetTree->RootWidget));
-
-	TestNotNull(
-		TEXT("Room-name mode reuses ETB_Name"),
-		Cast<UEditableText>(WidgetTree->FindWidget(TEXT("ETB_Name"))));
-	TestNotNull(
-		TEXT("Room-name mode reuses TXT_CharCount"),
-		Cast<UTextBlock>(WidgetTree->FindWidget(TEXT("TXT_CharCount"))));
-	for (const FName TextWidgetName : {
-		FName(TEXT("TextBlock_31")),
-		FName(TEXT("TextBlock_32")),
-		FName(TEXT("TextBlock_33")),
-		FName(TEXT("TextBlock_34")),
-		FName(TEXT("TXT_Label_2")),
-		FName(TEXT("TXT_Label_3")),
-		FName(TEXT("TXT_Back"))})
-	{
-		TestNotNull(
-			*FString::Printf(TEXT("Room-name mode reuses %s"), *TextWidgetName.ToString()),
-			Cast<UTextBlock>(WidgetTree->FindWidget(TextWidgetName)));
-	}
 
 	UWidget* ConfirmButton = WidgetTree->FindWidget(TEXT("BTN_Confirm"));
 	UWidget* BackButton = WidgetTree->FindWidget(TEXT("BTN_CodeName_Back"));
-	TestNotNull(TEXT("Room-name mode reuses BTN_Confirm"), ConfirmButton);
-	TestNotNull(TEXT("Room-name mode reuses BTN_CodeName_Back"), BackButton);
-
-	const UClass* PrimaryButtonClass = LoadClass<UWidget>(
-		nullptr,
-		TEXT("/Game/LeftBehind/UI/SubWidgets/WBP_Common_ButtonPrimary.WBP_Common_ButtonPrimary_C"));
-	TestNotNull(TEXT("The existing common primary button class loads"), PrimaryButtonClass);
-	if (PrimaryButtonClass && ConfirmButton)
-	{
-		TestTrue(
-			TEXT("The create-room action retains the common primary button styling"),
-			ConfirmButton->GetClass()->IsChildOf(PrimaryButtonClass));
-	}
+	TestNotNull(
+		TEXT("The codename asset keeps ETB_Name"),
+		Cast<UEditableText>(WidgetTree->FindWidget(TEXT("ETB_Name"))));
+	TestNotNull(TEXT("The codename asset keeps BTN_Confirm"), ConfirmButton);
+	TestNotNull(TEXT("The codename asset keeps BTN_CodeName_Back"), BackButton);
 
 	const auto HasSupportedClickDelegate = [](const UWidget* Widget)
 	{

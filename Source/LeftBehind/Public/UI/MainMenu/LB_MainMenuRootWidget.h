@@ -47,4 +47,5 @@ private:
 	void ShowRoomEntryPanelFallback();
 	
 	bool bOnlinePlayRequested = false;
+	bool bRoomEntryUsesNativeBack = false;
 };
