@@ -42,18 +42,18 @@ namespace
 TSharedRef<SWidget> ULB_RoomCreationWidget::RebuildWidget()
 {
 	TitleFontAsset = LoadObject<UObject>(
-		nullptr, TEXT("/Game/LeftBehind/UI/Assets/Fonts/F_Title.F_Title"));
+		nullptr, TEXT("/Game/LeftBehind/UI/Assets/Fonts/F_Body.F_Body"));
 	BodyFontAsset = LoadObject<UObject>(
 		nullptr, TEXT("/Game/LeftBehind/UI/Assets/Fonts/F_Body.F_Body"));
 
 	const FSlateFontInfo EyebrowFont = MakeRoomCreationFont(BodyFontAsset, 12.f, TEXT("Bold"), true);
-	const FSlateFontInfo TitleFont = MakeRoomCreationFont(TitleFontAsset, 44.f, TEXT("Default"), true);
-	const FSlateFontInfo SectionFont = MakeRoomCreationFont(BodyFontAsset, 14.f, TEXT("Bold"), true);
-	const FSlateFontInfo BodyFont = MakeRoomCreationFont(BodyFontAsset, 15.f, TEXT("Regular"));
-	const FSlateFontInfo BodyBoldFont = MakeRoomCreationFont(BodyFontAsset, 16.f, TEXT("Bold"), true);
-	const FSlateFontInfo InputFont = MakeRoomCreationFont(BodyFontAsset, 21.f, TEXT("Medium"));
+	const FSlateFontInfo TitleFont = MakeRoomCreationFont(TitleFontAsset, 44.f, TEXT("Bold"), true);
+	const FSlateFontInfo SectionFont = MakeRoomCreationFont(BodyFontAsset, 13.f, TEXT("Bold"), true);
+	const FSlateFontInfo BodyFont = MakeRoomCreationFont(BodyFontAsset, 11.f, TEXT("Regular"));
+	const FSlateFontInfo BodyBoldFont = MakeRoomCreationFont(BodyFontAsset, 13.f, TEXT("Bold"), true);
+	const FSlateFontInfo InputFont = MakeRoomCreationFont(BodyFontAsset, 12.f, TEXT("Medium"));
 	const FSlateFontInfo SmallFont = MakeRoomCreationFont(BodyFontAsset, 11.f, TEXT("Medium"));
-	const FSlateFontInfo PreviewFont = MakeRoomCreationFont(TitleFontAsset, 28.f, TEXT("Default"), true);
+	const FSlateFontInfo PreviewFont = MakeRoomCreationFont(TitleFontAsset, 20.f, TEXT("Default"), true);
 
 	PanelBrush = MakeShared<FSlateRoundedBoxBrush>(
 		LBRoomPanelColor, 8.f, FLinearColor(0.28f, 0.18f, 0.12f, 0.86f), 1.f);
@@ -167,15 +167,13 @@ TSharedRef<SWidget> ULB_RoomCreationWidget::RebuildWidget()
 										.ColorAndOpacity(LBRoomAccentColor)
 									]
 								]
-								+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 22.f, 0.f, 0.f)
+								+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 12.f, 0.f, 0.f)
 								[
 									SNew(STextBlock)
 									.Text(LOCTEXT("RoomSetupTitle", "작전실\n개설"))
 									.Font(TitleFont)
 									.ColorAndOpacity(LBRoomTextColor)
 									.LineHeightPercentage(0.86f)
-									.ShadowOffset(FVector2D(0.f, 2.f))
-									.ShadowColorAndOpacity(FLinearColor(0.f, 0.f, 0.f, 0.75f))
 								]
 								+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 20.f, 0.f, 0.f)
 								[
@@ -187,7 +185,7 @@ TSharedRef<SWidget> ULB_RoomCreationWidget::RebuildWidget()
 									.ColorAndOpacity(LBRoomMutedTextColor)
 									.AutoWrapText(true)
 								]
-								+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 34.f, 0.f, 12.f)
+								+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 40.f, 0.f, 12.f)
 								[
 									SNew(STextBlock)
 									.Text(LOCTEXT("FixedRules", "FIXED PARAMETERS"))
