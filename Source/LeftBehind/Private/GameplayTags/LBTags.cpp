@@ -19,13 +19,23 @@ namespace LBTags
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(JumpSmash, "LBTags.LBAbilities.Enemy.JumpSmash", "Enemy JumpSmash Attack Tag");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Summon, "LBTags.LBAbilities.Enemy.Summon", "Enemy Summon Tag");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Buff, "LBTags.LBAbilities.Enemy.Buff", "Enemy Buff Tag");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Invincible, "LBTags.LBAbilities.Enemy.Invincible", "Enemy do not apply Damage for Phase change");
 			
 
 		}
 
-		
+		namespace CoolDown
+		{
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(AttackCoolDown, "LBTags.LBAbilities.CoolDown.Attack", "Enemy Attack CoolDown Tag");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(SummonCoolDown, "LBTags.LBAbilities.CoolDown.Summon", "Enemy Summon CoolDown Tag");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(ChargeCoolDown, "LBTags.LBAbilities.CoolDown.Charge", "Enemy Charge Attack CoolDown Tag");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(JumpSmashCoolDown, "LBTags.LBAbilities.CoolDown.JumpSmash", "Enemy JumpSmash Attack CoolDown Tag");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(WideAttackCoolDown, "LBTags.LBAbilities.CoolDown.WideAttack", "Enemy Wide Attack CoolDown Tag");
+		}
 
 	}
+	
+
 
 	namespace SetByCaller
 	{

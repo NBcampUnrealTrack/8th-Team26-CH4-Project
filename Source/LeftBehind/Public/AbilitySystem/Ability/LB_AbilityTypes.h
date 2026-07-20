@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "LB_AbilityTypes.generated.h"
 
+class UCurveVector;
 class ALB_EnemyCharacter;
 class UGameplayEffect;
 /**
@@ -69,3 +70,31 @@ struct FLB_SummonSpawnParams
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "LB|Attack")
 	int32 MaxActiveMinions = 3;
 };
+
+USTRUCT(BlueprintType)
+struct FLB_RootMotionJumpForceParams
+{
+	GENERATED_BODY()
+	
+	//점프하는 거리
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "RootMotion")
+	float Distance = 600.f;
+	// 점프하는 노래
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "RootMotion")
+	float Height = 300.f;
+	// 체공하는 최종 시간
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "RootMotion")
+	float Duration = 0.8f;
+	//true 라면 task가 Finsh() 사용하고 false라면 Duration이 초과될시 다 종료
+	
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "RootMotion")
+	bool bFinishOnLanded = true;
+	//정규화 시간 에 대한 위치 오프셋 정의
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RootMotion")
+	TObjectPtr<UCurveVector> PathOffsetCurve = nullptr;
+	//TimeMapping Curve를 작성 해 시간 대비 위치를 조정할 수 있다.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RootMotion")
+	TObjectPtr<UCurveFloat> TimeMappingCurve = nullptr;
+};
+

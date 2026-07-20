@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Abilities/GameplayAbility.h"
 #include "AbilitySystem/Ability/LB_AbilityTypes.h"
+#include "AbilitySystem/Ability/LB_GameplayAbility.h"
 #include "LB_BossChargeAbility.generated.h"
 
 
@@ -13,7 +14,7 @@ class ALB_TelegraphIndicator;
  * 
  */
 UCLASS()
-class LEFTBEHIND_API ULB_BossChargeAbility : public UGameplayAbility
+class LEFTBEHIND_API ULB_BossChargeAbility : public ULB_GameplayAbility
 {
 	GENERATED_BODY()
 	

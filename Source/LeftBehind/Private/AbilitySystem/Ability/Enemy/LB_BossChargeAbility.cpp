@@ -73,6 +73,7 @@ void ULB_BossChargeAbility::ActivateAbility(const FGameplayAbilitySpecHandle Han
 		{
 			FActorSpawnParameters IndicatorSpawnParams;
 			FVector SpawnLocation = AvatarActor->GetActorLocation();
+			SpawnLocation.Z =0;
 			FRotator SpawnRotation = AvatarActor->GetActorRotation();
 			if (ALB_TelegraphIndicator* Indicator = GetWorld()->SpawnActor<ALB_TelegraphIndicator>(
 				IndicatorClass, SpawnLocation, SpawnRotation, IndicatorSpawnParams))
@@ -151,7 +152,7 @@ void ULB_BossChargeAbility::StartCharge()
 		OnAbilityCancelled();
 	}
 	
-	float MaxChargingTime = IsValid(PrimaryMontage) ? PrimaryMontage->GetPlayLength() : 3.0f;
+	float MaxChargingTime = IsValid(PrimaryMontage) ? PrimaryMontage->GetPlayLength() + 0.5f : 3.0f;
 	
 	FVector Destination = AvatarActor->GetActorLocation() + AvatarActor->GetActorForwardVector()* ChargingDistance;
 	ULB_TickDamageTask* TickDamageTask = ULB_TickDamageTask::CreateTickDamageTask(this,Destination, ChargingSpeed,MaxChargingTime,AttackConfig);

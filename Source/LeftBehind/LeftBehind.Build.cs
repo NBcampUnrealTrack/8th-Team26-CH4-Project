@@ -18,7 +18,8 @@ public class LeftBehind : ModuleRules
 			"GameplayTags",
 			"NetCore",
 			"AIModule",
-			"UMG"
+			"UMG",
+			"Niagara"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] {

@@ -27,6 +27,9 @@ EBTNodeResult::Type ULB_BTT_MoveToTarget::ExecuteTask(UBehaviorTreeComponent& Ow
 	BB->SetValueAsFloat(FName("AttackRange"),BaseCharacter->MeleeDistance);
 	BB->SetValueAsFloat(FName("WideAttackRange"),BaseCharacter->WideAttackTrigger);
 	
+	AIController->SetFocus(Target,EAIFocusPriority::Gameplay);
+	AIController->SetFocalPoint(Target->GetActorLocation(),EAIFocusPriority::Gameplay);
+	
 
 	
 	

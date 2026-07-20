@@ -18,6 +18,10 @@ void ALB_TelegraphIndicator::SetAsCircle(float Radius)
 {
 	Decal->SetDecalMaterial(CircleMaterial); // 원형 텍스처 머티리얼
 	Decal->DecalSize = FVector(64.f, Radius, Radius);
+	
+	UE_LOG(LogTemp, Warning, TEXT("Applied Material : %s"),
+	*GetNameSafe(Decal->GetDecalMaterial()));
+
 }
 
 void ALB_TelegraphIndicator::SetAsLine(float Width, float Length)
